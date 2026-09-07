@@ -165,10 +165,10 @@ the factory, the package `__init__.py`, or anything above the implementation.
   library for a signature, that is a leak — define a domain type or a `Protocol` instead.
 - **The factory does not import all implementations at module top.** Doing so makes importing the
   package pull in every driver, so a service that only ever uses the local implementation still pays
-  the import cost and must have the library installed. The factory selects, then imports the chosen
-  module inside the branch — the second permitted function-level import. Alternatives that avoid it
-  entirely, for an open set: a registry where each implementation module registers itself, an import
-  by name from a table, or entry points.
+  the import cost and must have the library installed. The dispatch mapping holds *local builders*,
+  and each builder imports its own driver inside itself — the second permitted function-level
+  import. For an open set of implementations, invert it: a registry each implementation module
+  registers itself with, or entry points.
 - **Optional libraries are optional extras**, and the implementation module is the only place that
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install.
@@ -185,22 +185,56 @@ the factory, the package `__init__.py`, or anything above the implementation.
   ```
 
   ```python
-  # CORRECT — the contract knows nothing; the factory imports only what it chose
+  # CORRECT — the contract knows nothing, and only the chosen driver is ever imported
   class BaseBlobStore(Protocol):
       def put(self, key: str, data: bytes) -> None: ...
       def get(self, key: str) -> bytes: ...
 
 
-  def create_blob_store(kind: BlobStoreKind, settings: BlobSettings) -> BaseBlobStore:
-      match kind:
-          case BlobStoreKind.S3:
-              from .s3 import S3BlobStore   # noqa: PLC0415  # optional extra, loaded on demand
-              return S3BlobStore.create(settings.bucket, settings.region)
-          case BlobStoreKind.LOCAL:
-              from .local import LocalBlobStore   # noqa: PLC0415
-              return LocalBlobStore(Path(settings.root))
-          case _:
-              assert_never(kind)
+  class _BlobStoreOptions(TypedDict):
+      bucket: NotRequired[str]
+      region: NotRequired[str]
+      root: NotRequired[Path]
+
+
+  type _Factory = Callable[..., BaseBlobStore]
+
+
+  # Each builder declares the options it uses and swallows the rest, so the dispatcher never
+  # has to know the union of what its builders might want.
+  def _s3(*, bucket: str, region: str, **_: object) -> BaseBlobStore:
+      from .s3 import S3BlobStore   # noqa: PLC0415  # optional extra, loaded on demand
+      return S3BlobStore.create(bucket, region)
+
+
+  def _local(*, root: Path, **_: object) -> BaseBlobStore:
+      from .local import LocalBlobStore   # noqa: PLC0415
+      return LocalBlobStore(root)
+
+
+  _FACTORY: Final[Mapping[BlobStoreKind, _Factory]] = MappingProxyType(
+      {
+          BlobStoreKind.S3: _s3,
+          BlobStoreKind.LOCAL: _local,
+      }
+  )
+
+
+  def create_blob_store(kind: BlobStoreKind, **options: Unpack[_BlobStoreOptions]) -> BaseBlobStore:
+      return _FACTORY[kind](**options)
+  ```
+
+  The mapping is built at import time out of *local* functions, so nothing heavy is loaded; the
+  driver arrives only when the builder that needs it runs. Callers name concrete fields, never a
+  settings object:
+
+  ```python
+  store = create_blob_store(
+      settings.blob_store_kind,
+      bucket=settings.s3_bucket,
+      region=settings.s3_region,
+      root=settings.blob_root,
+  )
   ```
 
 ### Enforced Layer Boundaries
@@ -272,6 +306,28 @@ the constructor or the function signature.
   settings object, constructed once at the composition root and **passed in** — never read from the
   environment scattered through the code, never a module-level settings instance imported
   everywhere.
+- **Pass fields, never the configuration root.** A function takes `timeout_seconds: float`, not the
+  object carrying everything the process was configured with. That object is a namespace of
+  unrelated groups: the signature stops being a dependency list, the reader has to open the body to
+  learn what is actually read, and a test has to build the whole configuration tree to make one
+  call. An untyped `**kwargs` has the same defect — both say "something from over there" — so
+  replacing one with the other is not a fix. Unpacking happens once, in the composition root, where
+  the verbosity is the point.
+- **A cohesive group of parameters passed as one frozen value is a different thing, and it is
+  encouraged.** `RetryPolicy(attempts, backoff, jitter)`, `PoolOptions(size, overflow, recycle)` —
+  the callee uses all of it, and the type names a concept. What decides is cohesion, not the
+  mechanism: a configuration root built out of frozen dataclasses is still a configuration root, and
+  a parameter object validated at the boundary is still a parameter object. Three questions tell
+  them apart — does the callee use essentially every field; is the name a concept (`RetryPolicy`)
+  rather than an origin (`Settings`, `Config`, `Env`); could a test build it in one line from
+  literals, with nothing read from the environment? Three yeses make it a value to pass; one no
+  makes it the configuration root wearing a smaller name.
+- **A dispatcher that forwards options is the exception, and it forwards them typed.** A factory
+  that hands the same option bundle to whichever builder it selected takes `**options:
+  Unpack[SomeOptions]`, with a `TypedDict` naming every field and marking the optional ones. Each
+  builder then declares the fields it uses and swallows the rest. That keeps the call site naming
+  concrete fields, keeps the checker able to reject a typo, and keeps the dispatcher from having to
+  know the union of everything its builders might want.
 - **Configuration is validated at startup, before serving.** A missing or malformed variable crashes
   the process immediately with a clear message — never a lazy read that fails on the first request
   hours later. Feature flags are typed fields, read once and injected, never queried ad hoc deep in

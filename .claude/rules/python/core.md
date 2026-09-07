@@ -61,8 +61,12 @@ Only what a linter cannot decide; everything mechanical about expressions is alr
 - **State the positive case first**, and keep the shorter branch first. No double negatives — rename
   the flag instead.
 - **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
-  of variants or nested data. Do not use it to compare one scalar against constants where a dict
-  lookup reads better, and do not use it for two branches.
+  of variants or nested data. Do not use it to compare one scalar against constants, and do not use
+  it for two branches.
+- **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
+  `_FACTORY[source.kind](**options)`. The mapping is the dispatch table — adding a kind is one
+  entry, and the set of kinds is readable in one place instead of spread over branches. Even a
+  lazily-imported driver fits: the mapping holds local builders, and the builder does the import.
 - **Every `match` over a union or `Enum` ends with exhaustiveness**: cover all variants and close
   with `case _: assert_never(value)`, or raise a named error in `case _:`. A silent fall-through is
   forbidden.
