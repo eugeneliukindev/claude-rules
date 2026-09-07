@@ -7,9 +7,12 @@ paths:
 
 Principles, functions, classes, errors, logging, resources, concurrency, documentation and the
 Definition of Done. The companion files cover typing, naming, architecture, testing and the standard
-library; each is loaded automatically by the `paths:` in its own front matter. Per-library
-references live in `libraries/` — open the one for the library you are touching; they are not
-loaded automatically, because which of them applies depends on the imports, not on the path.
+library; each is loaded automatically by the `paths:` in its own front matter.
+
+Two more sets sit alongside. `tooling/` covers the environment, the linters and the hooks; those
+load with the configuration file each tool owns. `libraries/` covers third-party libraries; open the
+one for the library you are touching, since which of them applies depends on the imports rather than
+on the path.
 
 Style, layout and mechanical complexity are enforced by the project's linters, formatter and type
 checker. **This document does not restate anything a tool can decide** — a rule a linter can check
