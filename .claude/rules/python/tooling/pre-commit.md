@@ -42,3 +42,63 @@ keystroke that caused it — not to be a second, softer standard.
 - **A hook that fires constantly on correct code is a broken hook.** Fix or remove it: a check
   people have learned to ignore is worse than no check, because it trains them to ignore the next
   one too.
+
+## Configuration
+
+Local hooks running through the environment manager, so the version comes from the lockfile and
+the three copies — laptop, hook, CI — cannot disagree:
+
+```yaml
+# This list is the Definition of Done. A gate missing here wastes a CI run on something
+# the author could have seen in a second; a hook missing there is only a suggestion.
+repos:
+  - repo: local
+    hooks:
+      - id: format
+        name: format
+        entry: uv run ruff format
+        language: system
+        types: [ python ]
+
+      - id: lint
+        name: lint
+        entry: uv run ruff check --force-exclude
+        language: system
+        types: [ python ]
+
+      - id: style
+        name: style
+        entry: uv run flake8
+        language: system
+        types: [ python ]
+
+      - id: types
+        name: types
+        # Passing filenames would type-check them in isolation, and a strict run needs
+        # the whole package to resolve imports.
+        entry: uv run mypy
+        language: system
+        types: [ python ]
+        pass_filenames: false
+
+      - id: layers
+        name: layers
+        entry: uv run lint-imports
+        language: system
+        types: [ python ]
+        pass_filenames: false
+
+      - id: lockfile
+        name: lockfile
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+```
+
+In CI the same set runs over everything, so a bypassed hook cannot hide and a rule added today
+still reaches the files written yesterday:
+
+```
+pre-commit run --all-files --show-diff-on-failure
+```

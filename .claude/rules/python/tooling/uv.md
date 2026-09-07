@@ -46,3 +46,47 @@ second mechanism to disagree with the first.
 - **A member depends on its siblings as workspace sources**, not by version. Otherwise a local
   change is invisible until it is published.
 - **The workspace root owns the tool configuration**; members own only their own dependencies.
+
+## Configuration
+
+```toml
+[project]
+name = "acme-api"
+requires-python = ">=3.13"
+# Bounds only — the lockfile states the versions.
+dependencies = [
+    "httpx>=0.27",
+]
+
+# Extras are for consumers: an optional runtime capability they may ask for.
+[project.optional-dependencies]
+s3 = [ "boto3>=1.34" ]
+
+# Groups are for development: nobody installing the package wants these.
+[dependency-groups]
+test = [ "pytest>=8" ]
+typing = [ "mypy>=1.11" ]
+lint = [ "ruff>=0.16", "wemake-python-styleguide>=1" ]
+dev = [
+    { include-group = "test" },
+    { include-group = "typing" },
+    { include-group = "lint" },
+]
+
+[tool.uv.workspace]
+members = [ "packages/*" ]
+
+# A sibling is a workspace source, not a version: otherwise a local change stays
+# invisible until it is published.
+[tool.uv.sources]
+acme-core = { workspace = true }
+```
+
+The commands that follow from it:
+
+```
+uv sync --group dev     # the development environment, reproducibly
+uv sync --frozen        # in CI and images: resolve nothing, install the lockfile
+uv lock --check         # fails when the lockfile has drifted from pyproject.toml
+uv run pytest           # no activated environment required, so CI and laptop agree
+```

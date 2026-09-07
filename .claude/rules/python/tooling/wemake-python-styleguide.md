@@ -49,3 +49,33 @@ fail is not.
   external — otherwise it reports the comment as an unused suppression, and removing it breaks this
   linter instead.
 - Same discipline as everywhere: the code, and the reason, on the same line.
+
+## Configuration
+
+It has no config file of its own — the settings live in the `flake8` section, usually `setup.cfg`:
+
+```ini
+[flake8]
+# Its own prefix and syntax errors only: flake8's built-in checks overlap ruff completely,
+# and running both means two tools reporting one finding with different numbers.
+select = WPS, E99
+
+# Docstring examples are code, and they are executed.
+doctests = true
+
+# The one global adjustment worth making, with the arithmetic written down: the default
+# ceiling assumes an 80-character line. At 120 roughly half again as many nodes fit on
+# one line, so the per-line limit fires on code that is not actually dense.
+max-line-complexity = 21
+
+ignore =
+  # Argument count is ruff's job — PLR0913, configured with max-args in pyproject.toml.
+  WPS211
+
+# Per-file exceptions carry a reason each, and the reason can stop being true.
+per-file-ignores =
+  # An enum lists every value in the world; the count is the domain's, not the module's.
+  */enums.py: WPS202
+  # The composition root exists precisely to bring everything together in one place.
+  */app.py: WPS201
+```
