@@ -131,7 +131,7 @@ module boundaries. That is enough, provided the convention is followed consisten
 - **Module-level `__getattr__` is the one sanctioned dynamic hook**: for lazily importing a heavy
   optional submodule, or for keeping a renamed name working while emitting a deprecation warning.
   Never for building an API at runtime — the surface must be readable statically.
-- **A test asserts that `__all__` matches the intended surface**, so an accidental export fails CI.
+- **A test asserts that `__all__` matches the intended surface**, so an accidental export fails.
 
 ## Imports and Dependencies
 
@@ -240,8 +240,8 @@ the factory, the package `__init__.py`, or anything above the implementation.
 ### Enforced Layer Boundaries
 
 **Dependency direction is enforced by tooling, not by review vigilance.** Contracts live next to the
-type-checker configuration and run in CI beside it: a layered contract fixes the order of the
-layers, and a forbidden contract keeps the domain free of frameworks, drivers and adapters.
+type-checker configuration and run beside it: a layered contract fixes the order of the layers, and
+a forbidden contract keeps the domain free of frameworks, drivers and adapters.
 
 - Higher layers depend on lower ones; the domain depends on nothing in the package.
 - A boundary violation is fixed by moving code or inverting the dependency — a `Protocol` plus an
@@ -385,8 +385,8 @@ the constructor or the function signature.
 - **Revision messages are imperative and specific**, not `update` or `fix`.
 - **No ORM models inside migrations**: use the migration DSL and inline table definitions, so a
   migration written today still runs after the model changes tomorrow.
-- **CI runs the whole chain** against an empty database, up and back down, and fails on a drift
-  between models and migrations.
+- **The whole chain is exercised** against an empty database, up and back down, and a drift between
+  models and migrations is a failure.
 - **Long locks are planned**: concurrent index creation, batched backfills, type changes via a new
   column.
 
@@ -462,7 +462,7 @@ Applies to anything code you do not control imports or calls.
 ## Performance
 
 - **Measure before optimizing.** Any performance change references a measurement — a profile for
-  CPU, an allocation profile for memory, a benchmark to pin the improvement in CI. An optimization
+  CPU, an allocation profile for memory, a benchmark to pin the improvement. An optimization
   without a before-and-after number is refactoring risk with no proven benefit.
 - **Optimize the algorithm, then the constants.** A quadratic membership scan beats any
   micro-tuning: set and dict lookups, precomputed indexes, and batching are where real wins live.
@@ -484,8 +484,8 @@ Applies to anything code you do not control imports or calls.
   repeated in a hot loop that a local would hoist.
 - **Concurrency follows the workload**, and is measured before assuming parallelism helps — pool and
   pickling overhead is real.
-- **Performance-sensitive paths are marked and tested** with a stated budget, so regressions fail CI
-  instead of arriving as an incident.
+- **Performance-sensitive paths are marked and tested** with a stated budget, so a regression fails
+  a check instead of arriving as an incident.
 
 ## Security
 
@@ -494,7 +494,7 @@ Applies to anything code you do not control imports or calls.
 - **TLS verification stays on.** Never disable it "to make it work".
 - **Passwords are hashed with a vetted adaptive algorithm**, never a fast hash and never a
   hand-rolled scheme. Secrets are compared in constant time, never with `==`.
-- **Dependencies are scanned in CI.**
+- **Dependencies are scanned for known vulnerabilities**, and a finding blocks the upgrade path it came in on.
 - **SQL is always parameterized** — including order-by clauses and table names, which are chosen
   from a whitelist of constants, never interpolated.
 - **Subprocesses take an argument list, never a shell string.** Executable paths and arguments are

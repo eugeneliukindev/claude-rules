@@ -11,13 +11,13 @@ second mechanism to disagree with the first.
 
 ## The Lockfile Is the Contract
 
-- **The lockfile is committed**, and CI verifies it is current. A lockfile that drifts from
+- **The lockfile is checked in, and its freshness is verified mechanically.** A lockfile that drifts from
   `pyproject.toml` means every machine resolves slightly differently and the failure surfaces on
   whichever one is unlucky.
 - **`pyproject.toml` states bounds; the lockfile states versions.** Pinning an exact version in the
   dependency list duplicates the lockfile's job and makes every bump a merge conflict.
-- **CI and images install frozen**, so a build cannot quietly resolve something new between the
-  commit that passed review and the artefact that ships.
+- **Automated builds and images install frozen**, so a build cannot quietly resolve something new
+  between the source that was reviewed and the artefact that ships.
 
 ## Declaring Dependencies
 
@@ -35,7 +35,7 @@ second mechanism to disagree with the first.
 ## Running Things
 
 - **Commands run through `uv run`**, so nothing depends on an activated environment. A script that
-  only works after someone remembered to activate is a script that fails in CI.
+  only works after someone remembered to activate is a script that fails on every other machine.
 - **Never install into the environment by hand.** Editing the environment without editing
   `pyproject.toml` produces a machine that works and a lockfile that does not know why.
 
@@ -86,7 +86,7 @@ The commands that follow from it:
 
 ```
 uv sync --group dev     # the development environment, reproducibly
-uv sync --frozen        # in CI and images: resolve nothing, install the lockfile
+uv sync --frozen        # automated builds and images: resolve nothing, install the lockfile
 uv lock --check         # fails when the lockfile has drifted from pyproject.toml
-uv run pytest           # no activated environment required, so CI and laptop agree
+uv run pytest           # no activated environment required, so every machine agrees
 ```

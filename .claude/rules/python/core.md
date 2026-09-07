@@ -30,9 +30,9 @@ Resolve in this order:
    have paid for their choices.
 4. Consistency with the surrounding code of the same package.
 5. The default (*prefer*) in these files.
-6. Your own judgement — and say in the PR that this is what you used.
+6. Your own judgement — and say so, rather than letting it read as a rule.
 
-If a rule is wrong for the situation, the fix is a PR against this folder with the reasoning, not a
+If a rule is wrong for the situation, the fix is to change the rule, with the reasoning — not a
 silent exception in code. A rule that is regularly worked around is a rule that needs changing.
 
 ## Core Principles
@@ -53,6 +53,53 @@ wins.
 
 **Non-negotiables**: mypy strict and the linters pass with zero suppressions you cannot justify;
 nothing is handed over that fails the Definition of Done.
+
+## YAGNI, KISS, DRY
+
+Three names for the same discipline, and all three are misquoted often enough to be worth stating
+precisely.
+
+### YAGNI — You Aren't Gonna Need It
+
+**Build what today's requirement needs, and nothing beyond it.** The cost of a speculative feature
+is not the hour spent writing it; it is that everything afterwards must keep it working — it gets
+tested, typed, refactored around, and read by everyone who passes.
+
+- A generalisation built for one case is a guess about the second. The guess is usually wrong, and a
+  wrong abstraction is harder to remove than the duplication it was meant to prevent, because
+  callers have grown into it by then.
+- A configuration option nobody sets, a hook nobody registers, a parameter that is always the
+  default: each is a branch that is never exercised and therefore never known to work.
+- The honest answer to "we might need it later" is to make the change easy to *make* later — a clear
+  seam, a small interface — not to make it now.
+
+### KISS — Keep It Simple
+
+**The simplest construction that fully solves the problem**, which is not the shortest one. A dense
+one-liner that has to be decoded is complexity moved out of the code and into the reader.
+
+- Prefer the boring mechanism: a function over a class, a dict over a registry, a loop over a
+  comprehension that needs a comment.
+- Cleverness that needs explaining has already failed. If the explanation cannot be deleted, the
+  code should be.
+- Simplicity is measured at the point of *use*. A construct that makes the implementation elegant
+  and every call site awkward has moved cost onto more people than it saved it from.
+
+### DRY — Don't Repeat Yourself
+
+**DRY is about knowledge, not about text.** The rule is that every piece of knowledge has one
+authoritative home — not that no two lines may look alike.
+
+- **Two fragments that look identical but change for different reasons are not duplication.**
+  Merging them couples two things that must be free to move apart, and the next change to one of
+  them arrives as a parameter, then a flag, then a branch. Ask what would have to change together,
+  not what looks the same.
+- **Two fragments that must change together are duplication even when they look nothing alike** — a
+  limit enforced in a validator and repeated in a schema, a status decoded in two adapters.
+- **Wait for the third occurrence.** Two call sites are not yet evidence of a rule; they are a
+  coincidence often enough that acting on them is how the wrong abstraction gets built.
+- The cure is not always a shared function. A shared constant, a shared type, or one call in the
+  right place removes the duplication of *knowledge* without inventing a unit that has to be named.
 
 ## Control Flow and Expressions
 
@@ -689,7 +736,7 @@ and nothing else.
   stands — or it has its own contract, stated in full.
 - **No changelogs, authors, dates, or TODOs.**
 - **Examples are self-contained.** A doctest that depends on objects built elsewhere is a leak that
-  also breaks CI.
+  also breaks the moment those objects change.
 
   ```python
   # WRONG — documents callers, siblings, ordering, implementation and history
@@ -731,8 +778,7 @@ demonstrates, plus one extra requirement — it must run.
 
 - **Show the smallest complete thing.** One capability, with every import and object constructed
   inside it. An example that starts mid-story is unusable and unverifiable.
-- **Examples are executed, not proofread.** Docstring examples run in CI; an example nobody runs is
-  wrong within a release or two.
+- **Examples are executed, not proofread.** An example nobody runs is wrong within a release or two.
 - **Start from the caller's goal, not the API surface.** Order examples by frequency of use.
 - **Realistic data, no filler.** Never `foo`, `bar`, `test123`. Use reserved example values
   (`example.com`, RFC 5737 addresses) so an example can never hit a real host. Never a real key,
@@ -748,24 +794,7 @@ demonstrates, plus one extra requirement — it must run.
 - **Keep examples versioned with the API.** A deprecated path disappears from examples in the same
   release it is deprecated in.
 
-## Version Control
-
-- **Commit messages follow Conventional Commits**: `type(scope): imperative summary`, blank line,
-  then *why* — the diff already says what.
-- **One logical change per commit**; a refactor and the feature that needed it are two commits, so
-  the refactor can be reviewed and reverted alone. Never mix formatting-only changes with behaviour
-  changes.
-- **Pull requests stay small.** A PR description states the intent, the risk, and how it was
-  verified.
-- **CI is the gate, not the reviewer**: nothing merges red; the reviewer reads for design, naming
-  and missing tests — never for what a linter already checks.
-- **Reviews cite the rule they apply**; a disagreement with a rule is a PR against this document,
-  not an exception in code.
-- **NEVER** commit commented-out code, debug output, `breakpoint()`, generated artefacts, secrets,
-  or a broken lockfile.
-- **History is not rewritten after push to a shared branch.**
-
-## Before Committing — Definition of Done
+## Definition of Done
 
 Run in this order; every step must pass before the next one starts. Do not hand over code with any
 unchecked box.
@@ -827,6 +856,5 @@ unchecked box.
 **Hygiene**
 
 - [ ] Every comment and docstring passes the relocation test
-- [ ] Every shipped example runs in CI, is self-contained and deterministic
+- [ ] Every shipped example is self-contained, deterministic, and actually runs
 - [ ] No hardcoded credentials, URLs, or environment-specific values
-- [ ] Commits follow Conventional Commits; the PR states intent, risk and verification

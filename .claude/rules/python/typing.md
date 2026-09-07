@@ -491,7 +491,7 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
 ### Enforcement
 
 - mypy strict, plus `disallow_any_generics`, `warn_return_any`, `warn_unreachable`, `strict_equality`, `no_implicit_reexport`.
-- `# type: ignore[code]` always with a code and a reason (see Comments); their count is tracked in CI and only ratchets down.
+- `# type: ignore[code]` always with a code and a reason (see Comments); their count only ratchets down.
 - A `dict[str, Any]` or an untyped `**kwargs` crossing a layer boundary is a review blocker, not a style nit.
 
 ## Immutability and Data

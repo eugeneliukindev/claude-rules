@@ -46,8 +46,8 @@ that change the outcome.
 - **When another linter runs alongside**, declare its prefix as external so its suppressions are not
   reported as unused — otherwise the two tools spend the day disagreeing about each other's
   comments.
-- **Suppression count is a metric that only goes down.** Adding one is a decision worth stating in
-  the pull request.
+- **Suppression count is a metric that only goes down.** Adding one is a decision worth saying out
+  loud, not a detail to slip past.
 
 ## Where the Boundary Is
 

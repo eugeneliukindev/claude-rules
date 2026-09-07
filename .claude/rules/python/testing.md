@@ -77,5 +77,5 @@ stay separated is not.
 
 - Coverage is measured with **branch coverage on** (`--cov-branch`); line coverage alone hides untested `else` arms.
 - **No single magic number.** The gate is layered: domain and services aim at ~100%; adapters and handlers are covered mainly by integration tests; generated code, migrations and `__main__` are excluded explicitly in config, not ignored silently.
-- CI enforces a floor with `--cov-fail-under` and the floor only ratchets up.
+- The floor is enforced mechanically (`--cov-fail-under`) and only ever ratchets up.
 - Coverage is a detector of untested code, **never** a target: a test that exists to color lines green (no meaningful assert) is worse than the gap it hides, because it converts an honest unknown into false confidence.
