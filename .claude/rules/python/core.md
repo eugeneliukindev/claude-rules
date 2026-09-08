@@ -245,7 +245,7 @@ comment with call overhead.
       _step_three(data)
 
   # CORRECT — name the actions, or keep it inline when each is two lines
-  def import_orders(raw: bytes, repository: BaseOrderRepository) -> None:
+  def import_orders(raw: bytes, repository: OrderRepository) -> None:
       payload = deserialize(raw)
       orders = [Order.from_payload(item) for item in payload["items"]]
       repository.save_all(orders)
@@ -418,12 +418,12 @@ imported only in that implementation's module.
 - **NEVER** use a bare class as an interface. Every contract is a `Protocol` or an ABC.
 
   ```python
-  # Protocol — structural, no shared implementation; every contract starts with Base
-  class BaseNotifier(Protocol):
+  # Protocol — structural, no shared implementation; the name is the capability
+  class Notifier(Protocol):
       def send(self, recipient: str, message: str) -> None: ...
 
-  # ABC with shared behaviour — same Base prefix, mixed with real methods
-  class BaseRepository[T](ABC):
+  # ABC with shared behaviour — still named for the capability, not for the mechanism
+  class Repository[T](ABC):
       @abstractmethod
       def find(self, entity_id: int) -> T | None: ...
 
@@ -810,7 +810,7 @@ unchecked box.
 **Naming** (see Naming Self-Check)
 
 - [ ] Every new identifier passes the Naming Self-Check
-- [ ] Every `Protocol` / contract-ABC starts with `Base`; no concrete class does
+- [ ] Every contract is named for its capability; every `Base` hands down real implementation
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
 
 **Structure**

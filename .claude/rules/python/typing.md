@@ -37,7 +37,7 @@ Use the new **`class Foo[T]`** syntax (PEP 695) instead of `Generic[T]` from `ty
 
   ```python
   # CORRECT: PEP 695 syntax; the bound carries the meaning, the letter stays T
-  class BaseRepository[T: Entity](ABC):
+  class Repository[T: Entity](ABC):
       @abstractmethod
       def find(self, entity_id: EntityId) -> T | None: ...
       @abstractmethod
@@ -46,7 +46,7 @@ Use the new **`class Foo[T]`** syntax (PEP 695) instead of `Generic[T]` from `ty
   # WRONG (legacy)
   from typing import Generic, TypeVar
   T = TypeVar("T", bound=Entity)
-  class BaseRepository(Generic[T]): ...
+  class Repository(Generic[T]): ...
 
   # CORRECT: a generic dataclass under the same syntax
   @dataclass(frozen=True, slots=True)
@@ -400,7 +400,7 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
   def save_all(repository: Any, items: list[T]) -> None: ...
 
   # CORRECT — bounded parameter; abstract input
-  class BaseRepository[T: Entity](ABC):
+  class Repository[T: Entity](ABC):
       @abstractmethod
       def save_all(self, entities: Sequence[T]) -> None: ...
   ```
@@ -417,7 +417,7 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
 
 ### Further Type Constructs
 
-- **`@override` (PEP 698, 3.12) on every method that overrides a base method** — mandatory. It catches a typo in the method name, and it turns a rename in a `Base…` class into a type error at every subclass instead of a silently orphaned method that never runs again.
+- **`@override` (PEP 698, 3.12) on every method that overrides a base method** — mandatory. It catches a typo in the method name, and it turns a rename in a contract into a type error at every subclass instead of a silently orphaned method that never runs again.
 - **`Never` / `NoReturn` for functions that never return normally**: a helper that always raises is `-> Never`, and the checker then knows the code after the call is unreachable. `Never` is also the type of the impossible branch — `assert_never(value)` works because the narrowed value has type `Never`.
 - **`LiteralString` (PEP 675) for parameters that must not receive interpolated input**: a query builder, a shell helper, a template loader. The checker accepts literals and concatenations of literals, and rejects any string that passed through user input — a compile-time complement to the SQL and `subprocess` rules in Security.
 - **A recursive alias instead of `Any` for free-form JSON**: `type Json = str | int | float | bool | None | list[Json] | dict[str, Json]`. Use it only where the shape is genuinely unknown; a known shape is a `TypedDict` or a model.
@@ -431,7 +431,7 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
 
   ```python
   # WRONG — silent orphan after a rename, anonymous Callable, None hiding two meanings
-  class SlackNotifier(BaseNotifier):
+  class SlackNotifier(Notifier):
       def notify(self, recipient: Recipient, message: str) -> None: ...   # base renamed it to send()
 
   def register(handler: Callable[[str, int, bool], None]) -> None: ...
@@ -440,14 +440,14 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
       ...   # is None "leave unchanged" or "clear the nickname"?
 
   # CORRECT
-  class SlackNotifier(BaseNotifier):
+  class SlackNotifier(Notifier):
       @override
       def send(self, recipient: Recipient, message: str) -> None: ...
 
-  class BaseEventHandler(Protocol):
+  class EventHandler(Protocol):
       def __call__(self, event: str, attempt: int, *, is_retry: bool) -> None: ...
 
-  def register(handler: BaseEventHandler) -> None: ...
+  def register(handler: EventHandler) -> None: ...
 
   @final
   class _Unset:

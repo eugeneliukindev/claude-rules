@@ -109,9 +109,9 @@ module boundaries. That is enough, provided the convention is followed consisten
   # acme_core/__init__.py — the whole public surface, and nothing else
   from ._identifiers import OrderId as OrderId, UserId as UserId
   from ._models import Order as Order, User as User
-  from ._repository import BaseUserRepository as BaseUserRepository
+  from ._repository import UserRepository as UserRepository
 
-  __all__ = ["BaseUserRepository", "Order", "OrderId", "User", "UserId"]
+  __all__ = ["UserRepository", "Order", "OrderId", "User", "UserId"]
   ```
 
 **Rules**
@@ -181,12 +181,12 @@ the factory, the package `__init__.py`, or anything above the implementation.
   from .local import LocalBlobStore
   from .s3 import S3BlobStore          # pulls the cloud SDK in with it
 
-  def create_blob_store(kind: str) -> BaseBlobStore: ...
+  def create_blob_store(kind: str) -> BlobStore: ...
   ```
 
   ```python
   # CORRECT — the contract knows nothing, and only the chosen driver is ever imported
-  class BaseBlobStore(Protocol):
+  class BlobStore(Protocol):
       def put(self, key: str, data: bytes) -> None: ...
       def get(self, key: str) -> bytes: ...
 
@@ -197,17 +197,17 @@ the factory, the package `__init__.py`, or anything above the implementation.
       root: NotRequired[Path]
 
 
-  type _Factory = Callable[..., BaseBlobStore]
+  type _Factory = Callable[..., BlobStore]
 
 
   # Each builder declares the options it uses and swallows the rest, so the dispatcher never
   # has to know the union of what its builders might want.
-  def _s3(*, bucket: str, region: str, **_: object) -> BaseBlobStore:
+  def _s3(*, bucket: str, region: str, **_: object) -> BlobStore:
       from .s3 import S3BlobStore   # noqa: PLC0415  # optional extra, loaded on demand
       return S3BlobStore.create(bucket, region)
 
 
-  def _local(*, root: Path, **_: object) -> BaseBlobStore:
+  def _local(*, root: Path, **_: object) -> BlobStore:
       from .local import LocalBlobStore   # noqa: PLC0415
       return LocalBlobStore(root)
 
@@ -220,7 +220,7 @@ the factory, the package `__init__.py`, or anything above the implementation.
   )
 
 
-  def create_blob_store(kind: BlobStoreKind, **options: Unpack[_BlobStoreOptions]) -> BaseBlobStore:
+  def create_blob_store(kind: BlobStoreKind, **options: Unpack[_BlobStoreOptions]) -> BlobStore:
       return _FACTORY[kind](**options)
   ```
 

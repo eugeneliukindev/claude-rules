@@ -28,7 +28,7 @@ stay separated is not.
   only.
 - **MUST** write unit tests for all new functions and classes
 - **MUST** use `pytest` as the testing framework
-- **Prefer fakes over mocks.** For every interface (`BaseUserRepository`, `BaseNotifier`) keep an in-memory fake (`InMemoryUserRepository`) next to the real implementations and inject it in unit tests. Fakes exercise the contract; `MagicMock` only records calls and happily accepts methods that don't exist.
+- **Prefer fakes over mocks.** For every contract (`UserRepository`, `Notifier`) keep an in-memory fake (`InMemoryUserRepository`) next to the real implementations and inject it in unit tests. Fakes exercise the contract; `MagicMock` only records calls and happily accepts methods that don't exist.
 - **Mock only at the process boundary you don't own** — the network, the clock, the broker. When a `MagicMock` is genuinely needed, use the `mocker` fixture (`pytest-mock`) — or `unittest.mock.patch` as a context manager where `mocker` is unavailable — and always `spec=` the real class so nonexistent attributes fail.
 - **`patch` targets are a design smell-meter**: patching your *own* internal modules (`patch("app.services.registration._send_welcome")`) means the dependency should have been injected. Fix the constructor, don't patch. Patching is legitimate only for boundaries that cannot be injected (stdlib internals in rare cases, third-party module state).
 - **Assert outcomes, not conversations.** Check the state of the fake (`assert repository.saved == [user]`) or the return value; `assert_called_once_with` chains that mirror the implementation line-by-line break on every refactor while catching nothing.

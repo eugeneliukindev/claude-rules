@@ -167,13 +167,21 @@ concept and two vocabularies. Rename the three.
   Same for `AliasPath` / `AliasChoices` / `AliasGenerator`.
 - **Describe what it is, not how it is built.** `TaskQueue`, not `RedisTaskQueue` — unless a second
   implementation exists and the distinction is the point.
-- **Interfaces start with `Base`.** Every `Protocol` and every ABC whose purpose is to define a
-  contract is named `Base` + noun: `BaseNotifier`, `BaseRepository`. The prefix is **mandatory** —
-  a contract without `Base`, and a fully implemented class carrying `Base`, are both violations.
-- **The concrete class is named by what makes it concrete**: `BaseNotifier` → `EmailNotifier`,
-  `SlackNotifier`. A default implementation drops the `Base` and nothing more, when a contract
-  exists and exactly one real implementation sits behind it. Where there is no contract at all and
-  never will be, name the single class concretely (see Name Matches Abstraction Level).
+- **A contract is named after the capability, without a prefix.** A `Protocol` or a
+  contract-ABC is an agent noun or an "-able" adjective and nothing more: `Notifier`,
+  `UserRepository`, `Comparable`. The implementations carry the qualifier, not the contract —
+  `EmailNotifier`, `SlackNotifier`, `PostgresUserRepository`. Stdlib ABCs (`Iterable`, `Mapping`,
+  `Sized`) keep their stdlib names.
+- **`Base` means "inherit me", never "implement me".** The prefix is earned by a class that
+  carries shared *implementation* down to its subclasses: fields, defaults, ready methods. That is
+  what it means everywhere in the ecosystem — `pydantic.BaseModel` and `BaseSettings` are full
+  classes you subclass; `sqlalchemy.DeclarativeBase` is machinery you inherit. A contract has
+  nothing to hand down, so it has no `Base` to earn.
+- **A shared base that only its own module inherits is private**: `_BaseCookie`, `_BaseAuth`.
+  The underscore says the class exists to be inherited *here* and is not part of the surface.
+- **Where a contract and its single implementation would collide**, the implementation names what
+  makes it concrete — its driver, its transport, its storage — and never falls back to `Default`
+  or `Impl`. If nothing distinguishes it, there was no contract worth writing.
 - **Subclasses extend the parent's name with the distinguishing feature**, reading as "adjective +
   parent": `Cache` → `LruCache`; `ValueError` → `InvalidCurrencyError`.
 - **Dataclasses / models are named after the thing they describe**, not the fact that they hold
@@ -194,26 +202,55 @@ concept and two vocabularies. Rename the three.
   bug — make it a `fetch_…` / `compute_…` method.
 
   ```python
-  # WRONG — a suffix that names nothing, Base misplaced, plural enum, exception naming no failure
-  class DataManager(Protocol): ...     # a contract without Base, and "Manager" says nothing
-  class BaseLdapUserDirectory: ...     # Base on a concrete class
-  class RequestHandlerBase: ...        # Base is a prefix, and only on a contract
+  # WRONG — Base on a contract, Base on a leaf, a suffix that names nothing, plural enum
+  class BaseUserDirectory(Protocol): ...   # nothing to inherit: it hands down no implementation
+  class BaseLdapUserDirectory: ...         # a leaf, and it is what makes it concrete that matters
+  class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
+  class DataManager(Protocol): ...         # "Manager" says nothing
   class OrderStatuses(Enum): ...
   class MyException(Exception): ...
 
-  # CORRECT
-  class BaseUserDirectory(Protocol): ...
+  # CORRECT — the contract names the capability, the implementations name what makes them concrete
+  class UserDirectory(Protocol):
+      def find(self, email: str) -> User | None: ...
+
   class LdapUserDirectory: ...
   class InMemoryUserDirectory: ...
-  class RequestHandler: ...            # the suffix names the role
   class UserNotFoundError(LookupError): ...
   ```
 
+  ```python
+  # CORRECT — Base earns its prefix: it hands down fields, and the leaves add one axis each
+  @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+  class _BaseCookie:                       # private: only this module inherits it
+      path: str = '/'
+      max_age: int | None = None
+      samesite: Literal['lax', 'strict', 'none'] = 'lax'
+
+  @final
+  @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+  class NewCookie(_BaseCookie):            # one to set
+      value: str
+
+  @final
+  @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+  class CookieSpec(_BaseCookie):           # one to describe and validate
+      required: bool = True
+  ```
+
+  The test is mechanical: delete the base and see what the subclasses lose. Lose fields or working
+  methods — it is a `Base`. Lose only a promise the checker was already making — it is a contract,
+  and it is named for the capability.
+
 ## Type, Protocol, and Alias Naming
 
-- **Protocols and contract-ABCs are `Base` + capability name**, usually an agent noun or an
-  "-able" adjective: `BaseNotifier`, `BaseSerializer`, `BaseComparable`. Stdlib ABCs (`Iterable`,
-  `Mapping`, `Sized`) keep their stdlib names — never wrap one just to add `Base`.
+- **Protocols and contract-ABCs are the capability name itself** — an agent noun or an "-able"
+  adjective: `Notifier`, `Serializer`, `Comparable`. Never a mechanism suffix (`…Protocol`,
+  `…Interface`, `…ABC`) and never a `Base` prefix. Stdlib ABCs (`Iterable`, `Mapping`, `Sized`)
+  keep their stdlib names — never wrap one just to rename it.
+- **A structural type that describes someone else's shape takes `-Like`**: `_FieldLike`,
+  `PathLike`. It says "anything with this shape", as opposed to a contract of ours that
+  implementations deliberately satisfy.
 - **Type aliases name the domain meaning**: `type Headers = dict[str, str]`.
 - **A kind suffix carries the distinction between related aliases.** `pydantic` names three
   related things three ways: `Color` is the class, `ColorTuple` is the shape,
@@ -237,7 +274,7 @@ Logic "leaks" when a generically named thing starts knowing about specific cases
 specifically named thing takes over a sibling's responsibility. Both make the name lie, and a lying
 name is worse than no name. This is the naming-side view of SRP and OCP.
 
-- **Generic name → only generic logic.** `BaseNotifier`, `save_entity`, `TaskQueue` must contain
+- **Generic name → only generic logic.** `Notifier`, `save_entity`, `TaskQueue` must contain
   **no** branching on concrete types, channels, providers, tenants or environments.
 - **Concrete logic lives in a concretely named unit, and in exactly one.** Anything Slack-only goes
   in `SlackNotifier`; anything VIP-only goes in `VipDiscountPolicy`.
@@ -267,7 +304,7 @@ name is worse than no name. This is the naming-side view of SRP and OCP.
               smtp.send(recipient.address, subject="Notification", body=message)
 
   # CORRECT — the contract holds only the contract; concrete names hold concrete logic
-  class BaseNotifier(Protocol):
+  class Notifier(Protocol):
       def send(self, recipient: Recipient, message: str) -> None: ...
 
   class SlackNotifier:
@@ -288,14 +325,14 @@ name is worse than no name. This is the naming-side view of SRP and OCP.
       return subtotal
 
   # CORRECT — the generic function stays generic; the variation is injected
-  class BaseDiscountPolicy(Protocol):
+  class DiscountPolicy(Protocol):
       def apply(self, subtotal: Money, order: Order) -> Money: ...
 
   class VipDiscountPolicy:
       def apply(self, subtotal: Money, order: Order) -> Money:
           return subtotal * Decimal("0.9")
 
-  def calculate_total(order: Order, discount: BaseDiscountPolicy) -> Money:
+  def calculate_total(order: Order, discount: DiscountPolicy) -> Money:
       subtotal = sum(line.price * line.quantity for line in order.lines)
       return discount.apply(subtotal, order)
   ```
@@ -311,8 +348,8 @@ Before finishing any piece of code, verify every new identifier against this lis
 - [ ] For predicates: positive, and phrased as a question?
 - [ ] For quantities: is the unit in the name?
 - [ ] For collections: plural, and named after its elements?
-- [ ] For classes and types: a noun, and does any suffix it carries name a real role? Does every
-      `Protocol` / contract-ABC start with `Base`, and no concrete class?
+- [ ] For classes and types: a noun, and does any suffix it carries name a real role? Is every
+      contract named for its capability, and does every `Base` hand down real implementation?
 - [ ] Does it match the shape of its family, or is it the outlier that should be renamed?
 - [ ] Is the same concept called by the same word everywhere else?
 - [ ] Does the body stay at the abstraction level the name promises?
