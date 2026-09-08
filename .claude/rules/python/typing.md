@@ -202,6 +202,15 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
 | `str`, `int` that must not be mixed | `NewType` | identity only, no rules (see Value Objects) |
 | a primitive with rules | frozen dataclass value object | validation, invariants, operations |
 | `dict[str, Any]` you don't own | `TypedDict` | fixed keys, external JSON shape |
+- **A dataclass carries three flags together: `frozen=True, slots=True, kw_only=True`.** `frozen`
+  is about mutability, `slots` about the attribute set, `kw_only` about the call site. The third
+  is the one usually forgotten and the one that pays daily: a field added in the middle stops being
+  a silent breaking change, and two adjacent fields of the same type can no longer be swapped by a
+  caller. `_Rejected(order.id, reason, title)` reads fine and is wrong in three different ways;
+  `_Rejected(advertisement_id=..., reason=..., title=...)` cannot be.
+- **Positional construction survives only where the order is the concept itself** — `Point(x, y)`,
+  `Range(low, high)` — and even there the type checker is the only thing that will catch a swap.
+
 | `dict[str, Any]` crossing a boundary | a validating boundary model | untrusted input needing validation |
 | `dict` with homogeneous dynamic keys | `Mapping[UserId, Order]` | keys are data, not fields |
 | `tuple[Any, ...]` | frozen dataclass | any record — never `NamedTuple` |
@@ -227,7 +236,7 @@ Every value has a narrowest honest type. Reach for it — a wider type is a runt
       DONE = "done"
       FAILED = "failed"
 
-  @dataclass(frozen=True, slots=True)
+  @dataclass(frozen=True, slots=True, kw_only=True)
   class Job:
       id: JobId
       status: JobStatus
