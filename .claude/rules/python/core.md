@@ -54,6 +54,56 @@ wins.
 **Non-negotiables**: mypy strict and the linters pass with zero suppressions you cannot justify;
 nothing is handed over that fails the Definition of Done.
 
+## What the System Is For
+
+The five principles above are how a single file is judged. These three are how the system is
+judged, and every design decision answers to them.
+
+### Reliable — a failure stays where it happened
+
+**One bad input, one unreachable dependency, one changed page must never stop the run.** A system
+that processes many things processes them independently: the unit of failure is the item, not the
+batch, and certainly not the process.
+
+- **Decide the blast radius before writing the `try`.** Name what is being protected — this row,
+  this source, this request — and catch at exactly that boundary. A `try` around the whole loop
+  turns one bad item into zero results.
+- **A failure is recorded, not swallowed.** The item is marked failed with its reason, the log
+  says which one and why once, and the run continues. Silence and a crash are the two ways to get
+  this wrong; both end with nobody knowing what happened.
+- **Degrade in a stated direction.** When a part is unavailable, the system says what it does
+  instead — skips, retries later, serves stale, returns partial — and that choice is written down
+  where the code makes it. An unstated fallback is a bug that looks like a feature.
+- **Design for the failure that has already happened**: the site changed its markup, the model
+  timed out, the disk filled, the token expired mid-run. Each of these is a normal Tuesday, not an
+  exceptional case, and the code that meets them says so.
+
+### Scalable — cost grows slower than the work
+
+- **Nothing unbounded.** Every collection read from outside has a limit, every queue a capacity,
+  every fan-out a semaphore, every run a deadline. "It has always been small" is not a bound.
+- **Stream what can be streamed.** Anything proportional to the input — a file, a cursor, a
+  paginated API — is consumed in pieces and never materialized to be iterated once.
+- **The unit of work is independent**, so more workers is the whole answer to more load. Shared
+  mutable state between units is what turns scaling into a rewrite.
+- **Adding the tenth of something costs what the second cost.** A tenth source, a tenth
+  implementation, a tenth handler must be a row in a table, not an edit to a dispatcher.
+
+### Easy to change — the next person is you, without the context
+
+- **One reason to change per unit.** When a requirement moves, the edit lands in one place. If it
+  lands in four, the responsibility was split along the wrong axis.
+- **A new case is data or a new file, never a new branch** in something that already works. The
+  factory gains an entry, the registry gains a member, the package gains a module.
+- **Make the seam before the second case arrives** only where the seam is free — an interface
+  extracted from one implementation is a guess (see YAGNI). Where it is not free, wait: duplication
+  is cheaper to undo than the wrong abstraction.
+- **The type checker is the refactoring tool.** A rename, a moved field, a narrowed union must fail
+  loudly at every site — that is what makes a change safe to attempt at all, and it is why `Any`,
+  a stringly-typed dict, and a silent `getattr` are expensive far beyond the line they sit on.
+- **Deleting must be as easy as adding.** Code that cannot be removed without archaeology — a
+  helper with unclear callers, a flag nobody set, a branch never exercised — is the real cost.
+
 ## YAGNI, KISS, DRY
 
 Three names for the same discipline, and all three are misquoted often enough to be worth stating
