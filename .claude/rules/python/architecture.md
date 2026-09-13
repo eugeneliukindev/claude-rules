@@ -120,6 +120,16 @@ module boundaries. That is enough, provided the convention is followed consisten
   conditionally.
 - **A name is either in `__all__` or private.** There is no third state: a public-looking name that
   is not exported is a promise nobody made and everybody will rely on.
+- **The same applies one level down, to names inside a module.** A class nobody outside its own
+  module names — a settings section that only appears as a field of the root, a row shape only its
+  own repository builds, a policy only its own service applies — is written `_SectionSettings`.
+  Without the prefix it reads as part of the module's surface, and the first import from another
+  module makes it one for good. The carve-out above is for *module* names in an application
+  package; it has never been one for the names inside them.
+
+  The test is mechanical, and worth running over a package at once: grep each class name across the
+  tree, drop the file that defines it, and prefix everything left with no hits. Do it after the
+  move that made a name internal, not before — that is when a public name quietly stops being one.
 - **`__init__.py` contains imports and `__all__` only** — no logic, no side effects, no
   configuration.
 - **NEVER import a private name across a package boundary.** If another package needs it, it is not
