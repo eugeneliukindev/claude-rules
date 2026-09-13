@@ -139,10 +139,10 @@ module boundaries. That is enough, provided the convention is followed consisten
   or `issue_invoice(...)` — never a three-level attribute chain, which hides what is used.
 - **Absolute imports.** Relative imports are allowed only within a single package for sibling
   modules, and never upward.
-- **NEVER import inside a function**, with exactly two exceptions, each carrying a suppression and a
-  comment naming the reason: breaking a genuine circular import, and loading a heavy or optional
-  implementation on demand. Do not use function-level imports for generic "lazy loading" —
-  restructure instead.
+- **NEVER import inside a function**, with exactly three exceptions, each carrying a suppression and
+  a comment naming the reason: breaking a genuine circular import, loading a heavy or optional
+  implementation on demand, and a façade that exports implementations whose libraries are separate
+  extras. Do not use function-level imports for generic "lazy loading" — restructure instead.
 - **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
 - **NEVER rename on import** except for community-standard aliases and to resolve an actual clash;
   never alias to shorten.
@@ -172,6 +172,18 @@ the factory, the package `__init__.py`, or anything above the implementation.
 - **Optional libraries are optional extras**, and the implementation module is the only place that
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install.
+- **A façade over per-extra modules moves the import into the function.** When the package exports
+  its implementations by name — `from acme.instrumentation import instrument_fastapi` — the
+  package's `__init__` executes *every* implementation module, and a consumer holding one extra
+  gets `ImportError` on a library it never asked for. Two shapes work, and only these two:
+  - **No façade**: `__init__` stays empty and consumers import the module they need
+    (`acme.instrumentation.fastapi`). Imports stay at module top; nothing is lazy.
+  - **Façade, and the library is imported inside the function that uses it.** The module then
+    imports cleanly without its library, and the failure arrives to whoever called the function —
+    with the extra named. This is the third permitted function-level import.
+
+  Do not reach for a module-level `__getattr__` here: the checker cannot type names that arrive
+  through it, and every call site loses its signature.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that implementation,
   not to the shared settings root.

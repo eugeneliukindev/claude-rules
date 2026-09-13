@@ -717,7 +717,11 @@ are allowed:
 
 - **Workaround or non-obvious constraint**, with a reference a reader can verify or remove later.
 - **`# TODO(username): description`** — always with an owner and, where possible, a ticket.
-- **A suppression** — always with its rule code and the reason on the same line.
+- **A suppression** — always with its rule code and the reason. Both go on the suppressed line;
+  when the line cannot hold them — a long dotted import path already fills the budget — the
+  reason goes on the line immediately above and the code stays put. It has to: the formatter
+  wraps an over-long line, and a `noqa` carried onto a continuation line stops suppressing
+  anything, silently.
 - **Warnings about non-obvious consequences of this block**: `# Order matters here: the reversed
   list is what the caller iterates`.
 - **Legal or licence headers** where the project requires them.
