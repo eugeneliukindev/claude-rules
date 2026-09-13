@@ -184,6 +184,81 @@ the factory, the package `__init__.py`, or anything above the implementation.
 
   Do not reach for a module-level `__getattr__` here: the checker cannot type names that arrive
   through it, and every call site loses its signature.
+
+  ```python
+  # acme/_errors.py — one root for the package, one base that builds the message
+  class AcmeError(Exception):
+      """Everything this package refuses with."""
+
+
+  class MissingExtraError(AcmeError, ImportError):
+      """An instrumentation is asked for and its library is not in the environment.
+
+      Catch this root for "some extra is missing", or a leaf when it matters which. The root is
+      never raised on its own: the leaf names the extra, and without one there is no message.
+      """
+
+      extra: ClassVar[str]
+
+      def __init__(self) -> None:
+          super().__init__(f"instrumentation needs acme[{self.extra}]")
+
+
+  # acme/instrumentation/sqlalchemy.py — the module imports cleanly without its library
+  """Tracing for database calls. Installed with the `sqlalchemy` extra."""
+
+  from __future__ import annotations
+
+  from typing import TYPE_CHECKING, final
+
+  from acme._errors import MissingExtraError
+
+  if TYPE_CHECKING:
+      from sqlalchemy.ext.asyncio import AsyncEngine
+
+      from acme._telemetry import Telemetry
+
+
+  @final
+  class SqlalchemyMissingExtraError(MissingExtraError):
+      """The database instrumentation is not in the environment."""
+
+      extra = "sqlalchemy"
+
+
+  def instrument_sqlalchemy(telemetry: Telemetry, engine: AsyncEngine) -> None:
+      """Trace database calls made through this engine.
+
+      Args:
+          telemetry: The telemetry set up for this process.
+          engine: The engine whose statements are traced.
+
+      Raises:
+          SqlalchemyMissingExtraError: If the instrumentation is not installed.
+      """
+      try:
+          # Optional extra: imported on demand, not when the module is imported.
+          from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # noqa: PLC0415
+      except ImportError as error:
+          raise SqlalchemyMissingExtraError from error
+
+      SQLAlchemyInstrumentor().instrument(
+          engine=engine.sync_engine,
+          tracer_provider=telemetry.tracer_provider,
+      )
+
+
+  # acme/instrumentation/__init__.py — the façade is now free: no module executes its library
+  from acme.instrumentation.sqlalchemy import (
+      SqlalchemyMissingExtraError as SqlalchemyMissingExtraError,
+      instrument_sqlalchemy as instrument_sqlalchemy,
+  )
+
+  __all__ = ["SqlalchemyMissingExtraError", "instrument_sqlalchemy"]
+  ```
+
+  The extra is named **once**, by the class that refuses. A constant beside the function and an
+  argument passed into the error are two places to drift from what the package metadata declares.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that implementation,
   not to the shared settings root.
