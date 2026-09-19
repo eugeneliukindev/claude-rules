@@ -451,8 +451,8 @@ Subclasses must be usable wherever their parent is expected. Never narrow a retu
 accepted parameter type in a subclass.
 
 ### I — Interface Segregation Principle
-Prefer many small, focused interfaces over one large one. Use `Protocol` to define the minimal
-surface each consumer actually needs.
+Prefer many small, focused interfaces over one large one: the minimal surface each consumer
+actually needs, not one contract that serves everybody badly.
 
 ### D — Dependency Inversion Principle
 High-level modules depend on abstractions. Inject dependencies; never instantiate collaborators
@@ -461,30 +461,64 @@ imported only in that implementation's module.
 
 ### Abstract Base Classes and Protocols
 
-- **Use `Protocol`** to define structural interfaces — prefer it over `ABC` when you need no shared
-  implementation.
-- **Use `ABC`** when the base provides shared behaviour that subclasses inherit, or when a strict
-  hierarchy must be enforced.
-- **NEVER** use a bare class as an interface. Every contract is a `Protocol` or an ABC.
+**`ABC` is the default; `Protocol` is for code you do not control.** The two look
+interchangeable and are not: a `Protocol` describes a *shape*, an `ABC` declares a *contract*.
+Inside an application every implementation is yours to write, so the contract is nameable and
+the inheritance is free — and it buys three things structural typing cannot:
+
+- **The failure arrives at the class, not at the call site.** An `ABC` refuses to instantiate an
+  implementation that forgot a method; a `Protocol` says nothing until someone passes it
+  somewhere, and only to the type checker.
+- **`@override` works.** A renamed method on the contract becomes an error in every
+  implementation. Under a `Protocol` the implementation simply stops matching, silently, and
+  the error appears wherever it was passed — which may be one call site, far away.
+- **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent in
+  the line that defines the class; structural conformance is invisible until you diff the
+  methods by hand.
+
+- **Use `ABC`** for every contract inside an application: repositories, notifiers, clients,
+  policies, the fake a test substitutes for any of them.
+- **Use `Protocol`** when you cannot make the other side inherit: a third-party type, a
+  duck-typed shape someone else's code produces, a callback signature. That is the library
+  author's problem, and a library is where it belongs.
+- **Never wrap a stdlib ABC in a `Protocol`.** `Iterable`, `Mapping`, `Sized` already name those
+  capabilities — see Standard-Library ABCs.
+- **NEVER** use a bare class as an interface. Every contract is an `ABC` or, at a foreign
+  boundary, a `Protocol`.
 
   ```python
-  # Protocol — structural, no shared implementation; the name is the capability
+  # WRONG — a contract of ours written structurally: nothing fails when an implementation
+  # drifts, and the reader cannot tell SlackNotifier was meant to be one
   class Notifier(Protocol):
-      def send(self, recipient: str, message: str) -> None: ...
+      def send(self, recipient: Recipient, message: str) -> None: ...
 
-  # ABC with shared behaviour — still named for the capability, not for the mechanism
+  class SlackNotifier:
+      def send(self, recipient: Recipient, message: str) -> None: ...
+
+  # CORRECT — the contract is declared, and the implementation says so
+  class Notifier(ABC):
+      @abstractmethod
+      def send(self, recipient: Recipient, message: str) -> None: ...
+
+  class SlackNotifier(Notifier):
+      @override
+      def send(self, recipient: Recipient, message: str) -> None: ...
+
+  # CORRECT — an ABC that also hands down shared behaviour
   class Repository[T](ABC):
       @abstractmethod
-      def find(self, entity_id: int) -> T | None: ...
+      def find(self, entity_id: EntityId) -> T | None: ...
 
-      @abstractmethod
-      def save(self, entity: T) -> None: ...
-
-      def get(self, entity_id: int) -> T:      # shared behaviour justifies ABC over Protocol
+      def get(self, entity_id: EntityId) -> T:
           entity = self.find(entity_id)
           if entity is None:
               raise EntityNotFoundError(entity_id)
           return entity
+
+  # CORRECT — Protocol at a foreign boundary: the driver is not ours to subclass
+  class Cursor(Protocol):
+      def execute(self, statement: str, parameters: Sequence[object]) -> None: ...
+      def fetchall(self) -> list[tuple[object, ...]]: ...
   ```
 
 ### Method Ordering Within a Class

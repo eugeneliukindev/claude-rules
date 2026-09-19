@@ -167,11 +167,11 @@ concept and two vocabularies. Rename the three.
   Same for `AliasPath` / `AliasChoices` / `AliasGenerator`.
 - **Describe what it is, not how it is built.** `TaskQueue`, not `RedisTaskQueue` — unless a second
   implementation exists and the distinction is the point.
-- **A contract is named after the capability, without a prefix.** A `Protocol` or a
-  contract-ABC is an agent noun or an "-able" adjective and nothing more: `Notifier`,
-  `UserRepository`, `Comparable`. The implementations carry the qualifier, not the contract —
-  `EmailNotifier`, `SlackNotifier`, `PostgresUserRepository`. Stdlib ABCs (`Iterable`, `Mapping`,
-  `Sized`) keep their stdlib names.
+- **A contract is named after the capability, without a prefix.** A contract-ABC — or, at a
+  foreign boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more:
+  `Notifier`, `UserRepository`, `Comparable`. The implementations carry the qualifier, not the
+  contract — `EmailNotifier`, `SlackNotifier`, `PostgresUserRepository`. Stdlib ABCs
+  (`Iterable`, `Mapping`, `Sized`) keep their stdlib names.
 - **`Base` means "inherit me", never "implement me".** The prefix is earned by a class that
   carries shared *implementation* down to its subclasses: fields, defaults, ready methods. That is
   what it means everywhere in the ecosystem — `pydantic.BaseModel` and `BaseSettings` are full
@@ -203,19 +203,20 @@ concept and two vocabularies. Rename the three.
 
   ```python
   # WRONG — Base on a contract, Base on a leaf, a suffix that names nothing, plural enum
-  class BaseUserDirectory(Protocol): ...   # nothing to inherit: it hands down no implementation
+  class BaseUserDirectory(ABC): ...        # nothing to inherit: it hands down no implementation
   class BaseLdapUserDirectory: ...         # a leaf, and it is what makes it concrete that matters
   class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
-  class DataManager(Protocol): ...         # "Manager" says nothing
+  class DataManager(ABC): ...              # "Manager" says nothing
   class OrderStatuses(Enum): ...
   class MyException(Exception): ...
 
   # CORRECT — the contract names the capability, the implementations name what makes them concrete
-  class UserDirectory(Protocol):
+  class UserDirectory(ABC):
+      @abstractmethod
       def find(self, email: str) -> User | None: ...
 
-  class LdapUserDirectory: ...
-  class InMemoryUserDirectory: ...
+  class LdapUserDirectory(UserDirectory): ...
+  class InMemoryUserDirectory(UserDirectory): ...
   class UserNotFoundError(LookupError): ...
   ```
 
@@ -244,7 +245,7 @@ concept and two vocabularies. Rename the three.
 
 ## Type, Protocol, and Alias Naming
 
-- **Protocols and contract-ABCs are the capability name itself** — an agent noun or an "-able"
+- **Contract-ABCs and protocols are the capability name itself** — an agent noun or an "-able"
   adjective: `Notifier`, `Serializer`, `Comparable`. Never a mechanism suffix (`…Protocol`,
   `…Interface`, `…ABC`) and never a `Base` prefix. Stdlib ABCs (`Iterable`, `Mapping`, `Sized`)
   keep their stdlib names — never wrap one just to rename it.
@@ -304,14 +305,17 @@ name is worse than no name. This is the naming-side view of SRP and OCP.
               smtp.send(recipient.address, subject="Notification", body=message)
 
   # CORRECT — the contract holds only the contract; concrete names hold concrete logic
-  class Notifier(Protocol):
+  class Notifier(ABC):
+      @abstractmethod
       def send(self, recipient: Recipient, message: str) -> None: ...
 
-  class SlackNotifier:
+  class SlackNotifier(Notifier):
+      @override
       def send(self, recipient: Recipient, message: str) -> None:
           slack_client.post(recipient.webhook, message)
 
-  class EmailNotifier:
+  class EmailNotifier(Notifier):
+      @override
       def send(self, recipient: Recipient, message: str) -> None:
           smtp.send(recipient.address, subject="Notification", body=message)
   ```
@@ -325,10 +329,12 @@ name is worse than no name. This is the naming-side view of SRP and OCP.
       return subtotal
 
   # CORRECT — the generic function stays generic; the variation is injected
-  class DiscountPolicy(Protocol):
+  class DiscountPolicy(ABC):
+      @abstractmethod
       def apply(self, subtotal: Money, order: Order) -> Money: ...
 
-  class VipDiscountPolicy:
+  class VipDiscountPolicy(DiscountPolicy):
+      @override
       def apply(self, subtotal: Money, order: Order) -> Money:
           return subtotal * Decimal("0.9")
 

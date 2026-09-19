@@ -25,7 +25,7 @@ Every module has the same top-to-bottom order, so a reader always knows where to
 6. Type aliases, `NewType`s, type parameters.
 7. Module logger.
 8. Exception classes.
-9. Protocols and ABCs, then concrete classes, then the models private to this module. Public models
+9. Contract-ABCs and protocols, then concrete classes, then the models private to this module. Public models
    used across the package live in their own module.
 10. Public functions, high-level first — the step-down rule applies to modules as it does to
     classes.
@@ -172,7 +172,7 @@ the factory, the package `__init__.py`, or anything above the implementation.
 
 - **One implementation — one module — its own imports at the top of that module.**
 - **The interface module imports nothing implementation-specific.** If it needs a type from a
-  library for a signature, that is a leak — define a domain type or a `Protocol` instead.
+  library for a signature, that is a leak — define a domain type or a contract of your own instead.
 - **The factory does not import all implementations at module top.** Doing so makes importing the
   package pull in every driver, so a service that only ever uses the local implementation still pays
   the import cost and must have the library installed. The dispatch mapping holds *local builders*,
@@ -283,8 +283,11 @@ the factory, the package `__init__.py`, or anything above the implementation.
 
   ```python
   # CORRECT — the contract knows nothing, and only the chosen driver is ever imported
-  class BlobStore(Protocol):
+  class BlobStore(ABC):
+      @abstractmethod
       def put(self, key: str, data: bytes) -> None: ...
+
+      @abstractmethod
       def get(self, key: str) -> bytes: ...
 
 
@@ -341,7 +344,7 @@ type-checker configuration and run beside it: a layered contract fixes the order
 a forbidden contract keeps the domain free of frameworks, drivers and adapters.
 
 - Higher layers depend on lower ones; the domain depends on nothing in the package.
-- A boundary violation is fixed by moving code or inverting the dependency — a `Protocol` plus an
+- A boundary violation is fixed by moving code or inverting the dependency — a contract plus an
   adapter — **never** by adding the module to an allowlist. A contract exception needs the same
   justification as a type suppression.
 - Ban the APIs that must never be used directly at the linter level, with a message naming the

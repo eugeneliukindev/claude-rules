@@ -187,7 +187,7 @@ The standard library already defines the vocabulary of "things you can iterate /
           return len(self._store)
   ```
 
-- Beyond `collections.abc`, use the other stdlib ABCs where they fit: `numbers` (`Number`, `Real`, `Integral`), `io` (`IOBase`, `RawIOBase`, `TextIOBase`), `os.PathLike`, `contextlib.AbstractContextManager` / `AbstractAsyncContextManager`, `abc.ABC` for your own hierarchies. Write a custom `Protocol` **only** when no stdlib ABC names the capability.
+- Beyond `collections.abc`, use the other stdlib ABCs where they fit: `numbers` (`Number`, `Real`, `Integral`), `io` (`IOBase`, `RawIOBase`, `TextIOBase`), `os.PathLike`, `contextlib.AbstractContextManager` / `AbstractAsyncContextManager`, `abc.ABC` for your own hierarchies. Write a custom contract **only** when no stdlib ABC names the capability — and then an `ABC`, unless the other side is someone else's to subclass.
 
 ## Make Illegal States Unrepresentable
 
