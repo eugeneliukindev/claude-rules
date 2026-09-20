@@ -29,8 +29,9 @@ second mechanism to disagree with the first.
 - **Dependency groups are for development; extras are for consumers.** A test runner, a linter and a
   type checker belong to a group — nobody installing the package wants them. An optional runtime
   capability belongs to an extra, because a consumer must be able to ask for it.
-- **Adding a dependency is a decision, not a reflex.** Check the standard library first; see
-  `stdlib.md`.
+- **Adding a dependency is a decision, not a reflex.** Check the standard library first: `string`,
+  `operator`, `functools`, `itertools`, `collections`, `contextlib` and `pathlib` cover most of
+  what a small package would be added for.
 
 ## Running Things
 

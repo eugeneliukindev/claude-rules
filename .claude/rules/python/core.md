@@ -3,26 +3,33 @@ paths:
   - "**/*.py"
 ---
 
-# Python Code Quality — Core
+# Python — Core
 
-Principles, functions, classes, errors, logging, resources, concurrency, documentation and the
-Definition of Done. The companion files cover typing, naming, architecture, testing and the standard
-library; each is loaded automatically by the `paths:` in its own front matter.
+What applies to every Python edit. `naming.md` loads with it; `testing.md` loads in test files.
+Everything else is opened deliberately, when the work reaches it:
 
-Two more sets sit alongside. `tooling/` covers the environment, the linters and the hooks; those
-load with the configuration file each tool owns. `libraries/` covers third-party libraries; open the
-one for the library you are touching, since which of them applies depends on the imports rather than
-on the path.
+| Open | When |
+|---|---|
+| `topics/types.md` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc` |
+| `topics/boundaries.md` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
+| `topics/wiring.md` | an entry point, where an object is built, a settings field, a layer argument |
+| `topics/async.md` | `async def`, threads, processes |
+| `topics/persistence.md` | an ORM, a transaction, a migration |
+| `topics/packaging.md` | a package other code imports: `__all__`, façade, `_internal`, optional extras |
+| `topics/cli.md` | an argument parser, or a public API that must stay compatible |
+| `topics/security.md` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
+| `topics/performance.md` | a path already measured and found slow |
+| `topics/examples.md` | an example that ships — docstring, README, `examples/` |
+| `topics/rules.md` | editing these rule files |
+| `libraries/<name>.md` | the code imports that library |
+| `tooling/<name>.md` | editing that tool's configuration |
 
-Style, layout and mechanical complexity are enforced by the project's linters, formatter and type
-checker. **This document does not restate anything a tool can decide** — a rule a linter can check
-is a linter's job, and a rule that needs judgement is this document's job. When the two disagree,
-the tool wins and this document gets a PR. Never disable a rule to make code pass: a suppression
-carries its code and a reason on the same line, and an unexplained one is a defect in its own right.
+Style, layout and mechanical complexity belong to the formatter, the linters and the type checker.
+**Nothing here restates what a tool decides.** When a tool and this file disagree, the tool wins and
+this file gets a PR. A suppression carries its rule code and its reason on the same line; an
+unexplained one is a defect in its own right.
 
-## When rules conflict
-
-Resolve in this order:
+## When Rules Conflict
 
 1. An explicit instruction from the person you are working with, for this task.
 2. A `MUST` / `NEVER` rule in these files.
@@ -32,213 +39,123 @@ Resolve in this order:
 5. The default (*prefer*) in these files.
 6. Your own judgement — and say so, rather than letting it read as a rule.
 
-If a rule is wrong for the situation, the fix is to change the rule, with the reasoning — not a
-silent exception in code. A rule that is regularly worked around is a rule that needs changing.
+A rule that is wrong for the situation gets changed here, with the reasoning — not worked around
+silently in code. A rule that is regularly worked around is a rule that needs changing.
 
-## Core Principles
+## Principles
 
-Every rule in this set serves these, in this order. When two rules conflict, the earlier principle
-wins.
+Five, in priority order; when two rules conflict the earlier principle wins.
 
 1. **Correct** — the code does what its name and signature promise, for every input the types
    allow, and fails loudly otherwise.
 2. **Readable** — a teammate who has never seen the file understands it top-down without opening
    other files. Names carry the meaning; comments are the exception.
-3. **Simple** — the least machinery that solves today's problem: no speculative abstractions, no
-   helper without a reason, no class without state or a contract.
-4. **Typed** — illegal states are unrepresentable; the checker, not the reviewer, catches the
-   mistake.
-5. **Fast enough, by measurement** — algorithmic sanity always; anything beyond that only with a
-   profile in hand.
+3. **Simple** — the least machinery that solves today's problem.
+4. **Typed** — illegal states are unrepresentable; the checker, not the reviewer, catches it.
+5. **Fast enough, by measurement** — algorithmic sanity always; anything beyond that with a profile.
 
-**Non-negotiables**: mypy strict and the linters pass with zero suppressions you cannot justify;
-nothing is handed over that fails the Definition of Done.
+And three properties of the system as a whole:
 
-## What the System Is For
-
-The five principles above are how a single file is judged. These three are how the system is
-judged, and every design decision answers to them.
-
-### Reliable — a failure stays where it happened
-
-**One bad input, one unreachable dependency, one changed page must never stop the run.** A system
-that processes many things processes them independently: the unit of failure is the item, not the
-batch, and certainly not the process.
-
-- **Decide the blast radius before writing the `try`.** Name what is being protected — this row,
-  this source, this request — and catch at exactly that boundary. A `try` around the whole loop
-  turns one bad item into zero results.
-- **A failure is recorded, not swallowed.** The item is marked failed with its reason, the log
-  says which one and why once, and the run continues. Silence and a crash are the two ways to get
-  this wrong; both end with nobody knowing what happened.
-- **Degrade in a stated direction.** When a part is unavailable, the system says what it does
-  instead — skips, retries later, serves stale, returns partial — and that choice is written down
-  where the code makes it. An unstated fallback is a bug that looks like a feature.
-- **Design for the failure that has already happened**: the site changed its markup, the model
-  timed out, the disk filled, the token expired mid-run. Each of these is a normal Tuesday, not an
-  exceptional case, and the code that meets them says so.
-
-### Scalable — cost grows slower than the work
-
-- **Nothing unbounded.** Every collection read from outside has a limit, every queue a capacity,
-  every fan-out a semaphore, every run a deadline. "It has always been small" is not a bound.
-- **Stream what can be streamed.** Anything proportional to the input — a file, a cursor, a
-  paginated API — is consumed in pieces and never materialized to be iterated once.
-- **The unit of work is independent**, so more workers is the whole answer to more load. Shared
-  mutable state between units is what turns scaling into a rewrite.
-- **Adding the tenth of something costs what the second cost.** A tenth source, a tenth
-  implementation, a tenth handler must be a row in a table, not an edit to a dispatcher.
-
-### Easy to change — the next person is you, without the context
-
-- **One reason to change per unit.** When a requirement moves, the edit lands in one place. If it
-  lands in four, the responsibility was split along the wrong axis.
-- **A new case is data or a new file, never a new branch** in something that already works. The
-  factory gains an entry, the registry gains a member, the package gains a module.
-- **Make the seam before the second case arrives** only where the seam is free — an interface
-  extracted from one implementation is a guess (see YAGNI). Where it is not free, wait: duplication
-  is cheaper to undo than the wrong abstraction.
-- **The type checker is the refactoring tool.** A rename, a moved field, a narrowed union must fail
-  loudly at every site — that is what makes a change safe to attempt at all, and it is why `Any`,
-  a stringly-typed dict, and a silent `getattr` are expensive far beyond the line they sit on.
-- **Deleting must be as easy as adding.** Code that cannot be removed without archaeology — a
-  helper with unclear callers, a flag nobody set, a branch never exercised — is the real cost.
+- **A failure stays where it happened.** One bad input, one unreachable dependency must never stop
+  the run. Decide the blast radius *before* writing the `try` — name what is being protected, this
+  row, this source, this request — and catch at exactly that boundary; a `try` around the whole
+  loop turns one bad item into zero results. A failure is recorded with its reason and the run
+  continues. Degradation has a stated direction — skips, retries later, serves stale, returns
+  partial — written where the code makes the choice.
+- **Cost grows slower than the work.** Nothing unbounded: every external collection has a limit,
+  every fan-out a semaphore, every run a deadline. Stream what can be streamed. "It has always been
+  small" is not a bound.
+- **The next person is you, without the context.** One reason to change per unit; a new case is
+  data or a new file, never a new branch in something that already works. Deleting must be as easy
+  as adding — a helper with unclear callers, a flag nobody set, a branch never exercised is the
+  real cost.
 
 ## YAGNI, KISS, DRY
 
-Three names for the same discipline, and all three are misquoted often enough to be worth stating
-precisely.
+- **Build what today's requirement needs.** The cost of a speculative feature is not the hour spent
+  writing it; it is that everything afterwards must keep it working. A generalisation built for one
+  case is a guess about the second, and a wrong abstraction is harder to remove than the
+  duplication it prevented, because callers have grown into it. A configuration option nobody sets
+  and a parameter that is always the default are branches never known to work.
+- **The simplest construction that fully solves the problem**, which is not the shortest one.
+  Prefer the boring mechanism: a function over a class, a dict over a registry, a loop over a
+  comprehension that needs a comment. Simplicity is measured at the point of *use*.
+- **DRY is about knowledge, not text.** Two fragments that look identical but change for different
+  reasons are not duplication — merging them couples two things that must be free to move apart,
+  and the next change arrives as a parameter, then a flag, then a branch. Two fragments that must
+  change together are duplication even when they look nothing alike: a limit enforced in a
+  validator and repeated in a schema. **Wait for the third occurrence.** The cure is often a shared
+  constant or a shared type, not a new unit that has to be named.
 
-### YAGNI — You Aren't Gonna Need It
+## Control Flow
 
-**Build what today's requirement needs, and nothing beyond it.** The cost of a speculative feature
-is not the hour spent writing it; it is that everything afterwards must keep it working — it gets
-tested, typed, refactored around, and read by everyone who passes.
-
-- A generalisation built for one case is a guess about the second. The guess is usually wrong, and a
-  wrong abstraction is harder to remove than the duplication it was meant to prevent, because
-  callers have grown into it by then.
-- A configuration option nobody sets, a hook nobody registers, a parameter that is always the
-  default: each is a branch that is never exercised and therefore never known to work.
-- The honest answer to "we might need it later" is to make the change easy to *make* later — a clear
-  seam, a small interface — not to make it now.
-
-### KISS — Keep It Simple
-
-**The simplest construction that fully solves the problem**, which is not the shortest one. A dense
-one-liner that has to be decoded is complexity moved out of the code and into the reader.
-
-- Prefer the boring mechanism: a function over a class, a dict over a registry, a loop over a
-  comprehension that needs a comment.
-- Cleverness that needs explaining has already failed. If the explanation cannot be deleted, the
-  code should be.
-- Simplicity is measured at the point of *use*. A construct that makes the implementation elegant
-  and every call site awkward has moved cost onto more people than it saved it from.
-
-### DRY — Don't Repeat Yourself
-
-**DRY is about knowledge, not about text.** The rule is that every piece of knowledge has one
-authoritative home — not that no two lines may look alike.
-
-- **Two fragments that look identical but change for different reasons are not duplication.**
-  Merging them couples two things that must be free to move apart, and the next change to one of
-  them arrives as a parameter, then a flag, then a branch. Ask what would have to change together,
-  not what looks the same.
-- **Two fragments that must change together are duplication even when they look nothing alike** — a
-  limit enforced in a validator and repeated in a schema, a status decoded in two adapters.
-- **Wait for the third occurrence.** Two call sites are not yet evidence of a rule; they are a
-  coincidence often enough that acting on them is how the wrong abstraction gets built.
-- The cure is not always a shared function. A shared constant, a shared type, or one call in the
-  right place removes the duplication of *knowledge* without inventing a unit that has to be named.
-
-## Control Flow and Expressions
-
-Only what a linter cannot decide; everything mechanical about expressions is already a tool's job.
-
-- **Extract any condition with more than two operands into a named predicate.** The linter can
-  measure the complexity but not name the concept: `if _is_eligible_for_refund(order):` says what
-  the three clauses meant.
+- **Extract any condition with more than two operands into a named predicate.** The linter measures
+  the complexity but cannot name the concept: `if _is_eligible_for_refund(order):` says what the
+  three clauses meant.
 - **State the positive case first**, and keep the shorter branch first. No double negatives — rename
   the flag instead.
 - **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
-  of variants or nested data. Do not use it to compare one scalar against constants, and do not use
-  it for two branches.
-- **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
-  `_FACTORY[source.kind](**options)`. The mapping is the dispatch table — adding a kind is one
-  entry, and the set of kinds is readable in one place instead of spread over branches. Even a
-  lazily-imported driver fits: the mapping holds local builders, and the builder does the import.
-- **Every `match` over a union or `Enum` ends with exhaustiveness**: cover all variants and close
-  with `case _: assert_never(value)`, or raise a named error in `case _:`. A silent fall-through is
-  forbidden.
+  of variants or nested data; not to compare one scalar against constants, and not for two branches.
 - **A bare lowercase name in a pattern binds, it does not compare.** Constants in patterns must be
-  dotted (`case OrderStatus.PAID:`, never `case PAID:`) — this is a silent logic bug, not a style
-  slip, and it is the one thing about `match` worth memorising.
-- **Comprehension for one transformation plus at most one filter**; a loop otherwise. The judgement
-  is about how much the reader can hold, not about how much fits.
-- **Write a generator function for any lazy sequence longer than a one-line expression**, and for
-  anything reading from a stream, file, cursor or paginated API.
-- **Strings that are user-facing or reused in more than one place are constants** (or `Enum`
-  values), not inline literals.
+  dotted — `case OrderStatus.PAID:`, never `case PAID:`. This is a silent logic bug, and it is the
+  one thing about `match` worth memorising.
+- **Every `match` over a union or `Enum` ends with exhaustiveness**: `case _: assert_never(value)`,
+  or a named error. A silent fall-through is forbidden.
+- **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
+  `_FACTORY[source.kind](**options)`. Adding a kind is one entry, and the set is readable in one
+  place instead of spread over branches.
+- **Comprehension for one transformation plus at most one filter**; a loop otherwise. Write a
+  generator function for any lazy sequence longer than a one-line expression, and for anything
+  reading from a stream, file, cursor or paginated API.
 
-## Function Design
+## Functions
 
-- **MUST** keep every function to a single responsibility.
-- Extracted helpers **MUST** have names that make the parent readable as plain English — the reader
-  understands the full flow without inspecting each helper.
-- Group related parameters into a frozen dataclass rather than growing the signature.
+- **One responsibility.** If describing it needs "and", split it.
+- **Group related parameters into a frozen dataclass** rather than growing the signature.
 
 ### Extraction Must Pay for Itself
 
-Extracting a helper is not free. The name, the signature, the docstring and the jump the reader has
-to make are an **interface**, and the interface is paid for by everything around it. A helper is
-justified only when it gives back more than it costs. Ousterhout's terms: deep functions hide a lot
-behind a small interface; shallow ones expose an interface as complex as their body and hide
-nothing.
+The name, the signature, the docstring and the jump the reader makes are an **interface**, paid for
+by everything around it. Deep functions hide a lot behind a small interface; shallow ones expose an
+interface as complex as their body and hide nothing.
 
 **Extract when at least one is true:**
 
-1. **Real reuse** — two or more call sites *today*. Not "we might need it later".
-2. **Required as an object** — a callback, a `key=` function, a value in a dispatch table, a
-   framework hook. There is no choice here, and size is irrelevant.
-3. **It hides genuine complexity** — the body is non-obvious, and afterwards the **name is enough**:
-   the caller never needs to open it.
-4. **The parent would otherwise break its limits** — and the extraction restores one level of
-   abstraction rather than just moving lines out of sight.
-5. **It needs its own test seam** — the logic must be verifiable independently of the parent.
-6. **It is a named predicate** — a condition that deserves a name. Short predicates are explicitly
-   allowed; naming a condition *is* the abstraction.
+1. **Real reuse** — two or more call sites *today*.
+2. **Required as an object** — a callback, a `key=` function, a dispatch-table value, a framework
+   hook. No choice, and size is irrelevant.
+3. **It hides genuine complexity** — the body is non-obvious, and afterwards the **name is enough**.
+4. **The parent would otherwise break its limits**, and the extraction restores one level of
+   abstraction rather than moving lines out of sight.
+5. **It needs its own test seam.**
+6. **It is a named predicate** — naming a condition *is* the abstraction.
 
-**Do not extract when all of these hold:** one call site, a short and obvious body, and the parent
-stays within its limits. Keep it inline, separated by a blank line as its own paragraph, with at
-most one "why" comment.
+**Otherwise keep it inline**, separated by a blank line as its own paragraph, with at most one
+"why" comment.
 
 **Shallow-helper tests — if any fires, inline it:**
 
-- **Interface test.** Signature plus docstring is longer than the body.
-- **Name test.** To know what happens, the reader opens the body anyway. The abstraction did not
-  happen.
-- **Entanglement test.** Reading the parent requires flipping into the helper and back.
-- **Parameter test.** The helper needs three or more parameters only to rebuild the parent's
-  context. The code belongs in the parent.
-- **Wrapper test.** The body is a single library call, a single `logger.*`, or one arithmetic
-  expression. That is a rename, not an abstraction.
-- **Temporal-decomposition test.** The name describes a *stage* (`_step_two`, `_after_parse`,
-  `_log_outcome`) rather than a standalone action. Splitting along the time axis instead of along
-  knowledge produces helpers that can never be understood alone.
+- **Interface** — signature plus docstring is longer than the body.
+- **Name** — to know what happens, the reader opens the body anyway.
+- **Entanglement** — reading the parent requires flipping into the helper and back.
+- **Parameter** — three or more parameters exist only to rebuild the parent's context.
+- **Wrapper** — the body is one library call, one `logger.*`, or one arithmetic expression. That is
+  a rename, not an abstraction.
+- **Temporal decomposition** — the name describes a *stage* (`_step_two`, `_after_parse`,
+  `_log_outcome`) rather than a standalone action. Splitting along time instead of knowledge
+  produces helpers that can never be understood alone.
 
 **Never extract a function to have somewhere to put a docstring.** When the reasoning does not fit
-in the code, it goes inline as one "why" comment. A function created as a home for prose is a
+in the code it goes inline as one "why" comment; a function created as a home for prose is a
 comment with call overhead.
 
   ```python
-  # WRONG — single call site, a name that describes a stage, and a docstring several
-  # times the size of the body
+  # WRONG — a stage name, one call site, and a docstring several times the size of the body
   def _log_outcome(stats: ImportStats | None, imported: int) -> None:
       """Record how the import ended and what the upstream feed answered.
 
       An empty result says nothing on its own: an expired API key, a rate-limit
-      refusal, a changed payload format and an honestly empty feed all look the
-      same. Only the request statistics tell them apart.
+      refusal and an honestly empty feed all look the same.
       """
       if stats is None:
           logger.info("import finished: imported=%s, no stats", imported)
@@ -256,169 +173,48 @@ comment with call overhead.
           logger.info("import finished: imported=%s requests=%s", imported, stats.requests)
   ```
 
-  ```python
-  # WRONG — wrapper test: each helper is one library call behind a new name
-  def _now() -> datetime:
-      return datetime.now(UTC)
+### Body Layout
 
-  def _is_empty(items: Sequence[Item]) -> bool:
-      return len(items) == 0
-
-  # CORRECT — call the library; `if not items` needs no name
-  timestamp = datetime.now(UTC)
-  if not items:
-      ...
-  ```
-
-  ```python
-  # WRONG — parameter test: five parameters exist only to rebuild the caller's context
-  def _build_headers(token: str, tenant: str, request_id: str, locale: str, version: str) -> dict[str, str]:
-      ...
-
-  # CORRECT — the context is one object, so the helper has one parameter and a real interface
-  @dataclass(frozen=True, slots=True)
-  class RequestContext:
-      token: str
-      tenant: str
-      request_id: str
-      locale: str
-      version: str
-
-      def to_headers(self) -> dict[str, str]: ...
-  ```
-
-  ```python
-  # WRONG — temporal decomposition: helpers named after stages, none understandable alone
-  def run(raw: bytes) -> None:
-      data = _step_one(raw)
-      data = _step_two(data)
-      _step_three(data)
-
-  # CORRECT — name the actions, or keep it inline when each is two lines
-  def import_orders(raw: bytes, repository: OrderRepository) -> None:
-      payload = deserialize(raw)
-      orders = [Order.from_payload(item) for item in payload["items"]]
-      repository.save_all(orders)
-  ```
-
-  ```python
-  # CORRECT — three lines, one call site, and still justified: rule 6, the condition gets
-  # a name the `if` cannot express, and rule 5, it is worth testing alone
-  def _is_stale(entry: CacheEntry, now: datetime, ttl: timedelta) -> bool:
-      return now - entry.written_at > ttl
-
-  # CORRECT — rule 3: the body is non-obvious, the name fully replaces reading it
-  def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
-      raw = base64.urlsafe_b64decode(cursor.encode() + b"==")
-      written_at, entity_id = raw.decode().split("|", maxsplit=1)
-      return datetime.fromisoformat(written_at), UUID(entity_id)
-  ```
-
-### Function Body Layout
-
-A function body reads top-to-bottom in a fixed rhythm: **guards → work → result**.
-
-1. **Guard clauses first.** Validate inputs and handle trivial cases with an immediate `return` or
-   `raise`.
-2. **The happy path at indentation level 1.** After the guards, the main logic must not be nested
-   inside an `if`. If it is, invert the condition and return early.
-3. **One blank line between logical steps**, none inside a step. More than three steps → extract.
-4. **Single exit type.** A function returns one static type — never `str | list[str] | None`
-   depending on the branch. `None` is legitimate only for `find_…`-style lookups and procedures.
-5. **Result last.** Compute into a well-named local, then return it — except trivial one-expression
-   functions.
-
-Rules the linter cannot see:
+**Guards → work → result.** Guard clauses first, with an immediate `return` or `raise`; the happy
+path at indentation level 1 — if it is nested inside an `if`, invert the condition and return
+early; one blank line between logical steps, none inside a step; more than three steps → extract;
+the result computed into a well-named local and returned last.
 
 - **No boolean flag parameters.** `export(orders, as_csv=True)` is two functions, or one taking a
-  `Literal`/`Enum` format. A flag always means the function does two things; the linter flags the
-  positional call, not the design.
-- **Parameters are ordered: subject, then required inputs, then optional configuration.** Injected
+  `Literal`/`Enum` format. A flag always means the function does two things.
+- **Single exit type.** Never `str | list[str] | None` depending on the branch. `None` is
+  legitimate only for `find_…`-style lookups and procedures.
+- **Parameters are ordered subject, required inputs, optional configuration**; injected
   dependencies come first — they are the function's environment.
-- **Do not reach outside.** A function uses only its parameters and module-level constants. No
-  global mutable state, no `settings` import, no clock or randomness buried deep inside — take them
-  as parameters so the function is testable.
-- **Compute or do, not both** (command–query separation): a function that returns a value has no
-  side effects; a function with side effects returns `None`, or a small object describing what
-  happened.
-- **One level of abstraction per function.** An orchestrator contains only calls at its own level;
-  it does not also format a string or open a socket.
-- **Locals are introduced where they are used.** A local used once on the next line is usually
-  noise — inline it unless the name adds meaning.
+- **Do not reach outside.** A function uses only its parameters and module-level constants: no
+  global mutable state, no `settings` import, no clock or randomness buried inside.
+- **Compute or do, not both.** A function returning a value has no side effects; a function with
+  side effects returns `None` or a small object describing what happened.
+- **One level of abstraction per function.** An orchestrator contains only calls at its own level.
 - **No output parameters**: never pass a collection to be filled. Return a new one.
 
-  ```python
-  # WRONG — arrow-shaped, flag parameter, two return types, reaches outside
-  def get_shipping_cost(order, express=False):
-      if order is not None:
-          if order.items:
-              if order.country in EU_COUNTRIES:
-                  return order.weight_kg * (settings.EU_EXPRESS_RATE if express else settings.EU_RATE)
-              return "unsupported"
-          return 0
-      return None
+## Classes
 
-  # CORRECT — guards, flat happy path, one return type, dependencies passed in
-  def calculate_shipping_cost(order: Order, rates: ShippingRates, *, speed: ShippingSpeed) -> Money:
-      if not order.items:
-          return Money.zero()
-      if order.country not in EU_COUNTRIES:
-          raise UnsupportedDestinationError(order.country)
-
-      return order.weight_kg * rates.for_speed(speed)
-  ```
-
-## Class Design and SOLID Principles
-
-### Classes vs Functions
-
-Functions are the default; a class is an upgrade that must be triggered. A Python module is already
-a namespace with "methods", so a class has to offer something a module does not.
+Functions are the default; a class is an upgrade that must be triggered. A module is already a
+namespace with "methods", so a class has to offer something a module does not.
 
 **Write a class when at least one is true:**
 
-1. **State survives between calls** — a token bucket, a connection pool, an accumulator, an open
-   session.
-2. **Invariants tie values together** — data that must stay consistent (`Money`, `DateRange`). That
-   is a frozen dataclass with methods, not a "service" class.
+1. **State survives between calls** — a token bucket, a pool, an accumulator, an open session.
+2. **Invariants tie values together** — `Money`, `DateRange`. That is a frozen dataclass with
+   methods, not a "service" class.
 3. **The behaviour must be swappable** — two or more implementations behind one contract, or a test
    needs a fake.
-4. **Several operations share the same dependencies** — when three or more functions in a module
-   take the same two or more parameters, those repeated parameters *are* a constructor that has not
-   been written yet.
+4. **Several operations share the same dependencies** — three or more functions in a module taking
+   the same two or more parameters. Those repeated parameters *are* a constructor.
 5. **There is a lifecycle** — acquire/release, `__enter__`/`__exit__`, `close()`.
-6. **A framework demands it** — `Enum`, `Exception`, a dataclass. No choice.
+6. **A framework demands it** — `Enum`, `Exception`, a dataclass.
 
-**Functions suffice when** the work is a pure input→output transformation, there is no state, there
-will be one implementation, and dependencies are passed by the caller and differ per call.
-
-**Anti-patterns — reliable signs of a class that should not exist:**
-
-- **A class with `__init__` and one method.** That is a function with extra steps:
-  `Calculator(x).calculate()` instead of `calculate(x)`.
-- **A class of only `@staticmethod`s.** A module wearing a costume.
-- **A class as a box for constants** — those are module constants or an `Enum`.
-- **A stateless "service" with no dependencies** — a namespace with `self` attached.
-
-**Consider these before reaching for a class:**
-
-- `functools.partial` or a closure, to fix one or two arguments.
-- A single frozen dataclass of options passed as a parameter, instead of a five-field constructor.
-- **Splitting the module** — often the real answer. A long module of independent functions is
-  idiomatic Python and does not improve by growing a `self`.
-
-  ```python
-  # WRONG — stateless class: the same functions, plus self and ceremony
-  class ReceiptParser:
-      def __init__(self) -> None: ...
-
-      def parse_title(self, html: str) -> str: ...
-      def parse_salary(self, html: str) -> Money | None: ...
-
-  # CORRECT — module-level functions
-  def parse_title(html: str) -> str: ...
-  def parse_salary(html: str) -> Money | None: ...
-  ```
+**Reliable signs of a class that should not exist**: `__init__` plus one method
+(`Calculator(x).calculate()` is `calculate(x)`); only `@staticmethod`s; a box for constants; a
+stateless "service" with no dependencies. Before reaching for a class, consider `functools.partial`
+or a closure, a frozen dataclass of options as a parameter, or **splitting the module** — a long
+module of independent functions is idiomatic Python and does not improve by growing a `self`.
 
   ```python
   # WRONG — the same client and settings threaded through every function
@@ -426,7 +222,7 @@ will be one implementation, and dependencies are passed by the caller and differ
   def fetch_listing(client: Client, settings: Settings, page: int) -> list[str]: ...
   def fetch_product(client: Client, settings: Settings, url: str) -> Product: ...
 
-  # CORRECT — the repeated parameters were the constructor
+  # CORRECT — trigger 4: the repeated parameters were the constructor
   class ProductCatalogue:
       def __init__(self, client: Client, settings: Settings) -> None:
           self._client = client
@@ -437,172 +233,180 @@ will be one implementation, and dependencies are passed by the caller and differ
       def fetch_product(self, url: str) -> Product: ...
   ```
 
-**MUST** apply all five SOLID principles in every class and module:
+**SOLID, in the two forms that get broken**: one responsibility per class, and high-level modules
+depend on abstractions — inject dependencies, never instantiate a collaborator inside a class. A
+subclass is usable wherever its parent is; it never narrows a return type or widens a parameter.
 
-### S — Single Responsibility Principle
-Each class does exactly one thing. If you can describe a class with "and", split it.
+### `ABC` Is the Default; `Protocol` Is for Code You Do Not Control
 
-### O — Open/Closed Principle
-Classes are open for extension, closed for modification. Add behaviour by subclassing or composing,
-not by editing existing code.
-
-### L — Liskov Substitution Principle
-Subclasses must be usable wherever their parent is expected. Never narrow a return type or widen an
-accepted parameter type in a subclass.
-
-### I — Interface Segregation Principle
-Prefer many small, focused interfaces over one large one: the minimal surface each consumer
-actually needs, not one contract that serves everybody badly.
-
-### D — Dependency Inversion Principle
-High-level modules depend on abstractions. Inject dependencies; never instantiate collaborators
-inside a class. The same inversion applies to imports: the library behind an implementation is
-imported only in that implementation's module.
-
-### Abstract Base Classes and Protocols
-
-**`ABC` is the default; `Protocol` is for code you do not control.** The two look
-interchangeable and are not: a `Protocol` describes a *shape*, an `ABC` declares a *contract*.
-Inside an application every implementation is yours to write, so the contract is nameable and
-the inheritance is free — and it buys three things structural typing cannot:
+A `Protocol` describes a *shape*, an `ABC` declares a *contract*. Inside an application every
+implementation is yours to write, so the contract is nameable and the inheritance is free — and it
+buys three things structural typing cannot:
 
 - **The failure arrives at the class, not at the call site.** An `ABC` refuses to instantiate an
-  implementation that forgot a method; a `Protocol` says nothing until someone passes it
-  somewhere, and only to the type checker.
-- **`@override` works.** A renamed method on the contract becomes an error in every
-  implementation. Under a `Protocol` the implementation simply stops matching, silently, and
-  the error appears wherever it was passed — which may be one call site, far away.
+  implementation that forgot a method; a `Protocol` says nothing until someone passes it somewhere.
+- **`@override` works.** A renamed method on the contract becomes an error in every implementation.
+  Under a `Protocol` the implementation silently stops matching, and the error appears wherever it
+  was passed — which may be one call site, far away.
 - **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent in
-  the line that defines the class; structural conformance is invisible until you diff the
-  methods by hand.
+  the line that defines the class.
 
-- **Use `ABC`** for every contract inside an application: repositories, notifiers, clients,
-  policies, the fake a test substitutes for any of them.
-- **Use `Protocol`** when you cannot make the other side inherit: a third-party type, a
-  duck-typed shape someone else's code produces, a callback signature. That is the library
-  author's problem, and a library is where it belongs.
-- **Never wrap a stdlib ABC in a `Protocol`.** `Iterable`, `Mapping`, `Sized` already name those
-  capabilities — see Standard-Library ABCs.
-- **NEVER** use a bare class as an interface. Every contract is an `ABC` or, at a foreign
-  boundary, a `Protocol`.
+Use `Protocol` when you cannot make the other side inherit: a third-party type, a duck-typed shape
+someone else's code produces, a callback signature. **Never wrap a stdlib ABC in a `Protocol`** —
+`Iterable`, `Mapping`, `Sized` already name those capabilities. **Never a bare class as an
+interface.**
 
-  ```python
-  # WRONG — a contract of ours written structurally: nothing fails when an implementation
-  # drifts, and the reader cannot tell SlackNotifier was meant to be one
-  class Notifier(Protocol):
-      def send(self, recipient: Recipient, message: str) -> None: ...
+### Method Ordering
 
-  class SlackNotifier:
-      def send(self, recipient: Recipient, message: str) -> None: ...
+A class is read top-down like an article: interface first, details last. Two principles decide the
+order — **visibility** (public → private) and **step-down** (a method appears below the method that
+calls it, as close to it as possible).
 
-  # CORRECT — the contract is declared, and the implementation says so
-  class Notifier(ABC):
-      @abstractmethod
-      def send(self, recipient: Recipient, message: str) -> None: ...
+Docstring → class attributes and field annotations → `__slots__` → `__init__` / `__post_init__` →
+alternative constructors (`from_…`) → remaining dunders → properties, each setter after its getter
+→ **public methods** by importance, the primary operation first (in an ABC, the abstract methods —
+they *are* the contract) → **private methods** in call order → `@staticmethod` last, or directly
+below its single caller.
 
-  class SlackNotifier(Notifier):
-      @override
-      def send(self, recipient: Recipient, message: str) -> None: ...
+- **Never interleave** public and private. A reader who stops at the first underscore must have
+  seen the whole public interface.
+- **Group by visibility, not by feature.** If a class is large enough that grouping by feature
+  seems necessary, it violates SRP — split the class instead of reordering it.
+- **Do not sort alphabetically.** It destroys the step-down flow and says nothing about importance.
+- A static method that does not use the class at all is a module-level function; move it.
 
-  # CORRECT — an ABC that also hands down shared behaviour
-  class Repository[T](ABC):
-      @abstractmethod
-      def find(self, entity_id: EntityId) -> T | None: ...
+### Dunders
 
-      def get(self, entity_id: EntityId) -> T:
-          entity = self.find(entity_id)
-          if entity is None:
-              raise EntityNotFoundError(entity_id)
-          return entity
+Implement a dunder when the behaviour it represents is a natural fit, never to satisfy a style
+preference. `__repr__` on every domain class that is not a dataclass: unambiguous, identifying
+fields, no secrets. `__eq__` and `__hash__` come together or not at all — value objects get both
+from `@dataclass(frozen=True)`; entities compare by identity and say so. Implementing a container
+protocol means subclassing the matching `collections.abc` ABC, not hand-writing every dunder.
 
-  # CORRECT — Protocol at a foreign boundary: the driver is not ours to subclass
-  class Cursor(Protocol):
-      def execute(self, statement: str, parameters: Sequence[object]) -> None: ...
-      def fetchall(self) -> list[tuple[object, ...]]: ...
-  ```
+## Module Layout and Encapsulation
 
-### Method Ordering Within a Class
+Every module has the same order, so a reader always knows where to look:
 
-A class is read top-down like an article: interface first, implementation details last. Two
-principles decide the order — **visibility** (public → private) and **step-down** (a method appears
-below the method that calls it, as close to it as possible).
+1. Module docstring — one line, always.
+2. `from __future__ import annotations`, when the target version needs it.
+3. Imports.
+4. `__all__` — in `__init__.py` only, and there it is the whole file.
+5. **Module-level constants.**
+6. Type aliases, `NewType`s, type parameters.
+7. Module logger.
+8. Exception classes.
+9. Contract-ABCs and protocols, then concrete classes, then the models private to this module.
+10. Public functions, high-level first — the step-down rule applies to modules as to classes.
+11. Private functions, in call order.
+12. The `__main__` guard — a single call to `main()`, nothing else.
 
-1. Class docstring.
-2. Class attributes and constants; dataclass field annotations.
-3. `__slots__`, if present.
-4. `__init__` / `__post_init__`.
-5. Alternative constructors — `@classmethod` named `from_…`.
-6. Remaining dunder methods — they define the object's contract, so they sit next to the
-   constructors.
-7. `@property` accessors, each setter immediately after its getter.
-8. **Public methods**, ordered by importance: the primary operation first. In an ABC or `Protocol`,
-   abstract methods come first — they *are* the contract.
-9. **Private methods**, after all public ones, in call order.
-10. `@staticmethod` — last, or directly below its single caller. A static method that does not use
-    the class at all is a module-level function; move it.
+**The order is an intent, and Python enforces a dependency underneath it.** A name can only be
+written after everything it is built from, so three positions yield: a validator a type alias is
+built from comes before that alias and therefore before the logger; a constant derived from a class
+cannot precede the class — and when that happens the module is holding two things, the shape and
+what is computed from it, so **split it** and the constants land at the top again. Anything else
+that will not fit the order is the same signal: look for the seam, do not renumber the list.
 
-- **Never interleave** public and private methods. A reader who stops at the first underscore must
-  have seen the whole public interface.
-- **Group by visibility, not by feature.** If a class is large enough that grouping by feature seems
-  necessary, it violates SRP — split the class instead of reordering it.
-- **Do not sort alphabetically.** Alphabetical order destroys the step-down flow and says nothing
-  about importance.
+- **One reason to change per module.** A module mixing I/O, domain rules and presentation is split.
+- **Size is a smell, not a limit.** The linters enforce a ceiling; the seam is your judgement.
+- **No executable statements at import time** other than constants and the logger. No network
+  calls, no file reads, no settings construction — these make imports slow, order-dependent and
+  untestable. **`main()` is a function, never module-level code.**
+- **A module name that reaches `sys.path` directly must not shadow a standard-library module** —
+  `types`, `typing`, `json`, `logging`, `queue`, `io`, `abc` and their neighbours. This bites for a
+  top-level module of a distribution, a loose script, or a scheduler DAG file. Nested inside a
+  package the name is only ever visible as `mypackage.types`, so there is nothing to shadow, and
+  the module is named after its contents.
 
-## Dunder (Magic) Methods
+### Every Top-Level Name Not Used Outside Takes an Underscore
 
-- **MUST** implement a dunder whenever the behaviour it represents is a natural fit — do not add a
-  boilerplate wrapper method when a protocol dunder achieves the same thing idiomatically.
-- `__repr__` on every domain class that is not a dataclass: unambiguous, includes the identifying
-  fields, never secrets. `__str__` only when there is a human-facing rendering distinct from the
-  repr.
-- `__eq__` and `__hash__` come together or not at all; value objects get both from
-  `@dataclass(frozen=True)`; entities compare by identity and say so explicitly.
-- Implementing a container protocol means subclassing the matching `collections.abc` ABC, not
-  hand-writing every dunder.
-- **DO NOT** implement a dunder to satisfy a style preference. Add them only when they make the
-  class behave like a natural Python type.
+Classes, functions, constants and type aliases alike. A settings section that only appears as a
+field of the root, a row shape only its own repository builds, a policy only its own service
+applies, a limit only its own function reads, an alias only its own signatures mention: each takes
+the prefix — `_SectionSettings`, `_LOGGED_ANSWER`, `_Compared`. Without it the name reads as part
+of the module's surface, and the first import from another module makes it one for good.
 
-## Error Handling
+**Constants and aliases are the ones that get missed.** A class draws attention the moment it is
+imported somewhere; a constant is quietly read from a second module, and by the time anyone looks
+it has two homes and no owner.
 
-- **MUST** catch the most specific exception that the guarded lines can actually raise.
-- Provide messages that include the identifying values: `f"Order {order_id} cannot be shipped:
-  status is {status}"`, not `"Invalid order"`.
+The test is mechanical, and worth running over a package at once: for each top-level name, grep it
+across the tree, drop the file that defines it, and prefix everything left with no hits. Run it
+**after** the move that made a name internal — that is when a public name quietly stops being one.
+A name a framework reaches through a decorator — a CLI command, a route handler, a fixture — has a
+caller the grep cannot see, and is not covered.
 
-### Exception Hierarchy
+### Imports
 
-- Every package defines one root exception, `<Package>Error(Exception)`, and all its own exceptions
-  inherit from it. Callers can then catch "anything from this library" with one clause. `sqlalchemy`
-  is the reference: everything descends from `SQLAlchemyError`, and the leaves name the failure
-  precisely (`NoSuchColumnError`, `AmbiguousForeignKeysError`).
-- Inherit from the closest stdlib type as well when the meaning matches:
-  `UserNotFoundError(AppError, LookupError)`.
-- Exceptions **carry data as attributes**, not only text: `UserNotFoundError(user_id)` stores
-  `self.user_id`.
-- Domain code raises domain exceptions; it **never** lets a driver's or a client's exception escape
-  a public function. Translate at the boundary.
+- **Import modules for modules, names for classes and functions.** Then call `invoices.issue(...)`
+  or `issue_invoice(...)` — never a three-level attribute chain, which hides what is used.
+- **Absolute imports.** Relative only within a package for siblings, and never upward.
+- **NEVER import inside a function**, with exactly three exceptions, each carrying a suppression
+  and a comment naming the reason: breaking a genuine circular import, loading a heavy or optional
+  implementation on demand, and a façade that exports implementations whose libraries are separate
+  extras. Not for generic "lazy loading" — restructure instead.
+- **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
+- **NEVER rename on import** except for community-standard aliases and to resolve an actual clash.
+- **No side effects on import.** Importing a module must be free, idempotent, order-independent.
+- **Never depend transitively on something you import**; every direct dependency is declared, with
+  a lower bound. **Never feature-detect with `try: import x`** in application code.
 
-### Raising
+## Types and Data — Defaults
 
-- Raise as early as possible — validate at the boundary, fail on the first invalid value, never
-  accumulate a bad state and fail later.
+The decisions behind these are in `topics/types.md`; these are the ones that apply everywhere.
+
+- **Type hints on every signature; mypy `--strict` clean.** `T | None`, never `Optional[T]`. Bracket
+  syntax (`list[str]`), PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` +
+  `Generic`.
+- **Parameters take `collections.abc` ABCs, returns are concrete.** `Mapping[str, int]` in,
+  `dict[str, int]` out. This is also what handles variance.
+- **`Any` is forbidden** except at an untyped third-party edge, and there it is narrowed on the
+  first line. `object` is the type for "unknown" — it forces narrowing; `Any` disables checking.
+- **`@dataclass(frozen=True, slots=True, kw_only=True)` by default.** `frozen` is about mutability,
+  `slots` about the attribute set, `kw_only` about the call site. The third is the one usually
+  forgotten and the one that pays daily: a field added in the middle stops being a silent breaking
+  change, and two adjacent fields of the same type can no longer be swapped by a caller.
+  `_Rejected(order.id, reason, title)` reads fine and is wrong in three ways. Positional
+  construction survives only where the order is the concept — `Point(x, y)`, `Range(low, high)`.
+  Drop `frozen` only for a genuine aggregate root that must change over time, and say so in its
+  name — `Cart`, `Session`; derive copies with `dataclasses.replace()`.
+- **`Final` on every module- and class-level constant**; `@override` on every overriding method;
+  `@final` on classes not designed for subclassing; `-> Never` on functions that always raise.
+- **`tuple` over `list` for fixed sequences**, `frozenset` over `set`, `MappingProxyType` to expose
+  a dict read-only. Never a mutable default argument. **Never mutate arguments** — a function that
+  does is named for it and annotated `MutableSequence`; everything else copies and returns. **Never
+  return internal mutable state** from a getter.
+- **Prefer pure functions**: input in, output out, no reads of global state. Push I/O to the edges.
+- **No magic values.** Any literal with meaning beyond `0`, `1`, `""`, `None` is a named constant
+  or an `Enum` member. Strings that are user-facing or used in more than one place are constants.
+- **`pathlib.Path` for every filesystem operation** — never `os.path`, never string concatenation.
+  The carve-out: a handful of questions have no `Path` answer, and `os` is then correct, not a
+  lapse — permission probing (`os.access`), process state (`os.getcwd`, `os.environ`), raw file
+  descriptors. A real one: llama.cpp returns "code 1" when it cannot open its output file, and the
+  previous build had been written by a container running as root. There is no `Path.can_write()`.
+
+## Errors
+
+- **Catch the most specific exception the guarded lines can actually raise.**
+- **Messages include the identifying values**: `f"Order {order_id} cannot be shipped: status is
+  {status}"`, not `"Invalid order"`.
+- **Every package defines one root exception**, `<Package>Error(Exception)`, and all its own
+  exceptions inherit from it, so callers can catch "anything from this library" with one clause.
+  Inherit the closest stdlib type as well when the meaning matches:
+  `UserNotFoundError(AppError, LookupError)`. Exceptions **carry data as attributes**, not only
+  text.
+- **Domain code raises domain exceptions.** A driver's or client's exception never escapes a public
+  function — translate at the boundary, and preserve the cause with `raise … from`.
+- **Raise as early as possible** — validate at the boundary, fail on the first invalid value.
 - **Never return `None`, `False`, `-1` or an empty collection to signal an error** in a function
-  whose name promises a value. Raise. Return `None` only from `find_…`-style lookups where "absent"
-  is a normal outcome.
-- **Never use exceptions for ordinary control flow** — raising to break out of nested loops, or
-  catching to end an iteration.
-
-### Catching
-
-- **Keep `try` blocks minimal**: wrap only the statements that can raise. Everything else goes
-  before the `try` or into `else:`.
-- **EAFP vs LBYL:** prefer EAFP when the failure is rare and checking would race; prefer LBYL when
-  the check is cheap, atomic, and the "missing" case is common. Never do both.
-- **Catch at the level that can handle the error** — retry, fall back, convert, report. A layer that
-  can only log and re-raise should not catch at all.
-- Every `except` that swallows must log and either return a documented fallback or re-raise.
-  Logging and re-raising at every layer produces duplicate stack traces — log once.
-- **Use `ExceptionGroup` / `except*`** for concurrent failures from a `TaskGroup`; do not flatten to
-  the first exception.
+  whose name promises a value. `None` is for `find_…`-style lookups where absent is normal.
+- **Never use exceptions for ordinary control flow.**
+- **Keep `try` blocks minimal**: only the statements that can raise; everything else before the
+  `try` or in `else:`.
+- **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
+  the missing case is common.** Never both.
+- **Catch at the level that can handle it** — retry, fall back, convert, report. A layer that can
+  only log and re-raise should not catch at all. Log once, at the boundary that handles it.
 
   ```python
   # WRONG — broad catch, swallowed cause, huge try, error as None
@@ -617,11 +421,6 @@ below the method that calls it, as close to it as possible).
           return None
 
   # CORRECT — narrow try, translated with cause, never returns None for an error
-  class UserNotFoundError(UserServiceError, LookupError):
-      def __init__(self, user_id: UserId) -> None:
-          super().__init__(f"User {user_id} not found")
-          self.user_id = user_id
-
   def load_user(client: Client, cache: UserCache, user_id: UserId) -> User:
       try:
           response = client.get(f"/users/{user_id}")
@@ -638,150 +437,75 @@ below the method that calls it, as close to it as possible).
 
 ## Logging
 
-- One logger per module, obtained by module name and defined at the top.
-- Levels have fixed meaning: `DEBUG` — diagnostic detail; `INFO` — normal business events;
-  `WARNING` — recoverable anomaly, nothing lost; `ERROR` — an operation failed and someone must
-  look; `CRITICAL` — the process cannot continue. Do not log `ERROR` for expected user mistakes.
-- Log **once**, at the boundary that handles the error.
-- **Never log secrets or PII**: tokens, passwords, card numbers, raw request payloads. Log
-  identifiers, not objects.
-- Use structured fields (`extra={...}`) rather than encoding them in the message.
+- One logger per module, obtained by module name, defined at the top.
+- Levels have fixed meaning: `DEBUG` diagnostic detail; `INFO` normal business events; `WARNING`
+  recoverable anomaly, nothing lost; `ERROR` an operation failed and someone must look; `CRITICAL`
+  the process cannot continue. Not `ERROR` for expected user mistakes.
+- **Never log secrets or PII** — tokens, passwords, card numbers, raw request payloads. Log
+  identifiers, not objects, and structured fields (`extra={...}`) rather than text encoding them.
 - Message style: lower-case start, no trailing punctuation, present tense, event first then
-  context: `"payment captured"`, not `"Captured the payment successfully!"`.
-- Configure logging **once** at the entry point, never inside libraries or on import. Libraries
-  obtain loggers; they never add handlers or set levels.
-- Timing, counters and rates belong to metrics, not logs; never log inside a hot loop.
+  context — `"payment captured"`, not `"Captured the payment successfully!"`.
+- Configure logging **once** at the entry point, never inside libraries or on import. Timing and
+  counters belong to metrics; never log inside a hot loop.
 
-## Context Managers and Resource Management
+## Resources
 
 - **Anything acquired is released by a context manager**: files, locks, sessions, transactions,
-  clients, temporary state. `try/finally: close()` is only for *implementing* a context manager,
-  never for using a resource that has one.
-- **Own resources get `@contextmanager`** (or `@asynccontextmanager`): yield exactly once, clean up
-  in `finally`, and name it for the resource lifecycle (`managed_engine`, `acquired_lock`). A full
+  clients, temporary state. `try/finally: close()` is only for *implementing* one.
+- **Own resources get `@contextmanager`** (or the async form): yield exactly once, clean up in
+  `finally`, and name it for the resource lifecycle — `managed_engine`, `acquired_lock`. A full
   class with `__enter__`/`__exit__` only when the object has other methods besides enter and exit.
-- **The part before `yield` is cheap and infallible where possible** — do heavy or failure-prone
-  acquisition inside, so cleanup logic stays uniform; never return a half-initialized resource.
-- **A dynamic number of resources → `ExitStack` / `AsyncExitStack`**, which is also the composition
-  root's shutdown mechanism. Transferring ownership out of a function is `stack.pop_all()` — the
-  only sanctioned way to return an open resource.
-- **`__exit__` decides about exceptions deliberately**: propagate by default. Swallowing is subject
-  to the same rules as `except`. Cleanup must not raise over the original error; if it can fail,
-  catch and log its failure separately.
-- **Most managers are single-use** — entering twice is a bug. If reuse is supported, a test proves
-  it.
+- **A dynamic number of resources → `ExitStack`**, which is also the composition root's shutdown
+  mechanism. Transferring ownership out of a function is `stack.pop_all()`.
+- **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
+  fail, catch and log its failure separately.
 - **No hidden global mutation managers.** A context manager that flips module or process state
   (`chdir`, environment variables, logging config) is test poison — acceptable in tests and entry
   points, never in library or service code.
-
-## Asyncio and Concurrency
-
-### Asyncio
-
-- **Never block the event loop**: no sync drivers, no `time.sleep`, no heavy CPU work inside
-  `async def`.
-- **Blocking calls are offloaded, not tolerated**: `await asyncio.to_thread(...)` for I/O-bound sync
-  code. CPU-bound work goes to a **shared** process pool created once in the composition root and
-  passed in — never an executor constructed per call, which pays pool startup every time and breaks
-  concurrency limits.
-- **Every `await` on external I/O runs under a deadline** — the client's configured timeout or an
-  explicit `asyncio.timeout(...)` scope. An unbounded `await` is the async equivalent of an infinite
-  loop.
-- **Structured concurrency by default**: `asyncio.TaskGroup` — tasks cannot leak, the first failure
-  cancels siblings and raises an `ExceptionGroup`. **Fire-and-forget `create_task` without keeping a
-  reference is forbidden**: the task can be garbage-collected mid-flight and its exception silently
-  lost.
-- **Cancellation is not an error to swallow.** On cancellation, clean up in `finally` and re-raise.
-  Shielding is reserved for genuinely-must-finish commits, always combined with a timeout.
-- **Concurrency is bounded**: fan-outs go through a `Semaphore` with a named constant limit; queues
-  between producers and consumers are bounded — an unbounded queue is a memory leak with extra
-  steps.
-- **Request-scoped context travels via `contextvars`** — never module globals, never thread-locals
-  in async code. Do not smuggle business parameters through it.
-- **Graceful shutdown is designed, not hoped for**: handle `SIGTERM`/`SIGINT`, stop accepting work,
-  drain or cancel with a deadline, then close resources in reverse order. Consumers acknowledge only
-  after processing.
-- **Async generators are closed deterministically** — consume with `aclosing(...)` when the loop may
-  break early, or cleanup runs at GC time on a dead loop.
-- **Locks protect state, not I/O.** Never hold a lock across an external `await` you do not control.
-- **Sync and async versions of an API are separate, explicit functions** — no boolean, no
-  auto-detection. Write the async core and delegate the sync wrapper at the edge, never the reverse.
-
-### Threads, Processes, and the GIL
-
-Pick the model by the workload, and measure before assuming parallelism helps:
-
-| Workload | Model |
-|---|---|
-| Many concurrent network / DB waits | async |
-| A blocking library with no async API | threads |
-| CPU-bound Python | processes |
-| CPU-bound inside a C extension that releases the GIL | threads |
-
-- **Executors are shared and injected**, sized by a named constant, and closed on shutdown.
-- **Process pools receive picklable, small arguments** and return small results; pass ids and paths,
-  not loaded objects. A function submitted to a process pool is a module-level function.
-- **Shared mutable state between threads is protected by a lock**, held for the shortest time, never
-  across I/O. Prefer no shared state at all.
-- **Thread-safety is a documented property of a class**, not an assumption.
-- **`threading.local` only for genuinely per-thread resources**; in async code it is wrong — use
-  `contextvars`.
-- **Daemon threads are forbidden** for anything that does work; every thread is joined on shutdown
-  with a timeout.
-- **The `multiprocessing` start method is `spawn`**, set explicitly; forking a process that already
-  has threads or an event loop is undefined behaviour in practice.
-- **Signals are handled in the main thread only**; workers get a stop event, not a signal.
 
 ## Documentation
 
 - **The module docstring is mandatory — one line, in every module.** The name says what the module
   is called; the line says what is inside and why it exists apart from its neighbour.
-- **NEVER** add any other docstring, or an inline comment, unless explicitly asked to.
-- **Exception — shared-library public API**: in a package other teams install and import, every name
-  in `__all__` gets a docstring. Internal service code carries the module line and nothing more.
-- Code must be self-documenting through clear naming — if a comment feels necessary, refactor
-  instead.
-- Comments inside the code examples in these files are **for illustration only**. Do **NOT** copy
-  them into real code.
+- **NEVER add any other docstring, or an inline comment, unless explicitly asked to.** The
+  exception is a package other teams install and import: there every name in `__all__` gets a
+  docstring.
+- Comments inside the code examples in these files are **for illustration only** — do not copy them
+  into real code.
 
-### Comments — the Only Permitted Kinds
-
-When a comment is unavoidable, it explains **why**, never **what** or **how**. Exactly these kinds
-are allowed:
-
-- **Workaround or non-obvious constraint**, with a reference a reader can verify or remove later.
-- **`# TODO(username): description`** — always with an owner and, where possible, a ticket.
-- **A suppression** — always with its rule code and the reason. Both go on the suppressed line;
-  when the line cannot hold them — a long dotted import path already fills the budget — the
-  reason goes on the line immediately above and the code stays put. It has to: the formatter
-  wraps an over-long line, and a `noqa` carried onto a continuation line stops suppressing
-  anything, silently.
-- **Warnings about non-obvious consequences of this block**: `# Order matters here: the reversed
-  list is what the caller iterates`.
-- **Legal or licence headers** where the project requires them.
+**When a comment is unavoidable it explains *why*, never *what*.** Exactly these kinds are allowed:
+a workaround or non-obvious constraint, with a reference a reader can verify or remove later;
+`# TODO(username): description` with an owner; a suppression with its rule code and reason on the
+suppressed line — and when the line cannot hold both, the reason goes immediately above and the
+code stays put, because the formatter wraps an over-long line and a `noqa` carried onto a
+continuation stops suppressing anything, silently; a warning about a non-obvious consequence of
+this block; a legal header.
 
 Forbidden: commented-out code, restating the code, section banners, author or date stamps, change
 logs, and comments that describe a name instead of fixing it.
 
-### Comments Are Local — No Leaking Context
+### Comments and Docstrings Are Local
 
-A comment describes **only the code in its own block**. It must stay true when anything outside that
-block changes, and be understandable without opening another file.
+A comment describes **only the code in its own block**; a docstring describes **only the contract
+of the thing it is attached to**. Both must stay true when anything outside changes.
 
-- **Scope equals placement.** A comment inside a function talks about that function; inside a loop
-  body, about that iteration. Never explain a caller, a subclass, or "the bigger picture" from
-  inside a unit.
-- **No comments about other code.** `# called by OrderService.place_order()`, `# must run before
-  _flush()`, `# keep in sync with schemas/order.py` are all forbidden: each rots the moment the
-  other side changes and nothing checks it. If two places must agree, encode the coupling in code —
-  one shared constant, one shared type, one call — not in prose.
-- **No cross-block control-flow narration.** `# this is the second stage` cannot be verified by a
-  reader of that block.
+- **Scope equals placement.** A comment inside a loop body is about that iteration. A function
+  docstring covers its parameters, return value, raised errors and side effects — never wider.
+- **No callers, no collaborators, no ordering.** `# called by OrderService.place_order()`,
+  `# must run before _flush()`, `# keep in sync with schemas/order.py`, `"""Called by the nightly
+  batch job."""`, `"""Must be called after load_config()."""` — each rots the moment the other side
+  changes, and nothing checks it. If two places must agree, encode the coupling in code: one shared
+  constant, one shared type, one call.
+- **Contract, not implementation.** `"""Return the shortest route between two stops."""`, not
+  `"""Run Dijkstra over the adjacency map."""`
+- **`Raises:` lists what this function's own logic raises**, never what an injected dependency
+  might propagate.
+- **No cross-docstring continuity** — never "as described above", "see the base class", "same as
+  `save()` but async". Either the override adds nothing, and gets no docstring, or it has its own
+  contract stated in full. No changelogs, authors, dates or TODOs.
 - **The relocation test.** Cut the block and paste it into another module: if the comment becomes
-  wrong, meaningless, or unverifiable, it was leaking.
-- **Reasons, not references.** External references point outward to tickets, RFCs and specs — which
-  are stable — never inward to other source locations, which are not.
-- **If a comment can only be written by referring elsewhere, the design is wrong**, not the comment.
+  wrong, meaningless, or unverifiable, it was leaking. **If a comment can only be written by
+  referring elsewhere, the design is wrong**, not the comment.
 
   ```python
   # WRONG — leaks into other code; every line rots silently
@@ -801,148 +525,25 @@ block changes, and be understandable without opening another file.
               raise TooManyItemsError(order.id)
   ```
 
-### Docstrings Are Local — No Leaking Context
-
-When a docstring is written at all, it describes **the contract of the thing it is attached to**,
-and nothing else.
-
-- **Scope equals attachment.** A function docstring covers its parameters, return value, raised
-  errors, and side effects; a class docstring, what the class represents and its invariants. Never
-  wider.
-- **No callers, no consumers.** `"""Called by OrderService during checkout."""` is forbidden —
-  callers are added and removed, and the docstring silently becomes a lie.
-- **No collaborators or ordering.** `"""Must be called after load_config()."""` — if the dependency
-  is real, express it in the signature, where the checker enforces it.
-- **No architecture lectures.** A method docstring does not explain the layer scheme or the request
-  lifecycle. That lives in the project's documentation.
-- **Contract, not implementation.** `"""Return the shortest route between two stops."""`, not
-  `"""Run Dijkstra over the adjacency map."""`
-- **`Raises:` lists what this function's own logic raises**, never what an injected dependency might
-  propagate.
-- **No cross-docstring continuity.** Never "as described above", "see the base class", "same as
-  `save()` but async". Either the override adds nothing — write no docstring, the base contract
-  stands — or it has its own contract, stated in full.
-- **No changelogs, authors, dates, or TODOs.**
-- **Examples are self-contained.** A doctest that depends on objects built elsewhere is a leak that
-  also breaks the moment those objects change.
-
-  ```python
-  # WRONG — documents callers, siblings, ordering, implementation and history
-  class InvoiceRenderer:
-      """Renders invoices.
-
-      Called by the v1 API handler and by the nightly batch job.
-      Must run after TaxCalculator has populated order.tax (see billing/tax.py).
-      Added in 2.1; will move to the reporting service.
-      """
-
-  # CORRECT — a contract that survives being moved anywhere
-  class InvoiceRenderer:
-      """Produces the customer-facing HTML representation of a priced order."""
-
-      def render(self, order: PricedOrder) -> str:
-          """Return the invoice HTML for a priced order.
-
-          Args:
-              order: An order with taxes and totals already applied.
-
-          Returns:
-              A complete, self-contained HTML document.
-
-          Raises:
-              MissingTemplateError: If the configured template is not available.
-          """
-  ```
-
-  The key move: "must run after taxes are calculated" stopped being prose and became a type —
-  `PricedOrder` instead of `Order`. That is the general recipe for a leaking docstring; what you
-  want to explain in words usually belongs in the signature.
-
-### Examples — How to Write Them
-
-Applies to every example that ships with code: docstring examples, `README` snippets, and files
-under `examples/`. An example is executable documentation, held to the same standard as the code it
-demonstrates, plus one extra requirement — it must run.
-
-- **Show the smallest complete thing.** One capability, with every import and object constructed
-  inside it. An example that starts mid-story is unusable and unverifiable.
-- **Examples are executed, not proofread.** An example nobody runs is wrong within a release or two.
-- **Start from the caller's goal, not the API surface.** Order examples by frequency of use.
-- **Realistic data, no filler.** Never `foo`, `bar`, `test123`. Use reserved example values
-  (`example.com`, RFC 5737 addresses) so an example can never hit a real host. Never a real key,
-  token, hostname or customer name, not even redacted.
-- **Deterministic output.** Anything time-, id- or order-dependent is pinned: inject a fixed clock,
-  use a literal UUID, sort before printing.
-- **Show the outcome, not the plumbing.** Print or assert the one value that proves the point.
-- **Examples follow every rule in these files.** Copy-paste is how examples are consumed: an example
-  with a bare `except` teaches a bare `except` to every reader.
-- **Never demonstrate an anti-pattern without marking it** `# WRONG` next to a `# CORRECT`.
-- **The happy path is the example; failures get their own** — one per error scenario a caller must
-  handle.
-- **Keep examples versioned with the API.** A deprecated path disappears from examples in the same
-  release it is deprecated in.
+  The general recipe for a leaking docstring: "must run after taxes are calculated" stops being
+  prose and becomes a type — `PricedOrder` instead of `Order`. What you want to explain in words
+  usually belongs in the signature.
 
 ## Definition of Done
 
-Run in this order; every step must pass before the next one starts. Do not hand over code with any
-unchecked box.
+The formatter, the linters, the type checker in strict mode and the tests run first, in that
+order, and each is clean with no new suppression. Then the seven checks no tool makes — the ones
+skipped first under pressure:
 
-**Automated gates**
-
-- [ ] The formatter leaves nothing to change
-- [ ] The linters report nothing, and no new suppression was added
-- [ ] The type checker is clean in strict mode, with no new ignore
-- [ ] The tests are green, and new behaviour has tests at the right level
-- [ ] The layer contracts hold
-
-**Naming** (see Naming Self-Check)
-
-- [ ] Every new identifier passes the Naming Self-Check
-- [ ] Every contract is named for its capability; every `Base` hands down real implementation
-- [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
-
-**Structure**
-
-- [ ] Class follows Method Ordering; function follows Function Body Layout
+- [ ] Every new identifier passes the Naming Self-Check, and survives the relocation test
 - [ ] Every helper has a reason to exist: reuse, a required callable, hidden complexity, a test
-      seam, or a named predicate
-- [ ] Every class earns its existence: state, invariants, swappability, shared dependencies, or a
-      lifecycle
-- [ ] No boolean flag parameters; non-obvious parameters are keyword-only
-- [ ] No logic at import time
-- [ ] Public surface is exactly `__all__`; nothing imports a private name across a package boundary
-- [ ] Implementation-specific libraries are imported only in the implementation module
-
-**Types and data**
-
-- [ ] Parameters use `collections.abc` ABCs; returns are concrete
-- [ ] No `Any`, no `object` used as "anything"
-- [ ] Every closed value set is `Literal` or `Enum`; no `dict[str, Any]` crosses a layer boundary
-- [ ] Every override carries `@override`; functions that always raise are `-> Never`
-- [ ] Constants are `Final`; dataclasses are `frozen=True` unless justified
-- [ ] No magic literals
-
-**Errors and logging**
-
-- [ ] Every conversion preserves the cause
-- [ ] No function returns `None`/`False`/`-1` to signal an error
-- [ ] Errors logged once, at the boundary; no secrets or PII
-
-**Persistence**
-
-- [ ] Queries load relations explicitly; repositories return domain objects and never commit
-- [ ] Each migration is one change, reversible, and backward compatible with the deployed code
-
-**Async and resources**
-
-- [ ] No blocking calls inside async functions; every external call has a timeout; no unreferenced
-      `create_task`
-- [ ] Every resource is opened in a context manager; lifetime lives in the composition root
-- [ ] Datetimes are aware UTC; money is `Decimal`; time is injected where tested
-- [ ] External calls have a deliberate retry and idempotency decision
-
-**Hygiene**
-
-- [ ] Every comment and docstring passes the relocation test
-- [ ] Every shipped example is self-contained, deterministic, and actually runs
-- [ ] No hardcoded credentials, URLs, or environment-specific values
+      seam, or a named predicate — and every class has one of the six triggers
+- [ ] Constants sit at the top of the module, and **every top-level name not used outside is
+      prefixed** — grep each one across the tree, drop its own file, prefix what has no hits left
+- [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
+- [ ] No `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on every
+      override, `Final` on every constant
+- [ ] Every conversion preserves the cause; nothing returns `None`/`False`/`-1` to signal an error;
+      errors are logged once, at the boundary, with no secrets or PII
+- [ ] Every comment and docstring passes the relocation test; no credentials, URLs or
+      environment-specific values are hardcoded
