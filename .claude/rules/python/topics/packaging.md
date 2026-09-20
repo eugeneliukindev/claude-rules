@@ -81,6 +81,24 @@ How the standard library, `pydantic` and `attrs` are built:
   Never for building an API at runtime — the surface must be readable statically.
 - **A test asserts that `__all__` matches the intended surface**, so an accidental export fails.
 
+## Compatibility and Deprecation
+
+`__all__` is the contract: anything not in it may change freely, anything in it follows the rules
+below. Keep the surface as small as viable — every exported name is a promise.
+
+- **Semantic versioning semantics**: breaking change → major; new capability → minor; fix → patch.
+  "Breaking" includes removing or renaming an exported name, tightening accepted types, loosening
+  returned types, changing defaults, reordering positional parameters, and raising a new exception
+  type from an existing flow.
+- **Deprecate, then remove — never surprise.** Emit a deprecation warning *and* mark the name so
+  type checkers and IDEs surface it; state the replacement and the removal version in the message;
+  keep the old path working for at least one minor release; remove only in a major.
+- **Design for extension without breakage**: keyword-only parameters can be added freely — another
+  reason for `*` in signatures. Returned objects grow fields, so callers must not destructure
+  exhaustively.
+- **Renames are re-exports first**: the old name lives on as a deprecated alias of the new one,
+  never a copy.
+
 ## Implementation-Specific Dependencies Live in the Implementation
 
 When an interface has several implementations and each needs its own library, that library is

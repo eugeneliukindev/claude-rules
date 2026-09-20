@@ -226,10 +226,10 @@ Write a contract of your own **only** when no stdlib ABC names the capability.
       )
   ```
 
-## `Literal` and `Annotated`
+## `Literal` — Closing a Set
 
-- **`Literal` for a closed set inside one or two signatures**: `def export(fmt: Literal["csv",
-  "json"]) -> bytes`. Callers are checked; no runtime cost.
+- **For a closed set inside one or two signatures**: `def export(fmt: Literal["csv", "json"]) ->
+  bytes`. Callers are checked at type-check time; no runtime cost.
 - **Promote to `Enum`** at the ladder's threshold — three or more users — or earlier when the set
   needs iteration, carries behaviour, or crosses a boundary where the wire value and the code value
   may diverge (`StrEnum` keeps them equal).
@@ -237,28 +237,18 @@ Write a contract of your own **only** when no stdlib ABC names the capability.
 - **Tagged unions**: a `Literal` discriminator per variant so `match` narrows exhaustively.
 - **Never `Literal[True]` / `Literal[False]` to fake two functions** — that is a boolean flag with
   extra syntax.
-- **`Annotated[T, …]` carries constraints the type system cannot express**: `Annotated[int,
-  Field(ge=1, le=100)]`, DI markers, unit tags. **Name the constrained type once** and reuse it;
-  constraints belong at the boundary, and domain code receives values that are already valid.
 
   ```python
-  # WRONG — an unconstrained string, and the same limits repeated in every signature
+  # WRONG — an unconstrained string; the mistake surfaces at runtime, in the caller's process
   def export(orders: Sequence[Order], fmt: str) -> bytes:
       if fmt == "csv": ...
+      elif fmt == "json": ...
+      raise ValueError(fmt)
 
-  def list_orders(page_size: int) -> list[Order]:
-      if not 1 <= page_size <= 200:
-          raise ValueError("bad page size")
-
-  # CORRECT — the set is closed at type-check time, the bounds are named once
+  # CORRECT — the set is closed at type-check time
   def export(orders: Sequence[Order], fmt: Literal["csv", "json"]) -> bytes: ...
 
-  type PageSize = Annotated[int, Field(ge=1, le=200)]
-  type Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
-
-  class OrderQuery(BoundaryModel):
-      page_size: PageSize = 50
-      source: Slug
+  export(orders, "xml")   # error: Argument 2 has incompatible type
   ```
 
   ```python
@@ -284,6 +274,33 @@ Write a contract of your own **only** when no stdlib ABC names the capability.
               return width * height
           case _:
               assert_never(shape)
+  ```
+
+## `Annotated` — Constraints the Type System Cannot Express
+
+`Literal` narrows *which values*; `Annotated` attaches *rules about* a value that the static type
+keeps no room for. The static type stays `T`; the metadata is read at runtime by whatever validates
+the boundary.
+
+- **Constraints, DI markers, unit tags**: `Annotated[int, Field(ge=1, le=100)]`.
+- **Name the constrained type once and reuse it.** Repeating the same bounds in five signatures is
+  five places to get it wrong, and the constraint travels with the name when it is aliased.
+- **Constraints belong at the boundary.** Domain code receives values that are already valid, so a
+  bound restated in a service body means the boundary leaked.
+
+  ```python
+  # WRONG — the same limits repeated in every signature, enforced by hand in the body
+  def list_orders(page_size: int) -> list[Order]:
+      if not 1 <= page_size <= 200:
+          raise ValueError("bad page size")
+
+  # CORRECT — the constrained type is named once
+  type PageSize = Annotated[int, Field(ge=1, le=200)]
+  type Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+
+  class OrderQuery(BoundaryModel):
+      page_size: PageSize = 50
+      source: Slug
   ```
 
 ## Enumerations

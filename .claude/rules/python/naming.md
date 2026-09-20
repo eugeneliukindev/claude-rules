@@ -6,8 +6,8 @@ paths:
 # Naming
 
 Loads with `core.md`, because every line of code names something and no tool judges the meaning a
-name carries. Case conventions, builtin shadowing, single letters and length are the linters' job
-and are not repeated here.
+name carries. Case conventions, builtin shadowing, single letters, name length and the blacklist of
+filler words are the linters' job and are not repeated here.
 
 Examples are taken from `pydantic` and `sqlalchemy` — both large, long-lived, and named by people
 who then had to live with the choice.
@@ -18,10 +18,10 @@ who then had to live with the choice.
   exist, how is it used. If a comment is needed to explain the name, the name is wrong.
 - **Spell it out.** No abbreviations or jargon unless universally known (`url`, `id`, `http`,
   `json`, `sql`): `configuration`, not `cfg`; `response`, not `resp`.
-- **Never a vague filler word as the whole name**: `data`, `info`, `item`, `object`, `thing`,
-  `value`, `result`, `manager`, `helper`, `util`, `tmp`, `foo`. A qualified compound is different —
-  `pydantic` ships `FieldInfo`, where `Info` names the *description of* a field as opposed to the
-  field itself. `info` alone would name nothing.
+- **The filler words the linter misses are the same idea one level up**: `manager`, `helper`,
+  `util`, `misc`, `thing`, `tmp`. And the distinction it cannot make: a qualified compound is a
+  real name — `pydantic` ships `FieldInfo`, where `Info` names the *description of* a field as
+  opposed to the field itself. `info` alone would name nothing.
 - **Length matches scope.** Three lines inside a comprehension may be short; a module-level or
   public name is fully explicit.
 - **One concept — one word, everywhere.** `fetch` *or* `retrieve`, `remove` *or* `delete`,

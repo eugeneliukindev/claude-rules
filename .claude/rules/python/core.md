@@ -15,8 +15,8 @@ Everything else is opened deliberately, when the work reaches it:
 | `topics/wiring.md` | an entry point, where an object is built, a settings field, a layer argument |
 | `topics/async.md` | `async def`, threads, processes |
 | `topics/persistence.md` | an ORM, a transaction, a migration |
-| `topics/packaging.md` | a package other code imports: `__all__`, façade, `_internal`, optional extras |
-| `topics/cli.md` | an argument parser, or a public API that must stay compatible |
+| `topics/packaging.md` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation |
+| `topics/cli.md` | an entry point with an argument parser |
 | `topics/security.md` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
 | `topics/performance.md` | a path already measured and found slow |
 | `topics/examples.md` | an example that ships — docstring, README, `examples/` |
@@ -104,9 +104,10 @@ And three properties of the system as a whole:
 - **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
   `_FACTORY[source.kind](**options)`. Adding a kind is one entry, and the set is readable in one
   place instead of spread over branches.
-- **Comprehension for one transformation plus at most one filter**; a loop otherwise. Write a
-  generator function for any lazy sequence longer than a one-line expression, and for anything
-  reading from a stream, file, cursor or paginated API.
+- **A comprehension holds one transformation; anything more is a loop.** The judgement is about
+  how much the reader can hold, not how much fits.
+- **Write a generator function for any lazy sequence longer than a one-line expression**, and for
+  anything reading from a stream, file, cursor or paginated API.
 
 ## Functions
 
@@ -180,8 +181,9 @@ path at indentation level 1 — if it is nested inside an `if`, invert the condi
 early; one blank line between logical steps, none inside a step; more than three steps → extract;
 the result computed into a well-named local and returned last.
 
-- **No boolean flag parameters.** `export(orders, as_csv=True)` is two functions, or one taking a
-  `Literal`/`Enum` format. A flag always means the function does two things.
+- **A boolean parameter that gets past the linter is still two functions.** Made keyword-only it
+  stops being a boolean trap and stays a design fault: `export(orders, *, as_csv=True)` does two
+  things under one name. Take a `Literal` or `Enum` format instead, or write both functions.
 - **Single exit type.** Never `str | list[str] | None` depending on the branch. `None` is
   legitimate only for `find_…`-style lookups and procedures.
 - **Parameters are ordered subject, required inputs, optional configuration**; injected
@@ -212,9 +214,13 @@ namespace with "methods", so a class has to offer something a module does not.
 
 **Reliable signs of a class that should not exist**: `__init__` plus one method
 (`Calculator(x).calculate()` is `calculate(x)`); only `@staticmethod`s; a box for constants; a
-stateless "service" with no dependencies. Before reaching for a class, consider `functools.partial`
-or a closure, a frozen dataclass of options as a parameter, or **splitting the module** — a long
-module of independent functions is idiomatic Python and does not improve by growing a `self`.
+stateless "service" with no dependencies. And one more, visible only while reading: **a class whose
+methods want to be grouped by feature** rather than by visibility has more than one responsibility
+— split the class, do not reorder it.
+
+Before reaching for a class, consider `functools.partial` or a closure, a frozen dataclass of
+options as a parameter, or **splitting the module** — a long module of independent functions is
+idiomatic Python and does not improve by growing a `self`.
 
   ```python
   # WRONG — the same client and settings threaded through every function
@@ -255,25 +261,6 @@ Use `Protocol` when you cannot make the other side inherit: a third-party type, 
 someone else's code produces, a callback signature. **Never wrap a stdlib ABC in a `Protocol`** —
 `Iterable`, `Mapping`, `Sized` already name those capabilities. **Never a bare class as an
 interface.**
-
-### Method Ordering
-
-A class is read top-down like an article: interface first, details last. Two principles decide the
-order — **visibility** (public → private) and **step-down** (a method appears below the method that
-calls it, as close to it as possible).
-
-Docstring → class attributes and field annotations → `__slots__` → `__init__` / `__post_init__` →
-alternative constructors (`from_…`) → remaining dunders → properties, each setter after its getter
-→ **public methods** by importance, the primary operation first (in an ABC, the abstract methods —
-they *are* the contract) → **private methods** in call order → `@staticmethod` last, or directly
-below its single caller.
-
-- **Never interleave** public and private. A reader who stops at the first underscore must have
-  seen the whole public interface.
-- **Group by visibility, not by feature.** If a class is large enough that grouping by feature
-  seems necessary, it violates SRP — split the class instead of reordering it.
-- **Do not sort alphabetically.** It destroys the step-down flow and says nothing about importance.
-- A static method that does not use the class at all is a module-level function; move it.
 
 ### Dunders
 
@@ -340,13 +327,12 @@ caller the grep cannot see, and is not covered.
 
 - **Import modules for modules, names for classes and functions.** Then call `invoices.issue(...)`
   or `issue_invoice(...)` — never a three-level attribute chain, which hides what is used.
-- **Absolute imports.** Relative only within a package for siblings, and never upward.
-- **NEVER import inside a function**, with exactly three exceptions, each carrying a suppression
-  and a comment naming the reason: breaking a genuine circular import, loading a heavy or optional
-  implementation on demand, and a façade that exports implementations whose libraries are separate
-  extras. Not for generic "lazy loading" — restructure instead.
+- **A function-level import is flagged, and exactly three reasons buy the suppression**: breaking a
+  genuine circular import, loading a heavy or optional implementation on demand, and a façade that
+  exports implementations whose libraries are separate extras. Each carries the reason on the line.
+  Generic "lazy loading" is not one of them — restructure instead.
 - **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
-- **NEVER rename on import** except for community-standard aliases and to resolve an actual clash.
+- **Rename on import only for a community-standard alias or an actual clash** — never to shorten.
 - **No side effects on import.** Importing a module must be free, idempotent, order-independent.
 - **Never depend transitively on something you import**; every direct dependency is declared, with
   a lower bound. **Never feature-detect with `try: import x`** in application code.
@@ -355,9 +341,8 @@ caller the grep cannot see, and is not covered.
 
 The decisions behind these are in `topics/types.md`; these are the ones that apply everywhere.
 
-- **Type hints on every signature; mypy `--strict` clean.** `T | None`, never `Optional[T]`. Bracket
-  syntax (`list[str]`), PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` +
-  `Generic`.
+- **mypy `--strict` clean**, which is what makes the annotations mandatory. `T | None`, never
+  `Optional[T]`; PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` + `Generic`.
 - **Parameters take `collections.abc` ABCs, returns are concrete.** `Mapping[str, int]` in,
   `dict[str, int]` out. This is also what handles variance.
 - **`Any` is forbidden** except at an untyped third-party edge, and there it is narrowed on the
@@ -373,17 +358,17 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
 - **`Final` on every module- and class-level constant**; `@override` on every overriding method;
   `@final` on classes not designed for subclassing; `-> Never` on functions that always raise.
 - **`tuple` over `list` for fixed sequences**, `frozenset` over `set`, `MappingProxyType` to expose
-  a dict read-only. Never a mutable default argument. **Never mutate arguments** — a function that
-  does is named for it and annotated `MutableSequence`; everything else copies and returns. **Never
-  return internal mutable state** from a getter.
+  a dict read-only. **Never mutate arguments** — a function that does is named for it and annotated
+  `MutableSequence`; everything else copies and returns. **Never return internal mutable state**
+  from a getter.
 - **Prefer pure functions**: input in, output out, no reads of global state. Push I/O to the edges.
-- **No magic values.** Any literal with meaning beyond `0`, `1`, `""`, `None` is a named constant
-  or an `Enum` member. Strings that are user-facing or used in more than one place are constants.
-- **`pathlib.Path` for every filesystem operation** — never `os.path`, never string concatenation.
-  The carve-out: a handful of questions have no `Path` answer, and `os` is then correct, not a
-  lapse — permission probing (`os.access`), process state (`os.getcwd`, `os.environ`), raw file
-  descriptors. A real one: llama.cpp returns "code 1" when it cannot open its output file, and the
-  previous build had been written by a container running as root. There is no `Path.can_write()`.
+- **A string that is user-facing or used twice is a constant** or an `Enum` member. The linter
+  catches the magic *number*; a repeated literal string it will not.
+- **`os` is correct where `pathlib` has no answer**, and only there: permission probing
+  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors. A real one:
+  llama.cpp returns "code 1" when it cannot open its output file, and the previous build had been
+  written by a container running as root. There is no `Path.can_write()`, and the linter that
+  rewrites `os.path` calls into `Path` says nothing about this one.
 
 ## Errors
 
@@ -465,11 +450,16 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
 
 ## Documentation
 
-- **The module docstring is mandatory — one line, in every module.** The name says what the module
-  is called; the line says what is inside and why it exists apart from its neighbour.
-- **NEVER add any other docstring, or an inline comment, unless explicitly asked to.** The
-  exception is a package other teams install and import: there every name in `__all__` gets a
-  docstring.
+**Which names need a docstring is the linter's decision** — `D1xx` under the Google convention,
+and it is not negotiated here. What goes inside one is:
+
+- **The module line says what is inside and why this module exists apart from its neighbour.** The
+  name already says what it is called, so repeating it is a wasted line.
+- **A docstring states the contract and stops**: what the thing is, its parameters, its return
+  value, the errors its own logic raises, its side effects. Not how it works, not what it used to
+  do, not a number from a benchmark — that belongs in the commit message.
+- **An inline comment is written only when one of the kinds below applies.** Code carries its own
+  meaning through names; a comment that restates it is a name that should have been fixed.
 - Comments inside the code examples in these files are **for illustration only** — do not copy them
   into real code.
 
