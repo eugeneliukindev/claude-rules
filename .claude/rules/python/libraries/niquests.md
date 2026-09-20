@@ -44,7 +44,7 @@ so the habits below transfer to `httpx` almost unchanged; what does not transfer
 ## Retries
 
 - Retries are a policy decision and belong beside the call, not buried in transport configuration —
-  see `tenacity.md`. Retry transient failures only, bounded, jittered, and at one layer.
+  see `libraries/tenacity.md`. Retry transient failures only, bounded, jittered, and at one layer.
 
 ## What Differs From `httpx`
 

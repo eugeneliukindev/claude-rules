@@ -52,15 +52,13 @@ silently in code. A rule that is regularly worked around is a rule that needs ch
 
 ## Principles
 
-Five, in priority order; when two rules conflict the earlier principle wins.
-
-1. **Correct** — the code does what its name and signature promise, for every input the types
-   allow, and fails loudly otherwise.
-2. **Readable** — a teammate who has never seen the file understands it top-down without opening
-   other files. Names carry the meaning; comments are the exception.
-3. **Simple** — the least machinery that solves today's problem.
-4. **Typed** — illegal states are unrepresentable; the checker, not the reviewer, catches it.
-5. **Fast enough, by measurement** — algorithmic sanity always; anything beyond that with a profile.
+Five, in priority order; when two rules conflict the earlier principle wins. **Correct** — the code
+does what its name and signature promise, for every input the types allow, and fails loudly
+otherwise. **Readable** — a teammate who has never seen the file understands it top-down without
+opening other files; names carry the meaning, comments are the exception. **Simple** — the least
+machinery that solves today's problem. **Typed** — illegal states are unrepresentable, and the
+checker catches the mistake rather than the reviewer. **Fast enough, by measurement** — algorithmic
+sanity always, anything beyond that with a profile in hand.
 
 And three properties of the system as a whole:
 
@@ -75,8 +73,7 @@ And three properties of the system as a whole:
   small" is not a bound.
 - **The next person is you, without the context.** One reason to change per unit; a new case is
   data or a new file, never a new branch in something that already works. Deleting must be as easy
-  as adding — a helper with unclear callers, a flag nobody set, a branch never exercised is the
-  real cost.
+  as adding.
 
 ## YAGNI, KISS, DRY
 
@@ -86,8 +83,8 @@ And three properties of the system as a whole:
   duplication it prevented, because callers have grown into it. A configuration option nobody sets
   and a parameter that is always the default are branches never known to work.
 - **The simplest construction that fully solves the problem**, which is not the shortest one.
-  Prefer the boring mechanism: a function over a class, a dict over a registry, a loop over a
-  comprehension that needs a comment. Simplicity is measured at the point of *use*.
+  Prefer the boring mechanism: a function over a class, a dict over a registry. Simplicity is
+  measured at the point of *use*.
 - **DRY is about knowledge, not text.** Two fragments that look identical but change for different
   reasons are not duplication — merging them couples two things that must be free to move apart,
   and the next change arrives as a parameter, then a flag, then a branch. Two fragments that must
@@ -415,8 +412,10 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
   construction survives only where the order is the concept — `Point(x, y)`, `Range(low, high)`.
   Drop `frozen` only for a genuine aggregate root that must change over time, and say so in its
   name — `Cart`, `Session`; derive copies with `dataclasses.replace()`.
-- **`Final` on every module- and class-level constant**; `@override` on every overriding method;
-  `@final` on classes not designed for subclassing; `-> Never` on functions that always raise.
+- **`@override` on every overriding method**; `@final` on classes not designed for subclassing;
+  `-> Never` on functions that always raise. **`Final` on module- and class-level constants** —
+  worth the annotation because the checker then rejects reassignment and infers the literal type;
+  a codebase that decides the reverse decides it once, not per constant.
 - **`tuple` over `list` for fixed sequences**, `frozenset` over `set`, `MappingProxyType` to expose
   a dict read-only. **Never mutate arguments** — a function that does is named for it and annotated
   `MutableSequence`; everything else copies and returns. **Never return internal mutable state**
@@ -485,38 +484,41 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
 
 - One logger per module, obtained by module name, defined at the top.
 - Levels have fixed meaning: `DEBUG` diagnostic detail; `INFO` normal business events; `WARNING`
-  recoverable anomaly, nothing lost; `ERROR` an operation failed and someone must look; `CRITICAL`
-  the process cannot continue. Not `ERROR` for expected user mistakes.
+  recoverable anomaly; `ERROR` an operation failed and someone must look; `CRITICAL` the process
+  cannot continue. Not `ERROR` for an expected user mistake.
 - **Never log secrets or PII** — tokens, passwords, card numbers, raw request payloads. Log
   identifiers, not objects, and structured fields (`extra={...}`) rather than text encoding them.
 - Message style: lower-case start, no trailing punctuation, present tense, event first then
   context — `"payment captured"`, not `"Captured the payment successfully!"`.
-- Configure logging **once** at the entry point, never inside libraries or on import. Timing and
-  counters belong to metrics; never log inside a hot loop.
+- Configure logging **once** at the entry point, never in a library or on import. Timing and
+  counters are metrics, not logs; never log in a hot loop.
 
 ## Resources
 
 - **Anything acquired is released by a context manager**: files, locks, sessions, transactions,
   clients, temporary state. `try/finally: close()` is only for *implementing* one.
 - **Own resources get `@contextmanager`** (or the async form): yield exactly once, clean up in
-  `finally`, and name it for the resource lifecycle — `managed_engine`, `acquired_lock`. A full
-  class with `__enter__`/`__exit__` only when the object has other methods besides enter and exit.
+  `finally`, and name it for the lifecycle — `managed_engine`. A class with `__enter__`/`__exit__`
+  only when the object has other methods besides those two.
 - **A dynamic number of resources → `ExitStack`**, which is also the composition root's shutdown
   mechanism. Transferring ownership out of a function is `stack.pop_all()`.
 - **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
   fail, catch and log its failure separately.
-- **No hidden global mutation managers.** A context manager that flips module or process state
-  (`chdir`, environment variables, logging config) is test poison — acceptable in tests and entry
-  points, never in library or service code.
+- **No hidden global mutation managers.** One that flips module or process state (`chdir`,
+  environment variables, logging config) is test poison — fine in tests and entry points, never in
+  library or service code.
 
 ## Documentation
 
 **Which names need a docstring is the linter's decision**; what goes inside one is not.
 
-- **A module docstring is written when it has something to say, not because the module exists.**
-  A mandate produces `"""Throttling base classes."""` above `throttling/base.py` — the filename
-  with a full stop. Write the line when the module's place is not obvious from its name and its
-  package: why it exists apart from its neighbour, or a constraint governing the whole file.
+- **A module docstring is published text, and that decides where it is required.** A module on the
+  public surface gets one: it is what the documentation generator renders above the API, and its
+  absence is a hole in the docs rather than a missing comment — `pydantic` writes one in 33 of its
+  34 public modules and in half of its private ones. Inside a private area, write the line when the
+  module's place is not obvious from its name: why it exists apart from its neighbour, or a
+  constraint governing the whole file. A mandate everywhere produces `"""Throttling base
+  classes."""` above `throttling/base.py` — the filename with a full stop.
 - **A docstring states the contract and stops**: what the thing is, its parameters, its return
   value, the errors its own logic raises, its side effects. Not how it works, not what it used to
   do, not a number from a benchmark — that belongs in the commit message.

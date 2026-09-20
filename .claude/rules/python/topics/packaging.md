@@ -35,9 +35,13 @@ module boundaries. That is enough, provided the convention is followed consisten
   named public, downstream imported from it for years, and undoing that took a dedicated NEP,
   compatibility stubs and a lint rule to fix other people's code. A docstring saying "this is
   private" is not a boundary; the name is.
-- **The underscore goes on the boundary once and is not repeated inside.** `pip/_internal/`
-  contains plain `cli/`, `index/`, `models/`. PEP 8 says it outright: *"An interface is also
-  internal if any containing namespace is internal."*
+- **Whether the underscore repeats inside is a project's choice, made once.** PEP 8 says it need
+  not: *"An interface is also internal if any containing namespace is internal"* — and `pip`
+  follows that, with plain `cli/`, `index/`, `models/` inside `_internal/`. `pydantic` does the
+  opposite and prefixes all twenty-eight (`_fields.py`, `_repr.py`), so that a module read on its
+  own, or grepped for, or seen in a traceback, still says what it is. Pick one and apply it to the
+  whole area; the failure is a tree where half the modules carry the prefix and nobody can say
+  which half is deliberate.
 - **The private area's `__init__.py` is empty.** `pydantic/_internal/__init__.py` is zero bytes —
   internal code imports the module it needs directly. A façade declares a contract, and there is no
   contract to declare here.
@@ -64,22 +68,93 @@ How the standard library, `pydantic` and `attrs` are built:
 
 **Rules**
 
-- **`__all__` is a sorted list of string literals** — not a tuple, not computed, not appended to
-  conditionally.
+- **`__all__` is written out as string literals** — never computed, never appended to
+  conditionally. List or tuple is a project's choice; a tuple says "this does not change at
+  runtime" and costs nothing.
+- **Sort it, or group it — and the choice follows the length.** Up to a screenful, alphabetical:
+  a reader checks membership by scanning. Past that, sorting scatters related names across a
+  hundred lines, and grouping under topic comments (`# validators`, `# serializers`) is what a
+  reader actually navigates. `pydantic` exports 151 names grouped under 21 comments, and keeps its
+  lazy-import table in the same order so the two can be diffed by eye.
 - **A name is either in `__all__` or private.** There is no third state: a public-looking name that
   is not exported is a promise nobody made and everybody will rely on.
-- **`__init__.py` contains imports and `__all__` only** — no logic, no side effects, no
-  configuration.
 - **NEVER import a private name across a package boundary.** If another package needs it, it is not
   private: promote it deliberately, with the deprecation guarantees that implies. Copying it is
   worse.
 - **Deep paths that must stay importable** (plugin entry points) are an explicit, documented part
   of the public surface, not an accident.
 - **`py.typed` ships with every typed package**, or consumers get `Any` for the whole API.
-- **Module-level `__getattr__` is the one sanctioned dynamic hook**: for lazily importing a heavy
-  optional submodule, or for keeping a renamed name working while emitting a deprecation warning.
-  Never for building an API at runtime — the surface must be readable statically.
 - **A test asserts that `__all__` matches the intended surface**, so an accidental export fails.
+
+### What May Live in `__init__.py`
+
+**In an application package: imports and `__all__`, nothing else.** Logic there runs on every
+import of anything below it, and it runs in an order nobody chose.
+
+**In a library façade the bar is different**, because the file is a contract rather than a
+convenience, and three things earn their place:
+
+- **A guard that fails fast on an incompatible environment.** `pydantic` checks its compiled core's
+  version on the first line and deletes the helper afterwards — a mismatch there produces a clear
+  error instead of an incomprehensible one three frames deep.
+- **A deprecation shim**, so a moved or renamed name keeps working and says so.
+- **Lazy exports through `__getattr__`** — the next section.
+
+### Lazy Exports: `TYPE_CHECKING` Plus `__getattr__`
+
+A façade that imports every submodule eagerly makes `import yourpackage` pay for the whole library,
+including the parts this process will never touch. The fix is to import on first access, and the
+objection — that a name arriving through `__getattr__` is invisible to the type checker — is
+answered by declaring the imports a second time under `TYPE_CHECKING`:
+
+  ```python
+  # yourpackage/__init__.py
+  if TYPE_CHECKING:
+      # Everything is served lazily by __getattr__ below; these are what the type
+      # checker and the IDE read.
+      from .validators import AfterValidator, BeforeValidator
+
+  _LAZY: Final = {
+      # validators
+      'AfterValidator': '.validators',
+      'BeforeValidator': '.validators',
+  }
+
+  def __getattr__(name: str) -> object:
+      module = import_module(_LAZY[name], __spec__.parent)
+      ...
+  ```
+
+The checker reads the `TYPE_CHECKING` block and sees full signatures; the interpreter reads the
+table and imports nothing until asked. **Both halves must list the same names**, so keep them in
+the same order and in the same groups — the only real cost of the pattern is that they can drift,
+and side-by-side ordering is what makes the drift visible in a diff.
+
+Use it in a façade over many submodules, or where one export pulls a heavy optional dependency.
+Do **not** use it to compute names, to export something that does not exist as a real attribute of
+a real module, or in an application package, where the import cost was never the problem.
+
+## The Stability Tier Is a Package
+
+A promise that lives in a changelog is a promise the consumer reads once. A promise that lives in
+the import path is one they re-read at every call site. Give each tier its own package, and
+`from yourpkg.experimental.pipeline import Pipeline` states the terms in the line that depends on
+them:
+
+| path | what it promises |
+|---|---|
+| `yourpkg/` | the public surface, under the deprecation rules below |
+| `yourpkg/experimental/` | may change or vanish in any release |
+| `yourpkg/deprecated/` | still works, is going away, and says so on use |
+| `yourpkg/v1/` | the previous major, shipped alongside for migration |
+| `yourpkg/_internal/` | not yours |
+
+- **The tier's `__init__.py` states the contract in one line.** `pydantic/experimental/__init__.py`
+  is exactly that: *"contains potential new features that are subject to change."*
+- **Moving between tiers is the release event**, and it is a move of a file, which a reviewer
+  sees — not an edit to a table of promises somewhere else.
+- **Do not invent tiers you do not need.** An application has one surface and needs none of this;
+  a library usually needs `_internal/` and nothing more until the first thing it regrets shipping.
 
 ## Compatibility and Deprecation
 
@@ -119,7 +194,7 @@ the factory, the package `__init__.py`, or anything above the implementation.
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
   contract bans the library from the whole package and lists every permitted edge — see
-  `wiring.md`.
+  `topics/wiring.md`.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.
@@ -189,17 +264,16 @@ the factory, the package `__init__.py`, or anything above the implementation.
 
 When the package exports its implementations by name — `from acme.instrumentation import
 instrument_fastapi` — the package's `__init__` executes *every* implementation module, and a
-consumer holding one extra gets `ImportError` on a library it never asked for. Two shapes work, and
-only these two:
+consumer holding one extra gets `ImportError` on a library it never asked for. Three shapes work:
 
 - **No façade**: `__init__` stays empty and consumers import the module they need
   (`acme.instrumentation.fastapi`). Imports stay at module top; nothing is lazy.
 - **Façade, and the library is imported inside the function that uses it.** The module then imports
   cleanly without its library, and the failure arrives to whoever called the function — with the
-  extra named.
-
-Do not reach for a module-level `__getattr__` here: the checker cannot type names that arrive
-through it, and every call site loses its signature.
+  extra named. This is the shape below.
+- **Façade, and the export itself is lazy** — the `TYPE_CHECKING` plus `__getattr__` pattern above.
+  Worth it when the modules are many or expensive; the per-function import is simpler when they
+  are few, and simpler wins by default.
 
   ```python
   # acme/_errors.py — one root for the package, one base that builds the message

@@ -124,7 +124,7 @@ Without it, one implementation imports a helper from its sibling, and the eleven
 new file — it is a new file plus an edit to whichever sibling it borrowed from.
 
 **`forbidden` — a dependency that must not appear where it is not wanted.** The rule that an
-optional library lives only in its own implementation module (`packaging.md`) is stated in prose
+optional library lives only in its own implementation module (`topics/packaging.md`) is stated in prose
 everywhere and checked almost nowhere. Ban the library from the whole package and list every
 permitted edge; the exception list then *is* the inventory of where the extra is allowed, and it is
 reviewed whenever it grows.

@@ -142,11 +142,15 @@ one concept and two vocabularies. Rename the three.
   `AnyUrl`, `HttpUrl`, `FileUrl`, `FtpUrl` — one noun, one axis of variation.
 - **Describe what it is, not how it is built.** `TaskQueue`, not `RedisTaskQueue` — unless a second
   implementation exists and the distinction is the point.
-- **A contract is named after the capability, without a prefix.** A contract-ABC — or, at a foreign
-  boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more: `Notifier`,
-  `UserRepository`, `Comparable`. Never a mechanism suffix (`…Protocol`, `…Interface`, `…ABC`). The
-  implementations carry the qualifier: `EmailNotifier`, `PostgresUserRepository`. Stdlib ABCs keep
-  their stdlib names, and are never wrapped just to rename them.
+- **A contract is named after the capability, without a prefix.** A contract base class — or, at a
+  foreign boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more:
+  `Notifier`, `UserRepository`, `Comparable`. Never a mechanism suffix (`…Protocol`, `…Interface`,
+  `…ABC`). The implementations carry the qualifier: `EmailNotifier`, `PostgresUserRepository`.
+  Stdlib ABCs keep their stdlib names, and are never wrapped just to rename them.
+  **The carve-out is a published extension point**: a shape a third party implements in their own
+  code — `PydanticPluginProtocol` — where the mechanism is part of what the outsider must know,
+  because it says "satisfy this, do not inherit it". Inside your own tree that distinction is
+  already visible in the class line, and the suffix is noise.
 - **`Base` means "inherit me", never "implement me".** The prefix is earned by a class that carries
   shared *implementation* down to its subclasses: fields, defaults, ready methods — that is what it
   means everywhere in the ecosystem, from `pydantic.BaseModel` to `sqlalchemy.DeclarativeBase`. A
@@ -172,7 +176,7 @@ one concept and two vocabularies. Rename the three.
 - **Methods drop the class name**: `Order.total()`. **Properties are nouns, methods are verbs** — a
   property that does I/O or heavy computation is a bug; make it a `fetch_…` / `compute_…` method.
 - **Type aliases name the domain meaning**: `type Headers = dict[str, str]`. A structural type
-  describing someone else's shape takes `-Like`: `PathLike`. A kind suffix carries the distinction
+  describing someone else's shape takes `-Like`: `PathLike`, `_TypeVarLike`. A kind suffix carries the distinction
   between related aliases — `Color` is the class, `ColorTuple` the shape, `ColorType` the set of
   accepted inputs. Prefer `NewType` over a bare alias when two values share a runtime type but must
   not be confused.
@@ -182,7 +186,9 @@ one concept and two vocabularies. Rename the three.
   **Below Python 3.12 the same letters take the `_T` shape**: a `TypeVar` is a module-level name,
   so it is private and suffixed — `_T`, `_KT`, `_VT`, `_P`, `_R`. Where one module declares several
   and the letters stop telling them apart, the role goes in front of the suffix, never instead of
-  it: `_BackendT`, `_ModelT`. One shape per codebase, decided by the version floor, never both.
+  it: `_BackendT`, `_ModelT`. A variance marker goes after it — `_ModelTCo` for the covariant
+  twin — so the two sort together and read as a pair. One shape per codebase, decided by the
+  version floor, never both.
 
   ```python
   # 3.12+ — the parameter belongs to the class, so it needs no module-level name

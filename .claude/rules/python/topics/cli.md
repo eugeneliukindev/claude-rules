@@ -24,4 +24,4 @@ Not loaded automatically — open it when writing an entry point with an argumen
   own.
 
 Keeping a CLI's own interface compatible is the same problem as keeping a package's: see
-`packaging.md`.
+`topics/packaging.md`.
