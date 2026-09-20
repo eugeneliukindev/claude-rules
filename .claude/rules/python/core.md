@@ -22,12 +22,20 @@ Everything else is opened deliberately, when the work reaches it:
 | `topics/examples.md` | an example that ships — docstring, README, `examples/` |
 | `topics/rules.md` | editing these rule files |
 | `libraries/<name>.md` | the code imports that library |
-| `tooling/<name>.md` | editing that tool's configuration |
 
 Style, layout and mechanical complexity belong to the formatter, the linters and the type checker.
-**Nothing here restates what a tool decides.** When a tool and this file disagree, the tool wins and
-this file gets a PR. A suppression carries its rule code and its reason on the same line; an
-unexplained one is a defect in its own right.
+**Nothing here restates what a tool decides.** Which tools a project runs and how they are
+configured is the project's business, not this document's. When a tool and this file disagree, the
+tool wins and this file gets a PR.
+
+Two things about living with those tools are not configuration and do belong here:
+
+- **A suppression carries its rule code and its reason on the same line.** An unexplained one is a
+  defect in its own right, and the count only ever ratchets down.
+- **A limit is named, not raised.** One module with fifteen members must not buy every other module
+  the right to fifteen: the limit stays and the file is named, with a reason that can be checked
+  later and that stops applying when the file changes. When three files need the same escape, stop
+  editing the configuration — the rule is describing something real about the architecture.
 
 ## When Rules Conflict
 
@@ -184,7 +192,10 @@ the result computed into a well-named local and returned last.
 - **A boolean parameter that gets past the linter is still two functions.** Made keyword-only it
   stops being a boolean trap and stays a design fault: `export(orders, *, as_csv=True)` does two
   things under one name. Take a `Literal` or `Enum` format instead, or write both functions.
-- **Single exit type.** Never `str | list[str] | None` depending on the branch. `None` is
+- **The branch does not pick the return type.** `str` on one path and `list[str]` on another
+  forces every caller to re-discover which it got. A union is fine when it is a **named type the
+  caller handles uniformly** — `type Compared = frozenset[str] | str`, matched once and never
+  asked about again; it is a defect when the caller has to reconstruct which branch ran. `None` is
   legitimate only for `find_…`-style lookups and procedures.
 - **Parameters are ordered subject, required inputs, optional configuration**; injected
   dependencies come first — they are the function's environment.
@@ -243,24 +254,39 @@ idiomatic Python and does not improve by growing a `self`.
 depend on abstractions — inject dependencies, never instantiate a collaborator inside a class. A
 subclass is usable wherever its parent is; it never narrows a return type or widens a parameter.
 
-### `ABC` Is the Default; `Protocol` Is for Code You Do Not Control
+### A Contract Is a Base Class with `@abstractmethod`; `Protocol` Is for Code You Do Not Control
 
-A `Protocol` describes a *shape*, an `ABC` declares a *contract*. Inside an application every
-implementation is yours to write, so the contract is nameable and the inheritance is free — and it
-buys three things structural typing cannot:
+A `Protocol` describes a *shape*; a base class the implementations inherit declares a *contract*.
+Inside an application every implementation is yours to write, so the contract is nameable and the
+inheritance is free — and it buys two things structural typing cannot:
 
-- **The failure arrives at the class, not at the call site.** An `ABC` refuses to instantiate an
-  implementation that forgot a method; a `Protocol` says nothing until someone passes it somewhere.
-- **`@override` works.** A renamed method on the contract becomes an error in every implementation.
-  Under a `Protocol` the implementation silently stops matching, and the error appears wherever it
-  was passed — which may be one call site, far away.
+- **The failure arrives at the class, not at the call site.** An implementation that forgot a
+  method is an error where it is defined; a `Protocol` says nothing until someone passes it
+  somewhere, and the error surfaces at that one call site, possibly far away.
 - **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent in
-  the line that defines the class.
+  the line that defines the class; structural conformance is invisible until you diff the methods
+  by hand.
+
+**`@abstractmethod` alone gets the static guarantee; `ABC` adds a runtime one, and a metaclass.**
+The type checker reports `Cannot instantiate abstract class "X" with abstract attribute "y"` from
+the decorators alone — inheriting `abc.ABC` is not what makes that work. What `ABCMeta` adds is the
+refusal at construction time, and what it costs is a metaclass: it conflicts with Django's model
+metaclass, with mypyc compilation, and with any other library that wants that slot.
+
+- **Default to `ABC`** in an application that compiles nothing and inherits no foreign metaclass.
+  The runtime refusal is free there, and it catches the implementation built through a path the
+  checker does not see.
+- **Drop to a plain base class with `@abstractmethod`** when a metaclass is already spoken for, or
+  the code is compiled. Neither guarantee the checker gives is lost.
+- **Decide once per project and say which**, rather than mixing both shapes in one tree.
+
+`@override` is orthogonal: it works on any base class, and it is mandatory either way — a renamed
+method on the contract then becomes an error in every implementation.
 
 Use `Protocol` when you cannot make the other side inherit: a third-party type, a duck-typed shape
 someone else's code produces, a callback signature. **Never wrap a stdlib ABC in a `Protocol`** —
-`Iterable`, `Mapping`, `Sized` already name those capabilities. **Never a bare class as an
-interface.**
+`Iterable`, `Mapping`, `Sized` already name those capabilities. **A class with no abstract methods
+is not a contract**, whatever it is called.
 
 ### A Contract and Its Implementations Are One Directory
 
@@ -332,7 +358,9 @@ that will not fit the order is the same signal: look for the seam, do not renumb
   `types`, `typing`, `json`, `logging`, `queue`, `io`, `abc` and their neighbours. This bites for a
   top-level module of a distribution, a loose script, or a scheduler DAG file. Nested inside a
   package the name is only ever visible as `mypackage.types`, so there is nothing to shadow, and
-  the module is named after its contents.
+  the module is named after its contents — `internal/json.py`, `internal/io.py` are right. The
+  linter does not draw that line (ruff `A005` fires on both), so a package that names modules after
+  their contents turns `A005` off deliberately, once, with the reason written down.
 
 ### Every Top-Level Name Not Used Outside Takes an Underscore
 
@@ -374,8 +402,11 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
   `Optional[T]`; PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` + `Generic`.
 - **Parameters take `collections.abc` ABCs, returns are concrete.** `Mapping[str, int]` in,
   `dict[str, int]` out. This is also what handles variance.
-- **`Any` is forbidden** except at an untyped third-party edge, and there it is narrowed on the
-  first line. `object` is the type for "unknown" — it forces narrowing; `Any` disables checking.
+- **`Any` is rarely the type you want, and never the one you reach for first.** It does not mean
+  "unknown", it means "stop checking" — and a function *returning* `Any` spreads that silence to
+  every caller. `object` is what "unknown" is spelled as: it forces narrowing. Reach for `Any` when
+  a library fixes the signature and there is nothing to narrow to; keep it in that one position and
+  out of the rest.
 - **`@dataclass(frozen=True, slots=True, kw_only=True)` by default.** `frozen` is about mutability,
   `slots` about the attribute set, `kw_only` about the call site. The third is the one usually
   forgotten and the one that pays daily: a field added in the middle stops being a silent breaking
@@ -480,18 +511,17 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
 
 ## Documentation
 
-**Which names need a docstring is the linter's decision** — `D1xx` under the Google convention,
-and it is not negotiated here. What goes inside one is:
+**Which names need a docstring is the linter's decision**; what goes inside one is not.
 
-- **The module line says what is inside and why this module exists apart from its neighbour.** The
-  name already says what it is called, so repeating it is a wasted line.
+- **A module docstring is written when it has something to say, not because the module exists.**
+  A mandate produces `"""Throttling base classes."""` above `throttling/base.py` — the filename
+  with a full stop. Write the line when the module's place is not obvious from its name and its
+  package: why it exists apart from its neighbour, or a constraint governing the whole file.
 - **A docstring states the contract and stops**: what the thing is, its parameters, its return
   value, the errors its own logic raises, its side effects. Not how it works, not what it used to
   do, not a number from a benchmark — that belongs in the commit message.
 - **An inline comment is written only when one of the kinds below applies.** Code carries its own
   meaning through names; a comment that restates it is a name that should have been fixed.
-- Comments inside the code examples in these files are **for illustration only** — do not copy them
-  into real code.
 
 **When a comment is unavoidable it explains *why*, never *what*.** Exactly these kinds are allowed:
 a workaround or non-obvious constraint, with a reference a reader can verify or remove later;
@@ -533,16 +563,14 @@ of the thing it is attached to**. Both must stay true when anything outside chan
       # NOTE: OrderService calls this before _persist(); do not reorder
       # keep the limit in sync with schemas/order.py MAX_ITEMS
       def validate(self, order: Order) -> None:
-          if len(order.items) > 100:   # matches the API schema limit
-              raise TooManyItemsError(order.id)
+          if len(order.items) > 100: ...   # matches the API schema limit
 
   # CORRECT — the coupling is code, and the only comment is a self-contained reason
   MAX_ORDER_ITEMS: Final = 100        # the schema imports this too: one source of truth
 
   class OrderValidator:
       def validate(self, order: Order) -> None:
-          if len(order.items) > MAX_ORDER_ITEMS:
-              raise TooManyItemsError(order.id)
+          if len(order.items) > MAX_ORDER_ITEMS: ...
   ```
 
   The general recipe for a leaking docstring: "must run after taxes are calculated" stops being

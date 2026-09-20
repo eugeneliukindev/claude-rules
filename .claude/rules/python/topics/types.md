@@ -128,8 +128,11 @@ in annotations, at runtime instead of `hasattr`, and instead of hand-rolled prot
   not: `Iterable`, `Callable`, `Hashable`, `Sized`.
 - `isinstance(value, str)` / `bytes` guards come **before** `Iterable` / `Sequence` checks — both
   are sequences.
-- `isinstance(value, numbers.Real)` — never `isinstance(value, (int, float))`, which rejects
-  `Decimal`, `Fraction` and NumPy scalars (`bool` is an `Integral`; guard it if that matters).
+- `isinstance(value, numbers.Real)` for a number of unknown provenance — `isinstance(value, (int,
+  float))` rejects `Decimal`, `Fraction` and NumPy scalars (`bool` is an `Integral`; guard it if
+  that matters). **The carve-out is a value you parsed yourself**: a JSON decoder produces `int`
+  and `float` and nothing else, so naming those two is the complete set, and reaching for `numbers`
+  there buys an import and no case.
 - `os.PathLike` for "a path-like thing", then normalise with `Path(value)`.
 
 **Implementing a container — subclass the ABC and implement only the abstract methods:**
@@ -314,9 +317,15 @@ the boundary.
 
 ## Narrowing and `Any`
 
-- **`Any` is forbidden** except at an untyped third-party edge — and there it is narrowed on the
-  first line and never propagates. A function returning `Any` poisons every caller silently.
-- **`object` instead of `Any` for "unknown"**: `object` forces narrowing, `Any` disables checking.
+- **`Any` is legal and rarely what you want.** It does not say "unknown", it says "stop checking",
+  and a function *returning* `Any` spreads that silence to everything downstream. Two positions
+  earn it: an untyped third-party edge, where it is narrowed on the first line and never
+  propagates; and a signature a library fixes — a wrap-validator, a hook, a callback whose shape is
+  not yours to choose. There, `Any` stays in exactly the position the library defines, and the
+  arguments you *do* control are typed.
+- **`object` is how "unknown" is spelled**: it forces narrowing. A parameter you merely inspect —
+  `isinstance` checks, `repr`, passing it on — is `object`, not `Any`, even when the value beside
+  it has to stay `Any`.
 - **`cast()` is a claim, not a fix**: allowed only when you can state on one line why the checker
   cannot see what you can. Prefer a checked `isinstance` or a reusable `TypeIs` predicate.
 - **Never widen a return type to avoid a branch**: `-> Order | None` on a function that always
@@ -337,8 +346,15 @@ the boundary.
 
 ## Generics, Dispatch, and Variance
 
-- **PEP 695 syntax**: `def first[T](...)`, `class Repository[T: Entity]`. Never `TypeVar` +
-  `Generic[T]`. Parameter letters are `T`, `K`/`V`, `P`/`R`; the bound carries the meaning.
+- **PEP 695 syntax from Python 3.12**: `def first[T](...)`, `class Repository[T: Entity]`. The
+  parameter belongs to the signature, so nothing module-level is declared and nothing can be reused
+  by accident.
+- **Below 3.12 it is `TypeVar` + `Generic`, and that is not a lapse** — the syntax does not exist
+  yet. The same applies to the `typing` names that arrived with it: `typing_extensions.override`
+  until 3.12, `typing_extensions.TypeIs` until 3.13. A project states its floor once, in
+  `requires-python`, and every one of these choices follows from it rather than being argued per
+  file. Naming for the `TypeVar` form is in `naming.md`: private and suffixed, `_T` / `_KT` /
+  `_BackendT`.
 - **Bound the parameter when it has requirements.** An unbounded parameter whose body calls methods
   on it is a lie.
 - **Parameters take `Sequence`/`Mapping`, returns are concrete** — that handles variance without
@@ -458,7 +474,34 @@ the boundary.
 
 ## Enforcement
 
-- mypy strict, plus `disallow_any_generics`, `warn_return_any`, `warn_unreachable`,
-  `strict_equality`, `no_implicit_reexport`.
+`strict = true` already turns on `disallow_any_generics`, `warn_return_any`, `strict_equality`,
+`no_implicit_reexport` and the rest of that family — listing them again is noise. What it does
+**not** turn on is the set below, and three of those enforce rules this file otherwise only asks
+for:
+
+```toml
+[tool.mypy]
+strict = true
+warn_unreachable = true
+extra_checks = true
+strict_equality_for_none = true
+enable_error_code = [
+  "explicit-override",     # @override on every override — otherwise a rename orphans a method
+  "exhaustive-match",      # every match over a union or Enum is closed
+  "ignore-without-code",   # a bare `# type: ignore` stops being possible
+  "deprecated",            # using a @deprecated name is an error, not a runtime warning
+  "possibly-undefined",    # a name bound in only one branch
+  "redundant-expr",        # a condition that cannot change the outcome
+  "redundant-self",
+  "truthy-bool",           # `if some_object:` where the object is always truthy
+  "truthy-iterable",
+  "unused-awaitable",      # a coroutine created and never awaited
+  "unimported-reveal",     # a committed reveal_type()
+]
+```
+
+- **A rule the checker can hold is a rule you stop having to remember.** `@override` on every
+  override, an exhaustive `match`, a coded ignore: all three are stated elsewhere in these files
+  and all three become errors here. Adding the code is the cheapest thing in this document.
 - `# type: ignore[code]` always with a code and a reason; their count only ratchets down.
 - A `dict[str, Any]` or an untyped `**kwargs` crossing a layer boundary is a review blocker.

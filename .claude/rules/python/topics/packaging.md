@@ -117,7 +117,9 @@ the factory, the package `__init__.py`, or anything above the implementation.
   points.
 - **Optional libraries are optional extras**, and the implementation module is the only place that
   fails when the extra is missing. Convert the import failure into the package's own error, naming
-  the extra to install.
+  the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
+  contract bans the library from the whole package and lists every permitted edge — see
+  `wiring.md`.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.

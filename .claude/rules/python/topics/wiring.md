@@ -90,17 +90,67 @@ the constructor or the function signature.
 ## Enforced Layer Boundaries
 
 **Dependency direction is enforced by tooling, not by review vigilance.** Contracts live next to
-the type-checker configuration and run beside it: a layered contract fixes the order of the layers,
-and a forbidden contract keeps the domain free of frameworks, drivers and adapters.
+the type-checker configuration and run beside it. Three kinds do the work, and most codebases stop
+after the first:
 
-- Higher layers depend on lower ones; the domain depends on nothing in the package.
-- **Domain code imports the standard library and other domain modules only.** Frameworks, drivers
-  and clients enter through adapters.
+**`layers` — what may depend on what.** Higher layers depend on lower ones; the domain depends on
+nothing in the package.
+
+- **One contract per package that has an order, not one for the repository.** A top-level contract
+  says how the application is stacked; a subpackage with its own internal order gets its own
+  contract, and the two are checked independently. Without that, everything below the top layer is
+  a free-for-all the moment it has more than three modules.
+- **Peers are declared, not silently allowed.** Two modules at the same height that must not import
+  each other are written on one line — `headers | cookies`, `renderer | stream`. Leaving them on
+  separate lines invents an order nobody meant and that the next edit will violate for no reason.
+
+**`independence` — siblings behind a contract do not know each other.** This is the check that
+makes "adding the tenth costs what the second cost" true instead of aspirational: every
+implementation of a contract, every plugin, every handler in a registry is independent of the rest,
+and the *only* permitted edge among them is to their shared base.
+
+```ini
+[importlinter:contract:notifier-independence]
+name = Notifier implementations must not know about each other
+type = independence
+modules =
+  myapp.notifications.*
+ignore_imports =
+  # The one edge that is allowed: every implementation inherits the contract.
+  myapp.notifications.* -> myapp.notifications.base
+```
+
+Without it, one implementation imports a helper from its sibling, and the eleventh is no longer a
+new file — it is a new file plus an edit to whichever sibling it borrowed from.
+
+**`forbidden` — a dependency that must not appear where it is not wanted.** The rule that an
+optional library lives only in its own implementation module (`packaging.md`) is stated in prose
+everywhere and checked almost nowhere. Ban the library from the whole package and list every
+permitted edge; the exception list then *is* the inventory of where the extra is allowed, and it is
+reviewed whenever it grows.
+
+```ini
+[importlinter:contract:no-optional-deps]
+name = Optional dependencies live only in their own implementation
+type = forbidden
+source_modules =
+  myapp
+forbidden_modules =
+  redis
+  boto3
+ignore_imports =
+  myapp.notifications.slack -> boto3
+  myapp.cache.redis -> redis
+```
+
 - A boundary violation is fixed by moving code or inverting the dependency — a contract plus an
   adapter — **never** by adding the module to an allowlist. A contract exception needs the same
-  justification as a type suppression.
-- Ban the APIs that must never be used directly at the linter level, with a message naming the
-  replacement.
+  justification as a type suppression, and carries its reason on the line above it.
+- **Domain code imports the standard library and other domain modules only.** Frameworks, drivers
+  and clients enter through adapters.
+- Ban the APIs that must never be used directly at the linter level too, with a message naming the
+  replacement — `flake8-tidy-imports.banned-api` states the substitution where the import happens,
+  which a contract cannot.
 
 How directories are named and nested is a project decision, not a general rule: it follows the
 domain, the team and the deployment shape, and a layout copied from elsewhere is a layout nobody

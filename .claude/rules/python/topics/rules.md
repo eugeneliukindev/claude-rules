@@ -58,9 +58,14 @@ never holding anything up.
 ## What Loads When
 
 Only `core.md` and `naming.md` carry `paths: "**/*.py"`, because only they apply to every edit.
-`testing.md` carries its own test-file globs, and `tooling/` files carry the globs of the
-configuration they describe. Everything else — this file, `topics/`, `libraries/` — has no front
-matter and is opened deliberately, from the map at the top of `core.md`.
+`testing.md` carries its own test-file globs. Everything else — this file, `topics/`, `libraries/`
+— has no front matter and is opened deliberately, from the map at the top of `core.md`.
+
+**Tool configuration is not written down here at all.** Which linters a project runs, what it
+selects, what it excludes and how its hooks are wired changes from repository to repository, and
+the person who owns the repository owns those files. What belongs here is only what survives the
+choice of tool: the discipline around suppressions and limits, and — where a rule in these files
+can be handed to a checker instead of remembered — the name of the check that does it.
 
 **Moving a rule up costs every edit; moving it down costs a lookup.** A rule earns a place in the
 always-loaded pair by being both **universal** — every Python file could break it — and
@@ -68,6 +73,24 @@ always-loaded pair by being both **universal** — every Python file could break
 (async, migrations, a CLI, a shipped example) goes to `topics/`, and the map gets a row saying when
 to open it. A rule that restates what the model already does by default is deleted, not moved: it
 costs attention on every edit and buys nothing.
+
+**The always-loaded pair has a budget, and it is a hard number:**
+
+| file | ceiling |
+|---|---|
+| `core.md` | 600 |
+| `naming.md` | 350 |
+| **always loaded** | **950** |
+
+The number is not sacred; the *fixedness* is. Without one, every addition looks free — each is a
+paragraph, and the file went from 350 lines to three thousand one paragraph at a time. With one,
+**an addition displaces something**: find the rule it makes redundant, the example that has stopped
+earning its lines, or the section that belongs in `topics/`, and cut that first. If nothing can be
+cut, the new rule was not worth the space, and it goes to `topics/` with a row in the map.
+
+Raising the ceiling is allowed exactly once per good argument, written down here with the
+arithmetic — never because the file happens to have grown past it. A ceiling adjusted to fit the
+current size is not a ceiling.
 
 **Prefer the positive.** Steering by prohibition backfires — naming the thing to avoid makes it
 more available, not less. Where a positive statement exists, lead with it and let the `# WRONG`

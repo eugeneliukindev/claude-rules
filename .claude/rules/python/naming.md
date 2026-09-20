@@ -179,6 +179,21 @@ one concept and two vocabularies. Rename the three.
 - **Type parameters are single capital letters** — `T` by default, `K`/`V` for key/value, `P`/`R`
   for `ParamSpec`/return. The bound carries the meaning (`[T: BaseModel]`); the letter does not
   need to. Descriptive names are for the rare generic with three or more parameters.
+  **Below Python 3.12 the same letters take the `_T` shape**: a `TypeVar` is a module-level name,
+  so it is private and suffixed — `_T`, `_KT`, `_VT`, `_P`, `_R`. Where one module declares several
+  and the letters stop telling them apart, the role goes in front of the suffix, never instead of
+  it: `_BackendT`, `_ModelT`. One shape per codebase, decided by the version floor, never both.
+
+  ```python
+  # 3.12+ — the parameter belongs to the class, so it needs no module-level name
+  class Repository[T: Entity](ABC): ...
+
+  # 3.11 and below — a module-level TypeVar: private, suffixed, bound doing the work
+  _T = TypeVar('_T', bound=Entity)
+  _BackendT = TypeVar('_BackendT', bound=SyncBackend | AsyncBackend)
+
+  class Repository(ABC, Generic[_T]): ...
+  ```
 
   ```python
   # WRONG — Base on a contract, Base on a leaf, a suffix that names nothing, plural enum
