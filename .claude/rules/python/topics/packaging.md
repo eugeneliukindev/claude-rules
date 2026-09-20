@@ -105,7 +105,8 @@ When an interface has several implementations and each needs its own library, th
 imported **only in the module of the implementation that uses it** — never in the interface module,
 the factory, the package `__init__.py`, or anything above the implementation.
 
-- **One implementation — one module — its own imports at the top of that module.**
+- **One implementation — one module — its own imports at the top of that module.** The directory
+  those modules share, and what else belongs in it, is in `core.md`.
 - **The interface module imports nothing implementation-specific.** If it needs a type from a
   library for a signature, that is a leak — define a domain type or a contract of your own instead.
 - **The factory does not import all implementations at module top.** Doing so makes importing the

@@ -262,6 +262,35 @@ someone else's code produces, a callback signature. **Never wrap a stdlib ABC in
 `Iterable`, `Mapping`, `Sized` already name those capabilities. **Never a bare class as an
 interface.**
 
+### A Contract and Its Implementations Are One Directory
+
+The contract is the reason the implementations exist, so they live together — and nothing else
+does. One directory per capability, named for it; the contract in `base.py`; one module per
+implementation, named for what makes it concrete; `__init__.py` exporting the contract and the
+implementations and nothing more.
+
+```
+notifications/
+    base.py         # Notifier(ABC) — the contract, and the errors it raises
+    slack.py        # SlackNotifier(Notifier) — imports the Slack SDK, and is the only file that does
+    email.py        # EmailNotifier(Notifier) — imports the SMTP client
+    _templates.py   # private to the group: the bodies email.py renders
+    __init__.py     # the contract and the implementations, nothing else
+```
+
+- **`base.py` is a position, not a `Base` class.** The module sits at the base of the group; the
+  class inside it is still named for the capability — `Notifier`, never `BaseNotifier`. The two
+  rules do not collide: one is about a file, the other about a class.
+- **The contract's module imports nothing any implementation needs.** That is what makes the split
+  worth having: a new implementation is a new file, and no existing file changes. An import of a
+  driver in `base.py` silently makes every consumer of the contract depend on that driver.
+- **A helper only one implementation uses is private and stays in the group** — `_templates.py`
+  beside `email.py`, never in a shared `utils`.
+- **No contract, no directory.** An implementation that will only ever be the only one is a single
+  module named concretely, with no `base.py` above it. The group appears when the second
+  implementation does, or when a test needs a fake — the same threshold that earns the contract.
+- **A test fake is an implementation, and it lives with the tests.** The group is what ships.
+
 ### Dunders
 
 Implement a dunder when the behaviour it represents is a natural fit, never to satisfy a style
@@ -365,10 +394,11 @@ The decisions behind these are in `topics/types.md`; these are the ones that app
 - **A string that is user-facing or used twice is a constant** or an `Enum` member. The linter
   catches the magic *number*; a repeated literal string it will not.
 - **`os` is correct where `pathlib` has no answer**, and only there: permission probing
-  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors. A real one:
-  llama.cpp returns "code 1" when it cannot open its output file, and the previous build had been
-  written by a container running as root. There is no `Path.can_write()`, and the linter that
-  rewrites `os.path` calls into `Path` says nothing about this one.
+  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors. The case that
+  costs an evening: a native library refuses to write its output file and reports only an exit
+  code, because the previous build was left behind by a container running as root. There is no
+  `Path.can_write()` to check first, and the linter that rewrites `os.path` calls into `Path` has
+  nothing to say about this one.
 
 ## Errors
 

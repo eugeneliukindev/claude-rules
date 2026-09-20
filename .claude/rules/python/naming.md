@@ -50,8 +50,8 @@ kind, then see whether the names share a shape. The shapes worth copying:
 - **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `start`/`stop`,
   `serialize`/`deserialize`, `commit`/`rollback`.
 
-A codebase with twelve `salary_in(text)`-shaped names and three `find_salary`-shaped ones has one
-concept and two vocabularies. Rename the three.
+A codebase with twelve `duration_in(text)`-shaped names and three `find_duration`-shaped ones has
+one concept and two vocabularies. Rename the three.
 
 ## Functions and Methods
 
@@ -117,7 +117,7 @@ concept and two vocabularies. Rename the three.
 - **Booleans read as predicates**, positive: `is_active`, `has_permission`, `should_refresh`.
   Never `flag`, `status`, `ok`.
 - **Quantities carry their unit** — in every kind of name, not only locals: `timeout_seconds`,
-  `file_size_bytes`, `price_usd`, and equally `ANSWER_TOKENS`, `HELD_OUT_ROWS`,
+  `file_size_bytes`, `price_usd`, and equally `MAX_UPLOAD_BYTES`, `CACHE_TTL_SECONDS`,
   `def wait(duration_seconds: float)`. Never a bare `timeout`, `size` or `limit` when the unit is
   ambiguous. The reader of a call site has the name and nothing else, and a wrong unit is the one
   mistake that produces a plausible result.
@@ -263,40 +263,42 @@ Four kinds leak, and each becomes a lie on a predictable day:
   wrong.
 - **A place in this project** — `runs`, `data_dir`, `tmp`. These name one repository's layout. The
   role is `source`, `into`, `where`.
-- **The caller or its intent** — `save_for_upload`, `parse_for_airflow`, `for_training`. What the
-  result is used for is the caller's business; a second caller with another purpose breaks it.
+- **The caller or its intent** — `save_for_upload`, `parse_for_the_nightly_job`, `for_reporting`.
+  What the result is used for is the caller's business; a second caller with another purpose
+  breaks it.
 - **A neighbour's identity** — the vendor, library, framework or sibling module that happens to sit
-  on the other side today. `NuExtractVacancyRequestSchema` named the model that first answered it;
-  the model was replaced twice and the name outlived both.
+  on the other side today. A boundary schema named after the third-party service that first
+  answered it keeps that name through two replacements of the service, and then documents a
+  vendor nobody in the codebase still calls.
 
   ```python
-  # WRONG — two of the three names describe the caller, not the work
-  def convert(merged: Path, runs: Path, *, quant: str) -> Path: ...
+  # WRONG — two of the three names describe the caller's filesystem, not the work
+  def convert(merged: Path, runs: Path, *, quality: str) -> Path: ...
 
-  convert(merged_model, project_runs, quant="Q4_K_M")
+  convert(merged_model, project_runs, quality="high")
 
   # CORRECT — the signature states what the function needs
-  def convert(model: Path, into: Path, *, quant: str) -> Path: ...
+  def convert(model: Path, into: Path, *, quality: str) -> Path: ...
   ```
 
   ```python
   # WRONG — the class is named for whoever answers it, the function for whoever calls it
-  class NuExtractVacancyRequestSchema(BaseModel): ...
-  def parse_for_airflow(payload: bytes) -> Vacancy: ...
+  class AcmeCrmCustomerResponseSchema(BaseModel): ...
+  def parse_for_nightly_job(payload: bytes) -> Customer: ...
 
   # CORRECT — named for what they describe and what they do
-  class VacancyAnswer(BaseModel): ...
-  def parse_vacancy(payload: bytes) -> Vacancy: ...
+  class CustomerRecord(BaseModel): ...
+  def parse_customer(payload: bytes) -> Customer: ...
   ```
 
 **The carve-out, and it is narrow.** An implementation *is* named for what makes it concrete —
-`SlackNotifier`, `PostgresUserRepository`, `LlamaServer`. The vendor is the whole distinction
+`SlackNotifier`, `PostgresUserRepository`, `RedisTokenStore`. The vendor is the whole distinction
 between it and its siblings behind the same contract. The test still applies: delete the contract,
 and the name must still say which implementation this is.
 
-**Values leak too.** A constant whose value names a neighbour ages the same way: an artefact called
-`nuextract3-vacancy` outlives the base it was named after, and every consumer of the file then
-carries a stale claim.
+**Values leak too.** A constant whose value names a neighbour ages the same way: a build artefact
+whose filename carries the vendor it was derived from outlives that vendor, and every consumer
+that mounts the file by name then repeats a claim that stopped being true.
 
 ## Naming Self-Check
 

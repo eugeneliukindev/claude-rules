@@ -25,9 +25,18 @@ what lets a reader settle an edge case alone, and what makes the rule survive an
 someone in a hurry.
 
 **Examples come in pairs: one invented, one real.** The invented pair — `# WRONG` next to
-`# CORRECT` — shows the shape and travels to any codebase. The real one shows the price, which no
-invented example can: a name, a signature or an incident that actually happened, specific enough to
-check. Keep both; drop either and the rule teaches half of itself.
+`# CORRECT` — shows the shape. The real one shows the price, which no invented example can: an
+incident that actually happened, concrete enough that the failure can be pictured. Keep both; drop
+either and the rule teaches half of itself.
+
+**Both halves travel, which means neither names a project.** These files are read in every
+repository, and a reader who has to know one codebase to understand an example learns nothing from
+it — the local proper noun is noise to everyone else and rots the moment that code changes.
+So: no domain entity from the project at hand, no vendor, service or model it happens to use, no
+identifier copied out of it. Keep the **shape** of the incident and drop its names — "a native
+library refuses to write its output file and reports only an exit code" carries the whole lesson,
+where the library's name carried none of it. Domain vocabulary in examples stays deliberately
+boring and universal: orders, users, notifications, repositories.
 
 ## What Holds These Rules Up
 

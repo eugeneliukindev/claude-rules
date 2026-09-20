@@ -210,18 +210,18 @@ Write a contract of your own **only** when no stdlib ABC names the capability.
   ```python
   # WRONG — dict[str, Any] at the boundary and inside; the keys exist only in the author's head
   def parse_product(raw: dict[str, Any]) -> dict[str, Any]:
-      return {"title": raw["name"], "salary": raw.get("salary")}
+      return {"title": raw["name"], "price": raw.get("price")}
 
   # CORRECT — TypedDict describes the foreign JSON; a domain object travels inward
   class ProductPayload(TypedDict):
       name: str
-      salary: NotRequired[int | None]
+      price: NotRequired[int | None]
       published_at: ReadOnly[str]
 
   def parse_product(raw: ProductPayload) -> Product:
       return Product(
           title=raw["name"],
-          salary=Money.from_minor(raw["salary"]) if raw.get("salary") else None,
+          price=Money.from_minor(raw["price"]) if raw.get("price") else None,
           published_at=datetime.fromisoformat(raw["published_at"]),
       )
   ```

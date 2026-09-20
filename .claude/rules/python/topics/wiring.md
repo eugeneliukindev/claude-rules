@@ -104,5 +104,5 @@ and a forbidden contract keeps the domain free of frameworks, drivers and adapte
 
 How directories are named and nested is a project decision, not a general rule: it follows the
 domain, the team and the deployment shape, and a layout copied from elsewhere is a layout nobody
-owns. What is fixed is which way dependencies point, what a package promises, and where
-construction happens.
+owns. What is fixed is which way dependencies point, what a package promises, where construction
+happens, and that a contract and its implementations share one directory (`core.md`).
