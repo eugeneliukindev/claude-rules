@@ -1,6 +1,14 @@
-# tenacity
+---
+name: python-tenacity
+description: >-
+  tenacity retry policies: retries living in the adapter and not the service, keying retry= on a
+  translated exception type rather than a status code, always setting stop= and reraise=True,
+  choosing jitter in proportion to the backoff instead of the one-second default, what must never
+  be retried, before_sleep_log for visibility, and testing a policy with retry_with and wait_none.
+  Use when Python code imports tenacity or applies the @retry decorator.
+---
 
-Not loaded automatically — open it when the code imports `tenacity`.
+# tenacity
 
 Retries belong in the adapter that talks to the outside world. A service sees one call that either
 succeeded or raised a final error; it never contains a retry loop.

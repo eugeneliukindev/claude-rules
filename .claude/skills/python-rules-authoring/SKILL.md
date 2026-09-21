@@ -1,6 +1,14 @@
-# Writing These Rules
+---
+name: python-rules-authoring
+description: >-
+  Conventions for writing the Python rule files and skills in this collection: stating a rule over
+  the widest category it is true for, carve-outs beside prohibitions, naming what breaks and when,
+  paired invented and real examples, examples that name no project, what the tools hold versus
+  what rests on attention, what loads when, and the line budget for the always-loaded rules. Use
+  when editing, adding to, splitting or auditing these Python rule files and skills.
+---
 
-Not loaded automatically — open it when editing the rule files themselves.
+# Writing These Rules
 
 ## How a Rule Is Written
 
@@ -57,9 +65,24 @@ never holding anything up.
 
 ## What Loads When
 
-Only `core.md` and `naming.md` carry `paths: "**/*.py"`, because only they apply to every edit.
-`testing.md` carries its own test-file globs. Everything else — this file, `topics/`, `libraries/`
-— has no front matter and is opened deliberately, from the map at the top of `core.md`.
+Two mechanisms, and which one a file lives in is the decision:
+
+| | rule, `paths:` in front matter | rule, no front matter | skill |
+|---|---|---|---|
+| lives in | `~/.claude/rules/` | `~/.claude/rules/` | `~/.claude/skills/<name>/SKILL.md` |
+| enters context | when a matching file is read | at launch, every session, every language | when its `description` matches the work, or by `/name` |
+| always costs | nothing | its whole length | its `description`, ~40 tokens |
+
+**A rule with no front matter is the expensive one, and it is the easy mistake.** Sixteen
+reference files sat in `~/.claude/rules/` with no `paths:`, which is the documented instruction to
+load every one of them into every session in every language — eighteen hundred lines, while the
+pair that actually governs each edit waited on a glob. The prose in this section described the
+opposite arrangement for months and nothing contradicted it, because nothing checks a claim about
+loading.
+
+So: `core.md` and `naming.md` carry `paths: "**/*.py"`, because only they apply to every edit;
+`testing.md` carries its own test-file globs. Everything reached by a task rather than by a file —
+every topic, every library — is a skill, and the map at the top of `core.md` names them.
 
 **Tool configuration is not written down here at all.** Which linters a project runs, what it
 selects, what it excludes and how its hooks are wired changes from repository to repository, and
@@ -70,23 +93,30 @@ can be handed to a checker instead of remembered — the name of the check that 
 **Moving a rule up costs every edit; moving it down costs a lookup.** A rule earns a place in the
 always-loaded pair by being both **universal** — every Python file could break it — and
 **behaviour-changing**: without it the obvious default is wrong. A rule that only some paths reach
-(async, migrations, a CLI, a shipped example) goes to `topics/`, and the map gets a row saying when
-to open it. A rule that restates what the model already does by default is deleted, not moved: it
+(async, migrations, a CLI, a shipped example) is a skill, and the map gets a row saying when it
+applies. A rule that restates what the model already does by default is deleted, not moved: it
 costs attention on every edit and buys nothing.
 
-**The always-loaded pair has a budget, and it is a hard number:**
+**The per-edit pair has a budget, and it is a hard number:**
 
 | file | ceiling |
 |---|---|
 | `core.md` | 600 |
 | `naming.md` | 350 |
-| **always loaded** | **950** |
+| **loaded on every `.py`** | **950** |
+| any one `SKILL.md` | 500 |
 
 The number is not sacred; the *fixedness* is. Without one, every addition looks free — each is a
 paragraph, and the file went from 350 lines to three thousand one paragraph at a time. With one,
 **an addition displaces something**: find the rule it makes redundant, the example that has stopped
-earning its lines, or the section that belongs in `topics/`, and cut that first. If nothing can be
-cut, the new rule was not worth the space, and it goes to `topics/` with a row in the map.
+earning its lines, or the section that belongs in a skill, and cut that first. If nothing can be
+cut, the new rule was not worth the space, and it becomes a skill with a row in the map.
+
+The 500-line ceiling on a `SKILL.md` is not this project's invention — it is what Anthropic's
+authoring guidance asks for, and past it a skill splits into reference files linked from
+`SKILL.md`, **one level deep and no further**: a file reached through another file gets read in
+fragments, `head -100` at a time, and the rule at line 200 silently does not arrive. A reference
+file past a hundred lines opens with its own table of contents for the same reason.
 
 Raising the ceiling is allowed exactly once per good argument, written down here with the
 arithmetic — never because the file happens to have grown past it. A ceiling adjusted to fit the

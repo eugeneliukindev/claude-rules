@@ -1,8 +1,16 @@
+---
+name: python-boundaries
+description: >-
+  Python process boundaries: validating models at the edge versus frozen domain objects inside,
+  mandatory timeouts, what may and may not be retried, idempotency keys, nested retry budgets,
+  explicit serialization and payload versioning, and the handling of time, money and identifiers.
+  Use when Python code talks to HTTP, a queue, a cache, a database or a file someone else wrote,
+  or when working with datetimes, Decimal money, UUIDs or any value crossing the process boundary.
+---
+
 # Boundaries
 
-Not loaded automatically — open it when code talks to something outside the process: HTTP, a queue,
-a cache, a file someone else wrote. Also for time, money and identifiers, which are boundary
-concerns wherever they appear.
+Time, money and identifiers are boundary concerns wherever they appear, so they are here too.
 
 ## Boundary Validation and Domain Models
 

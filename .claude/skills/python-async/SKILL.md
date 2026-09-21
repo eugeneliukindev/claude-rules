@@ -1,7 +1,14 @@
-# Asyncio and Concurrency
+---
+name: python-async
+description: >-
+  Python asyncio and concurrency: never blocking the event loop, offloading sync and CPU-bound
+  work to shared executors, a deadline on every await, structured concurrency with TaskGroup,
+  cancellation and shielding, bounded fan-out, contextvars, graceful shutdown, and choosing
+  between async, threads and processes. Use when writing async def, awaiting external I/O, using
+  create_task or a semaphore, or moving Python work to threads or a process pool.
+---
 
-Not loaded automatically — open it when writing `async def`, or when work moves to threads or
-processes.
+# Asyncio and Concurrency
 
 ## Asyncio
 

@@ -1,8 +1,17 @@
+---
+name: python-examples
+description: >-
+  Standards for Python examples that ship — a docstring example, a README snippet, a file under
+  examples/: the smallest complete thing, executed rather than proofread, ordered by the caller's
+  goal, realistic reserved data such as example.com, deterministic output, one example per error
+  scenario, and versioned with the API. Use when writing or reviewing a Python example, docstring
+  sample or README snippet that will be published.
+---
+
 # Shipped Examples
 
-Not loaded automatically — open it when writing an example that ships: a docstring example, a
-`README` snippet, a file under `examples/`. An example is executable documentation, held to the
-same standard as the code it demonstrates, plus one extra requirement — it must run.
+An example is executable documentation, held to the same standard as the code it demonstrates,
+plus one extra requirement — it must run.
 
 - **Show the smallest complete thing.** One capability, with every import and object constructed
   inside it. An example that starts mid-story is unusable and unverifiable.

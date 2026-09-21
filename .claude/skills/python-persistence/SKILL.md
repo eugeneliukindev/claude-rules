@@ -1,7 +1,16 @@
+---
+name: python-persistence
+description: >-
+  Python persistence discipline: one use-case one transaction, the Unit of Work owning the
+  boundary, no slow or irreversible work inside a transaction, explicit relationship loading so
+  N+1 is an error, ORM models converted to domain objects at the repository boundary, and
+  migration practice including working downgrades, separated backfills and planned long locks. Use
+  when touching a Python ORM, a transaction boundary, a repository or a database migration.
+---
+
 # Persistence
 
-Not loaded automatically — open it when touching an ORM, a transaction, or a migration. The
-library-specific companion is `libraries/sqlalchemy.md`.
+The library-specific companion is the `python-sqlalchemy` skill.
 
 ## Transactions and Unit of Work
 

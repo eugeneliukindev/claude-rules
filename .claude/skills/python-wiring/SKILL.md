@@ -1,7 +1,15 @@
-# Wiring: Composition Root, Configuration, Layers
+---
+name: python-wiring
+description: >-
+  Python composition root, configuration and layering: all construction in one place, dependencies
+  through the constructor, resource lifetime owned by the root, typed settings passed as fields
+  rather than as a config object, constants versus configuration, and layer boundaries enforced by
+  import-linter contracts. Use when writing a Python entry point or application factory, deciding
+  where an object is built, adding a settings field, removing a global singleton, or arguing about
+  which layer code belongs to.
+---
 
-Not loaded automatically — open it when writing an entry point, deciding where an object is built,
-introducing a settings field, or arguing about which layer something belongs to.
+# Wiring: Composition Root, Configuration, Layers
 
 ## Composition Root and Dependency Injection
 
@@ -124,7 +132,7 @@ Without it, one implementation imports a helper from its sibling, and the eleven
 new file — it is a new file plus an edit to whichever sibling it borrowed from.
 
 **`forbidden` — a dependency that must not appear where it is not wanted.** The rule that an
-optional library lives only in its own implementation module (`topics/packaging.md`) is stated in prose
+optional library lives only in its own implementation module (the `python-packaging` skill) is stated in prose
 everywhere and checked almost nowhere. Ban the library from the whole package and list every
 permitted edge; the exception list then *is* the inventory of where the extra is allowed, and it is
 reviewed whenever it grows.

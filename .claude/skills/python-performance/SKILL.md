@@ -1,7 +1,17 @@
+---
+name: python-performance
+description: >-
+  Python performance work: measuring before optimizing, fixing the algorithm before the constants,
+  streaming instead of materializing, slots=True, caching as a bounded contract rather than a
+  sprinkle and never on methods, precompiling and hoisting out of hot loops, and pinning a budget
+  with a test so a regression fails a check. Use when a Python path has been measured and found
+  slow, or when reviewing a proposed optimization.
+---
+
 # Performance
 
-Not loaded automatically — open it when a path has been measured and found slow. Algorithmic sanity
-and `slots=True` are defaults in `core.md` and need no measurement; everything here does.
+Algorithmic sanity and `slots=True` are defaults in `core.md` and need no measurement; everything
+here does.
 
 - **Measure before optimizing.** Any performance change references a measurement — a profile for
   CPU, an allocation profile for memory, a benchmark to pin the improvement. An optimization

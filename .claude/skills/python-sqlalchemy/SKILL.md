@@ -1,6 +1,17 @@
+---
+name: python-sqlalchemy
+description: >-
+  SQLAlchemy 2.0 practice: select() with session.execute() instead of the legacy Query, Mapped and
+  mapped_column declarative models, relationships that raise on lazy access with explicit
+  selectinload and joinedload, engine built once with pool_pre_ping, short-lived sessions and
+  expire_on_commit, service-owned transaction boundaries, bulk writes and upserts, parameterized
+  text() for raw SQL, and migration practice. Use when Python code imports sqlalchemy, defines a
+  mapped model, writes a query or a repository, or edits an alembic revision.
+---
+
 # SQLAlchemy
 
-Not loaded automatically — open it when the code imports `sqlalchemy`. Assumes 2.0 style.
+Assumes 2.0 style.
 
 ## The 2.0 API — `Query` Is Legacy
 

@@ -1,7 +1,17 @@
+---
+name: python-niquests
+description: >-
+  niquests HTTP client practice, which transfers to httpx almost unchanged: one session owned by
+  the composition root instead of module-level calls, a timeout on every request, raise_for_status
+  rather than assuming success, transport and status errors translated at the adapter, deliberate
+  redirect handling, TLS verification left on, and where retries belong. Use when Python code
+  imports niquests or httpx, builds a session, or makes an outbound HTTP request.
+---
+
 # niquests
 
-Not loaded automatically — open it when the code imports `niquests`. The API is `requests`-shaped,
-so the habits below transfer to `httpx` almost unchanged; what does not transfer is called out.
+The API is `requests`-shaped, so the habits below transfer to `httpx` almost unchanged; what does
+not transfer is called out.
 
 ## One Session, Owned by the Composition Root
 
@@ -44,7 +54,7 @@ so the habits below transfer to `httpx` almost unchanged; what does not transfer
 ## Retries
 
 - Retries are a policy decision and belong beside the call, not buried in transport configuration —
-  see `libraries/tenacity.md`. Retry transient failures only, bounded, jittered, and at one layer.
+  see the `python-tenacity` skill. Retry transient failures only, bounded, jittered, and at one layer.
 
 ## What Differs From `httpx`
 

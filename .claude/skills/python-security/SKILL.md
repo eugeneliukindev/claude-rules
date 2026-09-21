@@ -1,7 +1,16 @@
-# Security
+---
+name: python-security
+description: >-
+  Python security practice for input from outside the process: cryptographically secure randomness
+  for capability-bearing values, TLS verification left on, adaptive password hashing and
+  constant-time comparison, parameterized SQL including order-by and table names, subprocess
+  argument lists rather than shell strings, safe parsers, path-traversal containment, SSRF
+  allowlists revalidated across redirects, bounded input sizes, secret handling, and failing
+  closed. Use when Python code handles a request body, a filename, a URL, a subprocess argument, a
+  credential, an upload or any untrusted payload.
+---
 
-Not loaded automatically — open it when handling input from outside the process: a request body, a
-filename, a URL, a subprocess argument, a credential.
+# Security
 
 - **Cryptographically secure randomness for anything capability-bearing** — tokens, salts, nonces,
   ids. Never a general-purpose random generator.

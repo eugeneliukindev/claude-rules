@@ -1,7 +1,17 @@
+---
+name: python-pydantic
+description: >-
+  pydantic v2 practice: models at process boundaries only and never in the domain, the
+  model_-prefixed methods that replace the deprecated v1 names, strict ConfigDict with extra
+  forbidden, Annotated field constraints named once and reused, field and model validators that
+  stay pure, serialization and exclude_unset as contract decisions, TypeAdapter built once,
+  discriminated unions, and BaseSettings validated at startup. Use when Python code imports
+  pydantic, defines a BaseModel or BaseSettings, or validates an external payload.
+---
+
 # pydantic
 
-Not loaded automatically — open it when the code imports `pydantic`. Assumes v2; everything below
-is checked against the v2 source.
+Assumes v2; everything below is checked against the v2 source.
 
 ## Where pydantic Belongs
 

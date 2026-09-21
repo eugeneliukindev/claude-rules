@@ -1,6 +1,13 @@
-# orjson
+---
+name: python-orjson
+description: >-
+  orjson practice: dumps returns bytes and loads accepts bytes directly, explicit options for
+  non-string keys and sorted output, the default= escape hatch that must raise TypeError on
+  anything it does not know, and the boundary rules serialization still follows. Use when Python
+  code imports orjson or serializes a payload with it.
+---
 
-Not loaded automatically — open it when the code imports `orjson`.
+# orjson
 
 ## Why It Is Here
 

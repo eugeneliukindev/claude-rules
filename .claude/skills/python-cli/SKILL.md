@@ -1,6 +1,14 @@
-# Command-Line Interfaces
+---
+name: python-cli
+description: >-
+  Python command-line interface design: an argument parser whose declarations are the interface,
+  main() building and run() executing, exit codes as a contract, stdout for the product and stderr
+  for the conversation, dry-run and verbosity flags, fixed configuration precedence, graceful
+  interrupts, and testing through run(). Use when writing or reviewing a Python entry point with
+  an argument parser, a subcommand or an exit code.
+---
 
-Not loaded automatically — open it when writing an entry point with an argument parser.
+# Command-Line Interfaces
 
 - **Never hand-parse arguments.** Use an argument parser whose declarations *are* the interface.
 - **`main()` builds, `run()` executes**: the entry point constructs settings and the object graph,
@@ -24,4 +32,4 @@ Not loaded automatically — open it when writing an entry point with an argumen
   own.
 
 Keeping a CLI's own interface compatible is the same problem as keeping a package's: see
-`topics/packaging.md`.
+the `python-packaging` skill.

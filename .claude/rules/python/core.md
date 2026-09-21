@@ -6,22 +6,22 @@ paths:
 # Python — Core
 
 What applies to every Python edit. `naming.md` loads with it; `testing.md` loads in test files.
-Everything else is opened deliberately, when the work reaches it:
+Everything else is a skill, invoked when the work reaches it — by its own description, or by name:
 
-| Open | When |
+| Skill | When |
 |---|---|
-| `topics/types.md` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc` |
-| `topics/boundaries.md` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
-| `topics/wiring.md` | an entry point, where an object is built, a settings field, a layer argument |
-| `topics/async.md` | `async def`, threads, processes |
-| `topics/persistence.md` | an ORM, a transaction, a migration |
-| `topics/packaging.md` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation |
-| `topics/cli.md` | an entry point with an argument parser |
-| `topics/security.md` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
-| `topics/performance.md` | a path already measured and found slow |
-| `topics/examples.md` | an example that ships — docstring, README, `examples/` |
-| `topics/rules.md` | editing these rule files |
-| `libraries/<name>.md` | the code imports that library |
+| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc` |
+| `python-boundaries` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
+| `python-wiring` | an entry point, where an object is built, a settings field, a layer argument |
+| `python-async` | `async def`, threads, processes |
+| `python-persistence` | an ORM, a transaction, a migration |
+| `python-packaging` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation |
+| `python-cli` | an entry point with an argument parser |
+| `python-security` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
+| `python-performance` | a path already measured and found slow |
+| `python-examples` | an example that ships — docstring, README, `examples/` |
+| `python-rules-authoring` | editing these rules or skills |
+| `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `tenacity`, `niquests`, `orjson` |
 
 Style, layout and mechanical complexity belong to the formatter, the linters and the type checker.
 **Nothing here restates what a tool decides.** Which tools a project runs and how they are
@@ -393,7 +393,7 @@ caller the grep cannot see, and is not covered.
 
 ## Types and Data — Defaults
 
-The decisions behind these are in `topics/types.md`; these are the ones that apply everywhere.
+The decisions behind these are in the `python-types` skill; these are the ones that apply everywhere.
 
 - **mypy `--strict` clean**, which is what makes the annotations mandatory. `T | None`, never
   `Optional[T]`; PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` + `Generic`.

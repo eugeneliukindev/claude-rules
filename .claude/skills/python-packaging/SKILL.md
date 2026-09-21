@@ -1,8 +1,18 @@
+---
+name: python-packaging
+description: >-
+  The public surface of a Python package: the three levels of visibility, __all__ and the flat
+  façade, _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability
+  tiers as directories, semantic-versioning and deprecation rules, and keeping an optional
+  dependency inside the one implementation module that uses it. Use when building a Python package
+  other code imports — a library, an SDK, a shared kernel — or when working with __init__.py,
+  optional extras, a façade or a deprecation.
+---
+
 # Packaging and Public Surface
 
-Not loaded automatically — open it when building a package other code imports: a shared kernel, an
-SDK, a library, or anything with optional extras. The underscore rule that applies to every module
-is in `core.md`; this file is about the surface a package promises.
+The underscore rule that applies to every module is in `core.md`; this file is about the surface a
+package promises.
 
 ## The Three Levels of Visibility
 
@@ -194,7 +204,7 @@ the factory, the package `__init__.py`, or anything above the implementation.
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
   contract bans the library from the whole package and lists every permitted edge — see
-  `topics/wiring.md`.
+  the `python-wiring` skill.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.
