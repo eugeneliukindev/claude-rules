@@ -14,20 +14,15 @@ who then had to live with the choice.
 
 ## General
 
-- **Reveal intent.** A name answers three questions without a comment: what is it, why does it
-  exist, how is it used. If a comment is needed to explain the name, the name is wrong.
 - **Spell it out.** No abbreviations or jargon unless universally known (`url`, `id`, `http`,
   `json`, `sql`): `configuration`, not `cfg`; `response`, not `resp`.
 - **The filler words the linter misses are the same idea one level up**: `manager`, `helper`,
   `util`, `misc`, `thing`, `tmp`. And the distinction it cannot make: a qualified compound is a
   real name — `pydantic` ships `FieldInfo`, where `Info` names the *description of* a field as
   opposed to the field itself. `info` alone would name nothing.
-- **Length matches scope.** Three lines inside a comprehension may be short; a module-level or
-  public name is fully explicit.
 - **One concept — one word, everywhere.** `fetch` *or* `retrieve`, `remove` *or* `delete`,
   `customer` *or* `client` — never both.
-- **Use domain vocabulary**, not generic programmer words (`record`, `entry`, `node`) unless the
-  domain itself is generic. Pronounceable, searchable, no jokes or internal slang.
+- **Domain vocabulary**, not programmer words (`record`, `entry`, `node`), unless the domain is.
 
 ### Look at the Family Before You Name
 
@@ -89,24 +84,22 @@ one concept and two vocabularies. Rename the three.
 - **Async functions are not renamed** — `async def` is visible and the checker enforces `await`.
 - **Private helpers are still full names**: `_normalize_header`, not `_helper` / `_impl`.
 
-  ```python
-  # WRONG — generic verb, hidden side effect, negated predicate, machinery, participle
-  def process_user_data(payload: dict[str, str]) -> None: ...
-  def get_report(report_id: int) -> Report: ...          # also writes to the audit log
-  def is_not_ready(job: Job) -> bool: ...
-  def run_levenshtein(left: str, right: str) -> int: ...
-  def matched(order: Order) -> MatchedFields: ...
+```python
+# WRONG — generic verb, hidden side effect, negated predicate, machinery, participle
+def process_user_data(payload: dict[str, str]) -> None: ...
+def fetch_report(report_id: ReportId) -> Report: ...      # also writes to the audit log
+def is_not_ready(job: Job) -> bool: ...
+def run_levenshtein(left: str, right: str) -> int: ...
+def matched(order: Order) -> MatchedFields: ...
 
-  # CORRECT
-  def normalize_user_profile(profile: UserProfile) -> UserProfile: ...
-  def fetch_report(report_id: int) -> Report: ...
-  def record_report_access(report_id: int, user_id: int) -> None: ...
-  def is_ready(job: Job) -> bool: ...
-  def edit_distance(left: str, right: str) -> int: ...   # pure query — noun naming the result
-  def match_order(order: Order) -> MatchedFields: ...    # command — verb
-  def find_user(user_id: int) -> User | None: ...
-  def get_user(user_id: int) -> User: ...                # raises UserNotFoundError
-  ```
+# CORRECT
+def normalize_user_profile(profile: UserProfile) -> UserProfile: ...
+def fetch_report(report_id: ReportId) -> Report: ...
+def record_report_access(report_id: ReportId, user_id: UserId) -> None: ...
+def is_ready(job: Job) -> bool: ...
+def edit_distance(left: str, right: str) -> int: ...    # pure query: a noun naming the result
+def match_order(order: Order) -> MatchedFields: ...     # a verb, not a participle
+```
 
 ## Variables and Parameters
 
@@ -123,7 +116,7 @@ one concept and two vocabularies. Rename the three.
   mistake that produces a plausible result.
 - **Intermediate results are named after what they are, not their stage**: `discounted_price`, not
   `result2`. **Optional values say so in the type, not the name**: `user: User | None`, never
-  `maybe_user`. **Constants describe the meaning, not the number**: `MAX_LOGIN_ATTEMPTS = 5`.
+  `maybe_user`. **Constants describe the meaning, not the number**: `MAX_LOGIN_ATTEMPTS: Final = 5`.
 - **Parameters are part of the public API** — callers pass them by keyword, so they must read in
   isolation. **Name the role, not the type**: `recipient: str`, not `string`; `predicate:
   Callable[…]`, not `func`; `on_complete` for a callback. Do not repeat the function name:
@@ -169,59 +162,41 @@ one concept and two vocabularies. Rename the three.
   applies it everywhere, never two.
 - **Exceptions name the failure, not the location.** `sqlalchemy`'s hierarchy is the reference:
   `NoSuchColumnError`, `NoReferencedTableError`, `AmbiguousColumnError`, `CircularDependencyError`
-  — each says what went wrong precisely enough to act on. Never `CustomException`, `MyError`,
-  `Failure`. **A package prefix on exceptions is for libraries only**: `PydanticUserError` earns it
-  by surfacing in someone else's traceback next to `ValueError`. Inside an application, where every
-  exception in the traceback is yours, the prefix is noise on every line.
+  — each says what went wrong precisely enough to act on. **A package prefix is for libraries
+  only**: `PydanticUserError` earns it in someone else's traceback; in an application every
+  exception in the traceback is yours, and the prefix is noise.
 - **Methods drop the class name**: `Order.total()`. **Properties are nouns, methods are verbs** — a
   property that does I/O or heavy computation is a bug; make it a `fetch_…` / `compute_…` method.
 - **Type aliases name the domain meaning**: `type Headers = dict[str, str]`. A structural type
-  describing someone else's shape takes `-Like`: `PathLike`, `_TypeVarLike`. A kind suffix carries the distinction
-  between related aliases — `Color` is the class, `ColorTuple` the shape, `ColorType` the set of
-  accepted inputs. Prefer `NewType` over a bare alias when two values share a runtime type but must
-  not be confused.
+  describing someone else's shape takes `-Like`: `PathLike`, `_TypeVarLike`. A kind suffix carries
+  the distinction between related aliases — `Color` is the class, `ColorTuple` the shape,
+  `ColorType` the set of accepted inputs. Prefer `NewType` over a bare alias when two values share
+  a runtime type but must not be confused.
 - **Type parameters are single capital letters** — `T` by default, `K`/`V` for key/value, `P`/`R`
   for `ParamSpec`/return. The bound carries the meaning (`[T: BaseModel]`); the letter does not
-  need to. Descriptive names are for the rare generic with three or more parameters.
-  **Below Python 3.12 the same letters take the `_T` shape**: a `TypeVar` is a module-level name,
-  so it is private and suffixed — `_T`, `_KT`, `_VT`, `_P`, `_R`. Where one module declares several
-  and the letters stop telling them apart, the role goes in front of the suffix, never instead of
-  it: `_BackendT`, `_ModelT`. A variance marker goes after it — `_ModelTCo` for the covariant
-  twin — so the two sort together and read as a pair. One shape per codebase, decided by the
-  version floor, never both.
+  need to. Descriptive names are for the rare generic with three or more parameters. Below 3.12 a
+  `TypeVar` takes the private suffixed shape — `_T`, `_BackendT`; the details are in `python-types`.
 
-  ```python
-  # 3.12+ — the parameter belongs to the class, so it needs no module-level name
-  class Repository[T: Entity](ABC): ...
+```python
+# WRONG — Base on a contract, the mechanism as the name, a suffix that names nothing, plural enum
+class BaseUserDirectory(ABC): ...           # nothing to inherit: it hands down no implementation
+class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
+class DataManager(ABC): ...
+class OrderStatuses(Enum): ...
 
-  # 3.11 and below — a module-level TypeVar: private, suffixed, bound doing the work
-  _T = TypeVar('_T', bound=Entity)
-  _BackendT = TypeVar('_BackendT', bound=SyncBackend | AsyncBackend)
+# CORRECT — the contract names the capability, the implementations name what makes them concrete
+class UserDirectory(ABC):
+    @abstractmethod
+    def find(self, email: str) -> User | None: ...
 
-  class Repository(ABC, Generic[_T]): ...
-  ```
-
-  ```python
-  # WRONG — Base on a contract, Base on a leaf, a suffix that names nothing, plural enum
-  class BaseUserDirectory(ABC): ...           # nothing to inherit: it hands down no implementation
-  class BaseLdapUserDirectory: ...            # a leaf, and what makes it concrete is what matters
-  class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
-  class DataManager(ABC): ...
-  class OrderStatuses(Enum): ...
-
-  # CORRECT — the contract names the capability, the implementations name what makes them concrete
-  class UserDirectory(ABC):
-      @abstractmethod
-      def find(self, email: str) -> User | None: ...
-
-  class LdapUserDirectory(UserDirectory): ...
-  class InMemoryUserDirectory(UserDirectory): ...
-  class UserNotFoundError(LookupError): ...
-  ```
+class LdapUserDirectory(UserDirectory): ...
+class InMemoryUserDirectory(UserDirectory): ...
+class OrderStatus(Enum): ...
+```
 
 ## The Name Fixes the Abstraction Level
 
-A name fixes the abstraction level of a function or class; the body **MUST** stay at that level.
+A name fixes the abstraction level of a function or class; the body stays at that level.
 Logic "leaks" when a generically named thing starts knowing about specific cases, or when a
 specifically named thing takes over a sibling's responsibility. Both make the name lie, and a lying
 name is worse than no name.
@@ -244,28 +219,21 @@ name is worse than no name.
   Any word outside that prediction is a leak: `slack`, `vip`, `postgres` inside `save_entity` or
   `calculate_total`.
 
-  ```python
-  # WRONG — VIP rule leaked into a generic calculation
-  def calculate_total(order: Order) -> Money:
-      subtotal = sum(line.price * line.quantity for line in order.lines)
-      if order.customer.tier == "vip":
-          subtotal *= Decimal("0.9")
-      return subtotal
+```python
+# WRONG — a VIP rule leaked into a generic calculation
+def calculate_total(order: Order) -> Money:
+    subtotal = sum((line.price * line.quantity for line in order.lines), start=Money.zero())
+    if order.customer.tier == "vip":
+        return subtotal * Decimal("0.9")
+    return subtotal
 
-  # CORRECT — the generic function stays generic; the variation is injected
-  class DiscountPolicy(ABC):
-      @abstractmethod
-      def apply(self, subtotal: Money, order: Order) -> Money: ...
+# CORRECT — the variation is data; one concretely named place knows about tiers
+def calculate_total(order: Order, *, discount_rate: Decimal) -> Money:
+    subtotal = sum((line.price * line.quantity for line in order.lines), start=Money.zero())
+    return subtotal * (1 - discount_rate)
 
-  class VipDiscountPolicy(DiscountPolicy):
-      @override
-      def apply(self, subtotal: Money, order: Order) -> Money:
-          return subtotal * Decimal("0.9")
-
-  def calculate_total(order: Order, discount: DiscountPolicy) -> Money:
-      subtotal = sum(line.price * line.quantity for line in order.lines)
-      return discount.apply(subtotal, order)
-  ```
+def vip_discount_rate(customer: Customer) -> Decimal: ...
+```
 
 ## Names Are Local
 
@@ -279,9 +247,8 @@ context that was never its own.
 
 Four kinds leak, and each becomes a lie on a predictable day:
 
-- **The argument's history** — `merged`, `downloaded`, `validated`, `cleaned`. The work is the same
-  whatever happened before the call, and the first caller who passes something else makes the name
-  wrong.
+- **The argument's history** — `merged`, `downloaded`, `validated`, `cleaned`. The work does not
+  depend on it, and the first caller who passes something else makes the name wrong.
 - **A place in this project** — `runs`, `data_dir`, `tmp`. These name one repository's layout. The
   role is `source`, `into`, `where`.
 - **The caller or its intent** — `save_for_upload`, `parse_for_the_nightly_job`, `for_reporting`.
@@ -292,34 +259,28 @@ Four kinds leak, and each becomes a lie on a predictable day:
   answered it keeps that name through two replacements of the service, and then documents a
   vendor nobody in the codebase still calls.
 
-  ```python
-  # WRONG — two of the three names describe the caller's filesystem, not the work
-  def convert(merged: Path, runs: Path, *, quality: str) -> Path: ...
+```python
+# WRONG — one name carries the argument's history, the other a place in this project
+def archive_logs(merged: Path, runs: Path) -> Path: ...
 
-  convert(merged_model, project_runs, quality="high")
+# CORRECT — the signature states the roles
+def archive_logs(source: Path, into: Path) -> Path: ...
+```
 
-  # CORRECT — the signature states what the function needs
-  def convert(model: Path, into: Path, *, quality: str) -> Path: ...
-  ```
+```python
+# WRONG — the class is named for whoever answers it, the function for whoever calls it
+class AcmeCrmCustomerSchema(BaseModel): ...
+def parse_for_nightly_job(payload: bytes) -> Customer: ...
 
-  ```python
-  # WRONG — the class is named for whoever answers it, the function for whoever calls it
-  class AcmeCrmCustomerResponseSchema(BaseModel): ...
-  def parse_for_nightly_job(payload: bytes) -> Customer: ...
-
-  # CORRECT — named for what they describe and what they do
-  class CustomerRecord(BaseModel): ...
-  def parse_customer(payload: bytes) -> Customer: ...
-  ```
+# CORRECT — named for what they describe and what they do
+class CustomerSchema(BaseModel): ...
+def parse_customer(payload: bytes) -> Customer: ...
+```
 
 **The carve-out, and it is narrow.** An implementation *is* named for what makes it concrete —
 `SlackNotifier`, `PostgresUserRepository`, `RedisTokenStore`. The vendor is the whole distinction
 between it and its siblings behind the same contract. The test still applies: delete the contract,
 and the name must still say which implementation this is.
-
-**Values leak too.** A constant whose value names a neighbour ages the same way: a build artefact
-whose filename carries the vendor it was derived from outlives that vendor, and every consumer
-that mounts the file by name then repeats a claim that stopped being true.
 
 ## Naming Self-Check
 

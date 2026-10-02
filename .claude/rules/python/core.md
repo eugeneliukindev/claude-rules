@@ -10,12 +10,13 @@ Everything else is a skill, invoked when the work reaches it — by its own desc
 
 | Skill | When |
 |---|---|
-| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc` |
+| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc`, a dunder |
 | `python-boundaries` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
 | `python-wiring` | an entry point, where an object is built, a settings field, a layer argument |
+| `python-contracts` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live |
 | `python-async` | `async def`, threads, processes |
-| `python-persistence` | an ORM, a transaction, a migration |
-| `python-packaging` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation |
+| `python-persistence` | a transaction boundary, a repository, a migration plan |
+| `python-packaging` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
 | `python-cli` | an entry point with an argument parser |
 | `python-security` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
 | `python-performance` | a path already measured and found slow |
@@ -24,23 +25,21 @@ Everything else is a skill, invoked when the work reaches it — by its own desc
 | `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `tenacity`, `niquests`, `orjson` |
 
 Style, layout and mechanical complexity belong to the formatter, the linters and the type checker.
-**Nothing here restates what a tool decides.** Which tools a project runs and how they are
-configured is the project's business, not this document's. When a tool and this file disagree, the
-tool wins and this file gets a PR.
+**Nothing here restates what a tool decides**, and which tools a project runs is the project's
+business. When a tool and this file disagree, the tool wins and this file gets a PR.
 
 Two things about living with those tools are not configuration and do belong here:
 
 - **A suppression carries its rule code and its reason on the same line.** An unexplained one is a
   defect in its own right, and the count only ever ratchets down.
-- **A limit is named, not raised.** One module with fifteen members must not buy every other module
-  the right to fifteen: the limit stays and the file is named, with a reason that can be checked
-  later and that stops applying when the file changes. When three files need the same escape, stop
-  editing the configuration — the rule is describing something real about the architecture.
+- **A limit is named, not raised.** One module with fifteen members must not buy every other
+  module the right to fifteen: the limit stays and the file is named, with a checkable reason. When
+  three files need the same escape, the rule is describing something real about the architecture.
 
 ## When Rules Conflict
 
 1. An explicit instruction from the person you are working with, for this task.
-2. A `MUST` / `NEVER` rule in these files.
+2. A rule these files state without qualification.
 3. What `pydantic` or `sqlalchemy` does in the same situation — they are large, long-lived, and
    have paid for their choices.
 4. Consistency with the surrounding code of the same package.
@@ -96,18 +95,16 @@ And three properties of the system as a whole:
 - **Extract any condition with more than two operands into a named predicate.** The linter measures
   the complexity but cannot name the concept: `if _is_eligible_for_refund(order):` says what the
   three clauses meant.
-- **State the positive case first**, and keep the shorter branch first. No double negatives — rename
-  the flag instead.
 - **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
   of variants or nested data; not to compare one scalar against constants, and not for two branches.
-- **A bare lowercase name in a pattern binds, it does not compare.** Constants in patterns must be
-  dotted — `case OrderStatus.PAID:`, never `case PAID:`. This is a silent logic bug, and it is the
-  one thing about `match` worth memorising.
+- **A bare name in a pattern binds, it does not compare** — whatever its case. Constants in
+  patterns are dotted: `case Order(status=OrderStatus.PAID):`. Nested, `case Order(status=PAID):`
+  matches every order and binds `PAID`; it is the one thing about `match` worth memorising.
 - **Every `match` over a union or `Enum` ends with exhaustiveness**: `case _: assert_never(value)`,
   or a named error. A silent fall-through is forbidden.
 - **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
-  `_FACTORY[source.kind](**options)`. Adding a kind is one entry, and the set is readable in one
-  place instead of spread over branches.
+  `_BUILDER_BY_KIND[source.kind](**options)`. Adding a kind is one entry, and the set is readable
+  in one place instead of spread over branches.
 - **A comprehension holds one transformation; anything more is a loop.** The judgement is about
   how much the reader can hold, not how much fits.
 - **Write a generator function for any lazy sequence longer than a one-line expression**, and for
@@ -150,33 +147,22 @@ interface as complex as their body and hide nothing.
   `_log_outcome`) rather than a standalone action. Splitting along time instead of knowledge
   produces helpers that can never be understood alone.
 
-**Never extract a function to have somewhere to put a docstring.** When the reasoning does not fit
-in the code it goes inline as one "why" comment; a function created as a home for prose is a
-comment with call overhead.
+**Never extract a function to have somewhere to put a docstring** — reasoning that does not fit
+the code is one inline "why" comment, not a comment with call overhead.
 
-  ```python
-  # WRONG — a stage name, one call site, and a docstring several times the size of the body
-  def _log_outcome(stats: ImportStats | None, imported: int) -> None:
-      """Record how the import ended and what the upstream feed answered.
+```python
+# WRONG — a stage name, one call site, a docstring several times the size of the body
+def _log_outcome(imported: int, requests: int) -> None:
+    """Log both counts.
 
-      An empty result says nothing on its own: an expired API key, a rate-limit
-      refusal and an honestly empty feed all look the same.
-      """
-      if stats is None:
-          logger.info("import finished: imported=%s, no stats", imported)
-          return
-      logger.info("import finished: imported=%s requests=%s", imported, stats.requests)
+    Zero imports alone is ambiguous: an expired key, a rate limit and an empty feed look alike.
+    """
+    logger.info("import finished", extra={"imported": imported, "requests": requests})
 
-  # CORRECT — inline, with the one fact the code cannot state itself
-  def run_import(...) -> None:
-      ...
-      # Zero results is ambiguous without stats: an expired key, a rate limit and
-      # a changed payload format all look identical in the log otherwise.
-      if stats is None:
-          logger.info("import finished: imported=%s, no stats", imported)
-      else:
-          logger.info("import finished: imported=%s requests=%s", imported, stats.requests)
-  ```
+# CORRECT — the same call inline, the reason in one line
+# requests tells an expired key or a rate limit apart from an honestly empty feed
+logger.info("import finished", extra={"imported": imported, "requests": requests})
+```
 
 ### Body Layout
 
@@ -189,10 +175,9 @@ the result computed into a well-named local and returned last.
   stops being a boolean trap and stays a design fault: `export(orders, *, as_csv=True)` does two
   things under one name. Take a `Literal` or `Enum` format instead, or write both functions.
 - **The branch does not pick the return type.** `str` on one path and `list[str]` on another
-  forces every caller to re-discover which it got. A union is fine when it is a **named type the
-  caller handles uniformly** — `type Compared = frozenset[str] | str`, matched once and never
-  asked about again; it is a defect when the caller has to reconstruct which branch ran. `None` is
-  legitimate only for `find_…`-style lookups and procedures.
+  forces every caller to re-discover which it got. A union is fine when it is a **named closed
+  type** — `type PaymentOutcome = Captured | Declined`, matched exhaustively — never an accident of
+  which branch ran. `None` is legitimate only for `find_…`-style lookups and procedures.
 - **Parameters are ordered subject, required inputs, optional configuration**; injected
   dependencies come first — they are the function's environment.
 - **Do not reach outside.** A function uses only its parameters and module-level constants: no
@@ -229,22 +214,23 @@ Before reaching for a class, consider `functools.partial` or a closure, a frozen
 options as a parameter, or **splitting the module** — a long module of independent functions is
 idiomatic Python and does not improve by growing a `self`.
 
-  ```python
-  # WRONG — the same client and settings threaded through every function
-  def fetch_page(client: Client, settings: Settings, url: str) -> str: ...
-  def fetch_listing(client: Client, settings: Settings, page: int) -> list[str]: ...
-  def fetch_product(client: Client, settings: Settings, url: str) -> Product: ...
+```python
+# WRONG — the same client and base URL threaded through every function
+def fetch_product_urls(client: Client, base_url: str, page_number: int) -> list[str]: ...
+def fetch_product(client: Client, base_url: str, product_id: ProductId) -> Product: ...
+def fetch_price(client: Client, base_url: str, product_id: ProductId) -> Money: ...
 
-  # CORRECT — trigger 4: the repeated parameters were the constructor
-  class ProductCatalogue:
-      def __init__(self, client: Client, settings: Settings) -> None: ...
-      def fetch_page(self, url: str) -> str: ...
-      def fetch_listing(self, page: int) -> list[str]: ...
-      def fetch_product(self, url: str) -> Product: ...
-  ```
+# CORRECT — trigger 4: the repeated parameters were the constructor
+class ProductCatalogue:
+    def __init__(self, client: Client, base_url: str) -> None: ...
+    def fetch_product_urls(self, page_number: int) -> list[str]: ...
+    def fetch_product(self, product_id: ProductId) -> Product: ...
+    def fetch_price(self, product_id: ProductId) -> Money: ...
+```
 
 **The rest of SOLID, where it breaks**: depend on abstractions — inject, never instantiate a
-collaborator inside a class; a subclass never narrows a return type or widens a parameter.
+collaborator inside a class. A subclass is usable wherever its parent is: it never narrows a return
+type or widens a parameter.
 
 ### One Actor per Module and Class
 
@@ -256,79 +242,22 @@ name who would ask to change each function, and two answers are two modules; spl
 and presentation follows from it and does not replace it. The data stays one frozen dataclass, each
 actor gets a module of functions over it, and old entry points survive as a façade that delegates.
 
-  ```python
-  # WRONG — finance, HR and the DBA all edit one class, and a fix for one ships to all three
-  class Employee:
-      def calculate_pay(self) -> Money: ...
-      def report_hours(self) -> HoursReport: ...
-      def save(self) -> None: ...
+```python
+# WRONG — one module, two actors: finance changes _regular_hours for pay, HR's report moves too
+def _regular_hours(timesheet: Timesheet) -> Decimal: ...
+def calculate_pay(timesheet: Timesheet) -> Money: ...        # finance
+def report_hours(timesheet: Timesheet) -> HoursReport: ...   # HR
 
-  # CORRECT — one record, one module per actor
-  def calculate_pay(employee: Employee) -> Money: ...                   # payroll.py
-  def report_hours(employee: Employee) -> HoursReport: ...              # timesheets.py
-  def save_employee(session: Session, employee: Employee) -> None: ...  # employee_store.py
-  ```
-
-### A Contract Is a Base Class with `@abstractmethod`; `Protocol` Is for Code You Do Not Control
-
-A `Protocol` describes a *shape*; a base class the implementations inherit declares a *contract*.
-Inside an application every implementation is yours to write, so the contract is nameable and the
-inheritance is free — and it buys two things structural typing cannot:
-
-- **The failure arrives at the class, not at the call site.** An implementation that forgot a
-  method is an error where it is defined; a `Protocol` says nothing until someone passes it
-  somewhere, and the error surfaces at that one call site, possibly far away.
-- **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent where
-  the class is defined; structural conformance is invisible until you diff the methods by hand.
-
-**`@abstractmethod` alone gets the static guarantee; `ABC` adds a runtime one, and a metaclass.**
-The checker refuses to instantiate an abstract class from the decorators alone; `ABCMeta` adds the
-refusal at construction time, and costs a metaclass that conflicts with Django's models, with mypyc
-and with any other library wanting that slot. **Default to `ABC`** where nothing is compiled and no
-foreign metaclass is inherited — it also catches an implementation built through a path the checker
-does not see. Otherwise **drop to a plain base class with `@abstractmethod`**, losing nothing the
-checker gives. **Decide once per project**, rather than mixing both shapes in one tree.
-
-Use `Protocol` when you cannot make the other side inherit: a third-party type, a duck-typed shape
-someone else's code produces, a callback signature. **Never wrap a stdlib ABC in a `Protocol`** —
-`Iterable`, `Mapping`, `Sized` already name those capabilities. **A class with no abstract methods
-is not a contract**, whatever it is called.
-
-### A Contract and Its Implementations Are One Directory
-
-The contract is the reason the implementations exist, so they live together — and nothing else
-does. One directory per capability, named for it; the contract in `base.py`; one module per
-implementation, named for what makes it concrete; `__init__.py` exporting the contract and the
-implementations and nothing more.
-
-```
-notifications/
-    base.py         # Notifier(ABC) — the contract, and the errors it raises
-    slack.py        # SlackNotifier(Notifier) — imports the Slack SDK, and is the only file that does
-    email.py        # EmailNotifier(Notifier) — imports the SMTP client
-    _templates.py   # private to the group: the bodies email.py renders
-    __init__.py     # the contract and the implementations, nothing else
+# CORRECT — payroll.py and hours_report.py, each with its own private _regular_hours;
+# what they share is the frozen Timesheet, never the rule
 ```
 
-- **`base.py` is a position, not a `Base` class.** The file sits at the base of the group; the
-  class inside is still named for the capability — `Notifier`, never `BaseNotifier`.
-- **The contract's module imports nothing any implementation needs.** That is what makes the split
-  worth having: a new implementation is a new file, and no existing file changes. An import of a
-  driver in `base.py` silently makes every consumer of the contract depend on that driver.
-- **A helper only one implementation uses is private and stays in the group** — `_templates.py`
-  beside `email.py`, never in a shared `utils`.
-- **No contract, no directory.** An implementation that will only ever be the only one is a single
-  module named concretely, with no `base.py` above it. The group appears when the second
-  implementation does, or when a test needs a fake — the same threshold that earns the contract.
-- **A test fake is an implementation, and it lives with the tests.** The group is what ships.
+The layer split alone would have passed the wrong version: both functions are pure domain logic.
+That is the duplication DRY tells you to keep.
 
-### Dunders
-
-Implement a dunder when the behaviour it represents is a natural fit, never to satisfy a style
-preference. `__repr__` on every domain class that is not a dataclass: unambiguous, identifying
-fields, no secrets. `__eq__` and `__hash__` come together or not at all — value objects get both
-from `@dataclass(frozen=True)`; entities compare by identity and say so. Implementing a container
-protocol means subclassing the matching `collections.abc` ABC, not hand-writing every dunder.
+**A contract is a base class with `@abstractmethod` that implementations inherit** — a missing
+method fails where the class is defined, not at a distant call site. `Protocol` is for code you
+cannot make inherit; the rest is in `python-contracts`.
 
 ## Module Layout and Encapsulation
 
@@ -347,37 +276,33 @@ Every module has the same order, so a reader always knows where to look:
 11. Private functions, in call order.
 12. The `__main__` guard — a single call to `main()`, nothing else.
 
-**The order is an intent, and Python enforces a dependency underneath it.** A name can only be
-written after everything it is built from, so three positions yield: a validator a type alias is
-built from comes before that alias and therefore before the logger; a constant derived from a class
-cannot precede the class — and when that happens the module is holding two things, the shape and
-what is computed from it, so **split it** and the constants land at the top again. Anything else
-that will not fit the order is the same signal: look for the seam, do not renumber the list.
+**Where Python's definition order overrides this one, it wins** — a validator comes before the
+type alias built from it. Anything else that will not fit is a seam: a constant derived from a class
+means the module holds the shape and what is computed from it, so **split it** rather than
+renumber the list.
 
 - **Size is a smell, not a limit.** The linters enforce a ceiling; the seam is your judgement.
 - **No executable statements at import time** other than constants and the logger. No network
   calls, no file reads, no settings construction — these make imports slow, order-dependent and
   untestable. **`main()` is a function, never module-level code.**
-- **A module name that reaches `sys.path` directly must not shadow a standard-library module** —
-  `types`, `json`, `logging`, `io`, `abc`: a top-level module of a distribution, a loose script, a
-  scheduler DAG file. Nested in a package it is only ever `mypackage.json` and is named after its
-  contents; ruff `A005` fires on both, so such a package turns it off once, with the reason.
 
 ### Every Top-Level Name Not Used Outside Takes an Underscore
 
 Classes, functions, constants and type aliases alike. A settings section that only appears as a
 field of the root, a row shape only its own repository builds, a policy only its own service
 applies, a limit only its own function reads, an alias only its own signatures mention: each takes
-the prefix — `_SectionSettings`, `_LOGGED_ANSWER`, `_Compared`. Without it the name reads as part
-of the module's surface, and the first import from another module makes it one for good.
+the prefix — `_RetrySettings`, `_OrderRow`, `_RefundPolicy`, `_MAX_BATCH_ROWS`, `_Headers`. Without
+it the name reads as part of the module's surface, and the first import from another module makes it
+one for good.
 **Constants and aliases are the ones that get missed**: a class draws attention once imported, a
 constant is quietly read from a second module and ends up with two homes and no owner.
 
-The test is mechanical, and worth running over a package at once: for each top-level name, grep it
-across the tree, drop the file that defines it, and prefix everything left with no hits. Run it
-**after** the move that made a name internal — that is when a public name quietly stops being one.
-A name a framework reaches through a decorator — a CLI command, a route handler, a fixture — has a
-caller the grep cannot see, and is not covered.
+The test is mechanical: for each top-level name, search the tree without the file that defines
+it, and prefix everything with no hits. A script does it:
+`python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py ROOT`. Run it **after**
+the move that made a name internal — that is when a public name quietly stops being one. A name a
+framework reaches through a decorator — a CLI command, a route handler, a fixture — has a caller
+the search cannot see; the script lists those separately, and exempts `main`, `run` and `logger`.
 
 ### Imports
 
@@ -388,8 +313,6 @@ caller the grep cannot see, and is not covered.
   exports implementations whose libraries are separate extras. Each carries the reason on the line.
   Generic "lazy loading" is not one of them — restructure instead.
 - **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
-- **Rename on import only for a community-standard alias or an actual clash** — never to shorten.
-- **No side effects on import.** Importing a module must be free, idempotent, order-independent.
 - **Never depend transitively on something you import**; every direct dependency is declared, with
   a lower bound. **Never feature-detect with `try: import x`** in application code.
 
@@ -398,19 +321,16 @@ caller the grep cannot see, and is not covered.
 The decisions behind these are in the `python-types` skill; these are the ones that apply everywhere.
 
 - **mypy `--strict` clean**, which is what makes the annotations mandatory. `T | None`, never
-  `Optional[T]`; PEP 695 generics (`class Repository[T: Entity]`), never `TypeVar` + `Generic`.
+  `Optional[T]`; on a 3.12+ floor PEP 695 generics (`class Repository[T: Entity]`), never
+  `TypeVar` + `Generic`.
 - **Parameters take `collections.abc` ABCs, returns are concrete.** `Mapping[str, int]` in,
   `dict[str, int]` out. This is also what handles variance.
-- **`Any` is rarely the type you want, and never the one you reach for first.** It does not mean
-  "unknown", it means "stop checking" — and a function *returning* `Any` spreads that silence to
-  every caller. `object` is what "unknown" is spelled as: it forces narrowing. Reach for `Any` when
-  a library fixes the signature and there is nothing to narrow to; keep it in that one position and
-  out of the rest.
+- **"Unknown" is spelled `object`, which forces narrowing; `Any` means "stop checking"**, and a
+  function *returning* it spreads that silence to every caller. `Any` stays in the one position
+  where a library fixes the signature and there is nothing to narrow to.
 - **`@dataclass(frozen=True, slots=True, kw_only=True)` by default.** `frozen` is about mutability,
-  `slots` about the attribute set, `kw_only` about the call site. The third is the one usually
-  forgotten and the one that pays daily: a field added in the middle stops being a silent breaking
-  change, and two adjacent fields of the same type can no longer be swapped by a caller.
-  `_Rejected(order.id, reason, title)` reads fine and is wrong in three ways. Positional
+  `slots` about the attribute set, `kw_only` about the call site — the one usually forgotten:
+  `Transfer(recipient_id, sender_id, amount)` type-checks and moves the money backwards. Positional
   construction survives only where the order is the concept — `Point(x, y)`, `Range(low, high)`.
   Drop `frozen` only for a genuine aggregate root that must change over time, and say so in its
   name — `Cart`, `Session`; derive copies with `dataclasses.replace()`.
@@ -422,7 +342,6 @@ The decisions behind these are in the `python-types` skill; these are the ones t
   a dict read-only. **Never mutate arguments** — a function that does is named for it and annotated
   `MutableSequence`; everything else copies and returns. **Never return internal mutable state**
   from a getter.
-- **Prefer pure functions**: input in, output out, no reads of global state. Push I/O to the edges.
 - **A string that is user-facing or used twice is a constant** or an `Enum` member. The linter
   catches the magic *number*; a repeated literal string it will not.
 - **`os` is correct where `pathlib` has no answer**, and only there: permission probing
@@ -441,10 +360,8 @@ The decisions behind these are in the `python-types` skill; these are the ones t
   text.
 - **Domain code raises domain exceptions.** A driver's or client's exception never escapes a public
   function — translate at the boundary, and preserve the cause with `raise … from`.
-- **Raise as early as possible** — validate at the boundary, fail on the first invalid value.
 - **Never return `None`, `False`, `-1` or an empty collection to signal an error** in a function
   whose name promises a value. `None` is for `find_…`-style lookups where absent is normal.
-- **Never use exceptions for ordinary control flow.**
 - **Keep `try` blocks minimal**: only the statements that can raise; everything else before the
   `try` or in `else:`.
 - **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
@@ -452,39 +369,33 @@ The decisions behind these are in the `python-types` skill; these are the ones t
 - **Catch at the level that can handle it** — retry, fall back, convert, report. A layer that can
   only log and re-raise should not catch at all. Log once, at the boundary that handles it.
 
-  ```python
-  # WRONG — broad catch, swallowed cause, huge try, error as None
-  def load_user(user_id: int):
-      try:
-          response = client.get(f"/users/{user_id}")
-          user = User(**response.json())
-          cache.set(user_id, user)
-          return user
-      except Exception:
-          logger.error("failed")
-          return None
+```python
+# WRONG — broad catch, swallowed cause, a try around everything, the error returned as None
+def load_user(client: Client, user_id: UserId) -> User | None:
+    try:
+        response = client.get(f"/users/{user_id}")
+        response.raise_for_status()
+        return User.from_payload(response.json())
+    except Exception:
+        logger.error("failed")
+        return None
 
-  # CORRECT — narrow try, translated with cause, never returns None for an error
-  def load_user(client: Client, cache: UserCache, user_id: UserId) -> User:
-      try:
-          response = client.get(f"/users/{user_id}")
-          response.raise_for_status()
-      except HTTPStatusError as error:
-          if error.response.status_code == HTTPStatus.NOT_FOUND:
-              raise UserNotFoundError(user_id) from error
-          raise UserServiceError(f"Fetching user {user_id} failed") from error
-
-      user = User.from_payload(response.json())
-      cache.set(user_id, user)
-      return user
-  ```
+# CORRECT — narrow try, translated with its cause, an error is never a return value
+def load_user(client: Client, user_id: UserId) -> User:
+    try:
+        response = client.get(f"/users/{user_id}")
+        response.raise_for_status()
+    except HTTPStatusError as error:
+        if error.response.status_code == HTTPStatus.NOT_FOUND:
+            raise UserNotFoundError(user_id) from error
+        raise UserServiceError(f"Fetching user {user_id} failed") from error
+    return User.from_payload(response.json())
+```
 
 ## Logging
 
-- One logger per module, obtained by module name, defined at the top.
-- Levels have fixed meaning: `DEBUG` diagnostic detail; `INFO` normal business events; `WARNING`
-  recoverable anomaly; `ERROR` an operation failed and someone must look; `CRITICAL` the process
-  cannot continue. Not `ERROR` for an expected user mistake.
+- `logging.getLogger(__name__)`, once per module. `ERROR` means someone must look — never for an
+  expected user mistake.
 - **Never log secrets or PII** — tokens, passwords, card numbers, raw request payloads. Log
   identifiers, not objects, and structured fields (`extra={...}`) rather than text encoding them.
 - Message style: lower-case start, no trailing punctuation, present tense, event first then
@@ -494,18 +405,9 @@ The decisions behind these are in the `python-types` skill; these are the ones t
 
 ## Resources
 
-- **Anything acquired is released by a context manager**: files, locks, sessions, transactions,
-  clients, temporary state. `try/finally: close()` is only for *implementing* one.
-- **Own resources get `@contextmanager`** (or the async form): yield exactly once, clean up in
-  `finally`, and name it for the lifecycle — `managed_engine`. A class with `__enter__`/`__exit__`
-  only when the object has other methods besides those two.
-- **A dynamic number of resources → `ExitStack`**, which is also the composition root's shutdown
-  mechanism. Transferring ownership out of a function is `stack.pop_all()`.
-- **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
-  fail, catch and log its failure separately.
-- **No hidden global mutation managers.** One that flips module or process state (`chdir`,
-  environment variables, logging config) is test poison — fine in tests and entry points, never in
-  library or service code.
+- **Anything acquired is released by a context manager** — files, locks, sessions, transactions,
+  clients. Writing one, `ExitStack` for a dynamic number, and what cleanup may raise: the
+  `python-wiring` skill, which also owns who closes what.
 
 ## Documentation
 
@@ -563,21 +465,19 @@ of the thing it is attached to**. Both must stay true when anything outside chan
   wrong, meaningless or unverifiable, it was leaking. **If a comment can only be written by
   referring elsewhere, the design is wrong**, not the comment.
 
-  ```python
-  # WRONG — two lines saying what the code says, and a coupling left to prose
-  class OrderValidator:
-      # NOTE: OrderService calls this before _persist(); do not reorder
-      # We check the item count: the API schema allows one hundred per order.
-      def validate(self, order: Order) -> None:
-          if len(order.items) > 100: ...
+```python
+# WRONG — a caller and an ordering in prose, and a comment restating the check
+def validate_order(order: Order) -> None:
+    # called by place_order() before _persist(); do not reorder
+    # check the order does not have too many items
+    if len(order.items) > 100: ...
 
-  # CORRECT — the coupling is code, and one line carries what code cannot
-  MAX_ORDER_ITEMS: Final = 100  # mirrored in the generated client: nothing to import
+# CORRECT — the number is named, and one line says why this value
+_MAX_ORDER_ITEMS: Final = 100  # the payment provider rejects longer baskets
 
-  class OrderValidator:
-      def validate(self, order: Order) -> None:
-          if len(order.items) > MAX_ORDER_ITEMS: ...
-  ```
+def validate_order(order: Order) -> None:
+    if len(order.items) > _MAX_ORDER_ITEMS: ...
+```
 
 ## Definition of Done
 
@@ -590,7 +490,7 @@ skipped first under pressure:
 - [ ] Every helper has a reason to exist: reuse, a required callable, hidden complexity, a test
       seam, or a named predicate — and every class has one of the six triggers
 - [ ] Constants sit at the top of the module, and **every top-level name not used outside is
-      prefixed** — grep each one across the tree, drop its own file, prefix what has no hits left
+      prefixed** — `find_unprefixed_names.py` reports nothing new
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
 - [ ] No `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on every
       override, `Final` on every constant

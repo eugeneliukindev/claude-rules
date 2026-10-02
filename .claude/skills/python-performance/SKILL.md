@@ -1,11 +1,12 @@
 ---
 name: python-performance
 description: >-
-  Python performance work: measuring before optimizing, fixing the algorithm before the constants,
-  streaming instead of materializing, slots=True, caching as a bounded contract rather than a
-  sprinkle and never on methods, precompiling and hoisting out of hot loops, and pinning a budget
-  with a test so a regression fails a check. Use when a Python path has been measured and found
-  slow, or when reviewing a proposed optimization.
+  Python performance work, measure first: profiling and benchmarking before optimizing, fixing the
+  algorithm before the constants, streaming instead of materializing, slots=True, functools.cache
+  and lru_cache as a bounded contract and never on methods, precompiling and hoisting out of hot
+  loops, and pinning a budget with a test so a regression fails a check. Use when Python code is
+  slow or must be sped up, when asked to optimize, profile or benchmark it, when reaching for
+  functools.cache or lru_cache, or when reviewing a proposed optimization.
 ---
 
 # Performance
@@ -31,7 +32,20 @@ here does.
   with an explicit bound — an unbounded cache is a leak. **Never on methods**: the cache keeps the
   instance alive and grows per instance; cache a module-level function, or use a cached property
   for a one-per-instance lazy value. Any cross-process cache states its invalidation rule in the
-  design, or it is a stale-data bug scheduled for later.
+  design, or it is a stale-data bug scheduled for later. Bare `@lru_cache` is bounded at 128
+  entries, `@cache` is not bounded at all; ruff `B019` flags either one on a method.
+
+  ```python
+  # WRONG — the cache keeps every parser it has seen alive, and never stops growing
+  class AddressParser:
+      @cache
+      def normalize_postcode(self, raw_postcode: str) -> Postcode: ...
+
+  # CORRECT — a pure module-level function of hashable arguments, with a stated bound
+  @lru_cache(maxsize=4096)
+  def normalize_postcode(raw_postcode: str) -> Postcode: ...
+  ```
+
 - **Precompile and hoist**: compiled patterns at module level; no attribute chain or dict lookup
   repeated in a hot loop that a local would hoist.
 - **Concurrency follows the workload**, and is measured before assuming parallelism helps — pool

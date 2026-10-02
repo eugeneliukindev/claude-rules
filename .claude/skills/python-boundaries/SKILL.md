@@ -44,24 +44,40 @@ discipline:
   overridden per call only with a named constant. A call with no timeout turns a dependency's
   outage into your own.
 - **Retry only transient failures**: connect and read timeouts, rate limits, server errors,
-  deadlocks, broker disconnects. **Never retry** business rejections, validation errors or auth
-  failures — retrying a conflict is a loop, not resilience.
+  broker disconnects. **Never retry** business rejections, validation errors or auth failures —
+  retrying a conflict is a loop, not resilience.
 - **The adapter translates upstream errors into a transient and a permanent error type first**;
   the retry policy then keys on the type, not on status-code checks scattered around.
-- **Retries are bounded, exponential, and jittered.** Set the jitter explicitly rather than
-  trusting a library default — a default measured in seconds can dwarf a backoff measured in
-  milliseconds and silently flatten the curve.
+- **Retries are bounded, exponential, and jittered**, with the jitter set in proportion to the
+  backoff rather than left at a library default — the numbers are in `python-tenacity`.
 - **Retry a write only if it is idempotent.** Carry an idempotency key when the API supports one;
-  otherwise make the operation idempotent on your side, or do not retry it.
+  otherwise make the operation idempotent on your side, or do not retry it. The key belongs to the
+  operation, minted before the first attempt — a client that times out after the server committed
+  and retries with a fresh key charges the customer twice:
+
+```python
+# WRONG — every attempt mints a new key, so the server sees three different charges
+@_RETRY_TRANSIENT
+async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
+    return await gateway.charge(payment.amount, idempotency_key=str(uuid.uuid4()))
+
+# CORRECT — the payment's own id, minted when the payment was created, is the key
+@_RETRY_TRANSIENT
+async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
+    return await gateway.charge(payment.amount, idempotency_key=str(payment.payment_id))
+```
+
 - **Consumers are idempotent**: at-least-once delivery means every handler must tolerate the same
   message twice.
-- **Budgets nest.** An operation retried inside a caller that also retries multiplies — four
-  attempts inside four is sixteen. The outermost boundary owns the total deadline; when in doubt,
-  retry at one layer only, the adapter.
+- **Retry at one level: the adapter.** Services see one call that either succeeded or raised a
+  final error, and never contain retry loops. Budgets nest multiplicatively — four attempts inside
+  a caller that also makes four is sixteen, and a five-second budget becomes eighty — so the
+  outermost boundary owns the total deadline.
+- **The one retry above the adapter: a deadlock or serialization failure retries the whole unit of
+  work** — why, in `python-persistence`. So the repository never retries these; it raises them as
+  their own transient type, and only the code that opens the unit of work catches it.
 - **Fail fast when the dependency is down.** After repeated failures stop hammering and surface a
   clear unavailability error, so callers degrade deliberately instead of queueing timeouts.
-- **Retrying is an adapter concern.** Services see one call that either succeeded or raised a final
-  error; they never contain retry loops.
 
 ## Serialization
 
@@ -86,6 +102,17 @@ discipline:
 - **Datetimes are always timezone-aware UTC**: `datetime.now(UTC)` — never `datetime.now()` /
   `datetime.utcnow()`, which are naive, and the second is deprecated. Convert to local time only at
   the presentation edge, with `zoneinfo.ZoneInfo`, never a hand-written offset.
+
+```python
+# WRONG — naive host-local time: shifts with the server's zone, cannot be ordered against aware
+def _system_clock() -> datetime:
+    return datetime.now()
+
+# CORRECT — aware UTC; this is the clock the composition root injects
+def _system_clock() -> datetime:
+    return datetime.now(UTC)
+```
+
 - Naive datetimes are rejected at the boundary: a schema accepting a datetime requires an offset.
 - **Store and serialize as ISO-8601** (`.isoformat()` / `datetime.fromisoformat`); epoch numbers
   only for machine-to-machine metrics.
@@ -96,12 +123,19 @@ discipline:
 - **Time is a dependency.** Any code that needs "now" takes a clock (`now: Callable[[], datetime]`
   or a tiny `Clock` protocol) injected from the composition root; `datetime.now(UTC)` appears only
   in the default wiring, and tests use a fixed clock.
-- **Money is `Decimal`, never `float`.** Construct from `str` or `int` — `Decimal("19.99")`, since
-  `Decimal(19.99)` inherits float error; quantize explicitly at boundaries
-  (`amount.quantize(Decimal("0.01"), ROUND_HALF_EVEN)`); wrap in a `Money` value object with
-  currency, so amounts in different currencies cannot be added.
+- **Money is `Decimal`, never `float`.** Construct from `str` or `int`; quantize explicitly at
+  boundaries (`amount.quantize(Decimal("0.01"), ROUND_HALF_EVEN)`); wrap in a `Money` value object
+  with currency, so amounts in different currencies cannot be added.
+
+```python
+# WRONG — built from a float, so it inherits the float's error: 19.98999999999999843...
+price = Decimal(19.99)
+# CORRECT — built from the string the amount was written as
+price = Decimal("19.99")
+```
+
 - **Durations and sizes are `timedelta` and integers of an explicit unit**, never floats of
   ambiguous unit.
-- **Identifiers**: `uuid.uuid4()` for opaque ids; UUIDv7 (or ULID) when ids must sort by creation
-  time for index locality; **never** auto-increment integers exposed publicly, which invites
-  enumeration, and never `random`-derived ids. Wrap ids in `NewType`.
+- **Identifiers**: `uuid.uuid4()` for opaque ids; `uuid.uuid7()` (stdlib since 3.14) when ids
+  must sort by creation time for index locality; **never** auto-increment integers exposed
+  publicly, which invites enumeration, and never `random`-derived ids. Wrap ids in `NewType`.

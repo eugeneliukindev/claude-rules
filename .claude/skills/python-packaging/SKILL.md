@@ -38,6 +38,22 @@ module boundaries. That is enough, provided the convention is followed consisten
   still declares the surface, because a layer contract enforces *direction* and says nothing about
   *which names* a neighbouring layer may use.
 
+### Finding Names That Should Be Private
+
+`core.md`'s test — grep each top-level name, drop its own file, prefix what has no hits left — is
+scripted. Run it, do not read it:
+
+```bash
+python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py src/yourpackage \
+    --exclude "migrations/*"
+```
+
+Run it after a move or a split that may have left a public name with no outside user, and before
+declaring a package's `__all__`. Each `path:line: name` line is a name to prefix; exit code 1 means
+there was at least one. A line marked `(decorated: unverifiable)` has a decorator that may hand it
+to a framework — a route, a command, a fixture — so decide it by hand. Pass `--exclude` for a tree
+whose uses should not count, such as tests when the question is what production code needs.
+
 ## Hiding a Whole Subsystem
 
 - **Name the private area `_internal/`, with the underscore.** That is what `pydantic` and `pip`
@@ -67,14 +83,14 @@ How the standard library, `pydantic` and `attrs` are built:
 - Internal code imports from the private modules directly — never through the package's own
   `__init__`, which would create a cycle and make module load order significant.
 
-  ```python
-  # acme_core/__init__.py — the whole public surface, and nothing else
-  from ._identifiers import OrderId as OrderId, UserId as UserId
-  from ._models import Order as Order, User as User
-  from ._repository import UserRepository as UserRepository
+```python
+# acme_core/__init__.py — the whole public surface, and nothing else
+from ._identifiers import OrderId, UserId
+from ._models import Order, User
+from ._repository import UserRepository
 
-  __all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
-  ```
+__all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
+```
 
 **Rules**
 
@@ -117,28 +133,36 @@ including the parts this process will never touch. The fix is to import on first
 objection — that a name arriving through `__getattr__` is invisible to the type checker — is
 answered by declaring the imports a second time under `TYPE_CHECKING`:
 
-  ```python
-  # yourpackage/__init__.py
-  if TYPE_CHECKING:
-      # Everything is served lazily by __getattr__ below; these are what the type
-      # checker and the IDE read.
-      from .validators import AfterValidator, BeforeValidator
+```python
+# yourpackage/__init__.py
+if TYPE_CHECKING:
+    # Everything is served lazily by __getattr__ below; these are what the type
+    # checker and the IDE read.
+    from .validators import AfterValidator, BeforeValidator
 
-  _LAZY: Final = {
-      # validators
-      'AfterValidator': '.validators',
-      'BeforeValidator': '.validators',
-  }
+__all__ = ["AfterValidator", "BeforeValidator"]
 
-  def __getattr__(name: str) -> object:
-      module = import_module(_LAZY[name], __spec__.parent)
-      ...
-  ```
+_LAZY: Final = {
+    # validators
+    "AfterValidator": ".validators",
+    "BeforeValidator": ".validators",
+}
+
+
+def __getattr__(name: str) -> object:
+    try:
+        module_name = _LAZY[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    return getattr(import_module(module_name, __name__), name)
+```
 
 The checker reads the `TYPE_CHECKING` block and sees full signatures; the interpreter reads the
-table and imports nothing until asked. **Both halves must list the same names**, so keep them in
+table and imports nothing until asked. **Every list must name the same names**, so keep them in
 the same order and in the same groups — the only real cost of the pattern is that they can drift,
-and side-by-side ordering is what makes the drift visible in a diff.
+and side-by-side ordering is what makes the drift visible in a diff. An unknown name raises
+`AttributeError`, never the table's `KeyError`: `hasattr`, `getattr` with a default and
+`from yourpackage import submodule` all expect the former, and crash on the latter.
 
 Use it in a façade over many submodules, or where one export pulls a heavy optional dependency.
 Do **not** use it to compute names, to export something that does not exist as a real attribute of
@@ -191,15 +215,15 @@ imported **only in the module of the implementation that uses it** — never in 
 the factory, the package `__init__.py`, or anything above the implementation.
 
 - **One implementation — one module — its own imports at the top of that module.** The directory
-  those modules share, and what else belongs in it, is in `core.md`.
+  those modules share, and what else belongs in it, is in `python-contracts`.
 - **The interface module imports nothing implementation-specific.** If it needs a type from a
   library for a signature, that is a leak — define a domain type or a contract of your own instead.
 - **The factory does not import all implementations at module top.** Doing so makes importing the
-  package pull in every driver, so a service that only ever uses the local implementation still
-  pays the import cost and must have the library installed. The dispatch mapping holds *local
-  builders*, and each builder imports its own driver inside itself. For an open set of
-  implementations, invert it: a registry each implementation module registers itself with, or entry
-  points.
+  package pull in every driver, so a service that only ever uses one implementation still pays
+  for every other one's import and must have its library installed. The dispatch mapping holds
+  *local builders*, and each builder imports its own driver inside itself. For an open set of
+  implementations, invert it: a registry each implementation module registers itself with, or
+  entry points.
 - **Optional libraries are optional extras**, and the implementation module is the only place that
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
@@ -209,75 +233,54 @@ the factory, the package `__init__.py`, or anything above the implementation.
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.
 
-  ```python
-  # WRONG — the package __init__ loads and requires every driver just to be imported
-  from .local import LocalBlobStore
-  from .s3 import S3BlobStore          # pulls the cloud SDK in with it
-
-  def create_blob_store(kind: str) -> BlobStore: ...
-  ```
-
-  ```python
-  # CORRECT — the contract knows nothing, and only the chosen driver is ever imported
-  class BlobStore(ABC):
-      @abstractmethod
-      def put(self, key: str, data: bytes) -> None: ...
+```python
+# WRONG — importing the factory imports both cloud SDKs, and fails unless both are installed
+from .gcs import GcsBlobStore
+from .s3 import S3BlobStore
 
 
-  class _BlobStoreOptions(TypedDict):
-      bucket: NotRequired[str]
-      region: NotRequired[str]
-      root: NotRequired[Path]
+def _gcs(bucket: str) -> BlobStore:
+    return GcsBlobStore(bucket)
 
 
-  type _Factory = Callable[..., BlobStore]
+def _s3(bucket: str) -> BlobStore:
+    return S3BlobStore(bucket)
+
+# ... the same _FACTORY and create_blob_store as below
+```
+
+```python
+# CORRECT — the builders are local, and only the chosen driver is ever imported
+def _gcs(bucket: str) -> BlobStore:
+    from .gcs import GcsBlobStore  # noqa: PLC0415  # optional extra, loaded on demand
+    return GcsBlobStore(bucket)
 
 
-  # Each builder declares the options it uses and swallows the rest, so the dispatcher never
-  # has to know the union of what its builders might want.
-  def _s3(*, bucket: str, region: str, **_: object) -> BlobStore:
-      from .s3 import S3BlobStore   # noqa: PLC0415  # optional extra, loaded on demand
-      return S3BlobStore.create(bucket, region)
+def _s3(bucket: str) -> BlobStore:
+    from .s3 import S3BlobStore  # noqa: PLC0415  # optional extra, loaded on demand
+    return S3BlobStore(bucket)
 
 
-  def _local(*, root: Path, **_: object) -> BlobStore:
-      from .local import LocalBlobStore   # noqa: PLC0415
-      return LocalBlobStore(root)
+_FACTORY: Final[Mapping[BlobStoreKind, Callable[[str], BlobStore]]] = MappingProxyType(
+    {BlobStoreKind.GCS: _gcs, BlobStoreKind.S3: _s3},
+)
 
 
-  _FACTORY: Final[Mapping[BlobStoreKind, _Factory]] = MappingProxyType(
-      {
-          BlobStoreKind.S3: _s3,
-          BlobStoreKind.LOCAL: _local,
-      }
-  )
+def create_blob_store(kind: BlobStoreKind, *, bucket: str) -> BlobStore:
+    return _FACTORY[kind](bucket)
+```
 
-
-  def create_blob_store(kind: BlobStoreKind, **options: Unpack[_BlobStoreOptions]) -> BlobStore:
-      return _FACTORY[kind](**options)
-  ```
-
-  The mapping is built at import time out of *local* functions, so nothing heavy is loaded; the
-  driver arrives only when the builder that needs it runs. Callers name concrete fields, never a
-  settings object:
-
-  ```python
-  store = create_blob_store(
-      settings.blob_store_kind,
-      bucket=settings.s3_bucket,
-      region=settings.s3_region,
-      root=settings.blob_root,
-  )
-  ```
+The mapping is built at import time out of *local* functions, so nothing heavy is loaded; the
+driver arrives only when the builder that needs it runs.
 
 ## A Façade Over Per-Extra Modules
 
-When the package exports its implementations by name — `from acme.instrumentation import
-instrument_fastapi` — the package's `__init__` executes *every* implementation module, and a
+When the package exports its implementations by name — `from acme.exporters import
+export_spreadsheet` — the package's `__init__` executes *every* implementation module, and a
 consumer holding one extra gets `ImportError` on a library it never asked for. Three shapes work:
 
 - **No façade**: `__init__` stays empty and consumers import the module they need
-  (`acme.instrumentation.fastapi`). Imports stay at module top; nothing is lazy.
+  (`acme.exporters.spreadsheet`). Imports stay at module top; nothing is lazy.
 - **Façade, and the library is imported inside the function that uses it.** The module then imports
   cleanly without its library, and the failure arrives to whoever called the function — with the
   extra named. This is the shape below.
@@ -285,77 +288,32 @@ consumer holding one extra gets `ImportError` on a library it never asked for. T
   Worth it when the modules are many or expensive; the per-function import is simpler when they
   are few, and simpler wins by default.
 
-  ```python
-  # acme/_errors.py — one root for the package, one base that builds the message
-  class AcmeError(Exception):
-      """Everything this package refuses with."""
+```python
+# acme/exporters/spreadsheet.py — imports cleanly whether or not the extra is installed
+def export_spreadsheet(orders: Sequence[Order], path: Path) -> None:
+    try:
+        import sheetwriter  # noqa: PLC0415  # optional extra, needed only when called
+    except ImportError as error:
+        raise MissingExtraError(extra="spreadsheet") from error
+
+    sheetwriter.write(path, [order.as_row() for order in orders])
 
 
-  class MissingExtraError(AcmeError, ImportError):
-      """An instrumentation is asked for and its library is not in the environment.
+# acme/exporters/__init__.py — the façade is free: no module runs its library on import
+from .spreadsheet import export_spreadsheet
 
-      Catch this root for "some extra is missing", or a leaf when it matters which. The root is
-      never raised on its own: the leaf names the extra, and without one there is no message.
-      """
+__all__ = ["export_spreadsheet"]
+```
 
-      extra: ClassVar[str]
+The refusal is the package's own error, an `ImportError` subclass under its root, and it names the
+extra — the message is the fix, and `from error` keeps the import that actually failed in the
+traceback.
 
-      def __init__(self) -> None:
-          super().__init__(f"instrumentation needs acme[{self.extra}]")
+## A Module Named Like a Standard-Library Module
 
-
-  # acme/instrumentation/sqlalchemy.py — the module imports cleanly without its library
-  """Tracing for database calls. Installed with the `sqlalchemy` extra."""
-
-  from __future__ import annotations
-
-  from typing import TYPE_CHECKING, final
-
-  from acme._errors import MissingExtraError
-
-  if TYPE_CHECKING:
-      from sqlalchemy.ext.asyncio import AsyncEngine
-
-      from acme._telemetry import Telemetry
-
-
-  @final
-  class SqlalchemyMissingExtraError(MissingExtraError):
-      """The database instrumentation is not in the environment."""
-
-      extra = "sqlalchemy"
-
-
-  def instrument_sqlalchemy(telemetry: Telemetry, engine: AsyncEngine) -> None:
-      """Trace database calls made through this engine.
-
-      Args:
-          telemetry: The telemetry set up for this process.
-          engine: The engine whose statements are traced.
-
-      Raises:
-          SqlalchemyMissingExtraError: If the instrumentation is not installed.
-      """
-      try:
-          # Optional extra: imported on demand, not when the module is imported.
-          from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # noqa: PLC0415
-      except ImportError as error:
-          raise SqlalchemyMissingExtraError from error
-
-      SQLAlchemyInstrumentor().instrument(
-          engine=engine.sync_engine,
-          tracer_provider=telemetry.tracer_provider,
-      )
-
-
-  # acme/instrumentation/__init__.py — the façade is now free: no module executes its library
-  from acme.instrumentation.sqlalchemy import (
-      SqlalchemyMissingExtraError as SqlalchemyMissingExtraError,
-      instrument_sqlalchemy as instrument_sqlalchemy,
-  )
-
-  __all__ = ["SqlalchemyMissingExtraError", "instrument_sqlalchemy"]
-  ```
-
-The extra is named **once**, by the class that refuses. A constant beside the function and an
-argument passed into the error are two places to drift from what the package metadata declares.
+A module name that reaches `sys.path` directly must not shadow a standard-library module — `types`,
+`json`, `logging`, `io`, `abc`. This bites for a top-level module of a distribution, a loose script,
+or a scheduler DAG file: `import json` anywhere in the process then gets yours. Nested inside a
+package the name is only ever visible as `mypackage.json`, so there is nothing to shadow, and the
+module is named after its contents — `internal/json.py` is right. ruff `A005` fires on both, so a
+package that names modules after their contents turns `A005` off once, with the reason written down.

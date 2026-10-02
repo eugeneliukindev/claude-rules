@@ -10,8 +10,8 @@ description: >-
 
 # niquests
 
-The API is `requests`-shaped, so the habits below transfer to `httpx` almost unchanged; what does
-not transfer is called out.
+Checked against niquests 3.21. The API is `requests`-shaped, so the habits below transfer to
+`httpx` almost unchanged; what does not transfer is called out.
 
 ## One Session, Owned by the Composition Root
 
@@ -22,14 +22,28 @@ not transfer is called out.
   place headers, timeouts and TLS settings are configured.
 - **Close it deterministically** — an exit stack or the framework's lifespan hook, never `atexit`.
 
+```python
+# WRONG — a fresh connection per call, configured by whatever the library defaults to
+response = niquests.get(f"{orders_base_url}/orders/{order_id}")
+
+# CORRECT — built once by the composition root, with the timeouts chosen and named there
+session = niquests.AsyncSession(
+    base_url=orders_base_url,
+    timeout=TimeoutConfiguration(connect=_CONNECT_TIMEOUT_SECONDS, read=_READ_TIMEOUT_SECONDS),
+)
+response = await session.get(f"/orders/{order_id}")
+```
+
 ## Timeouts
 
-- **A timeout on every request.** There is no useful default: a call without one turns the other
-  side's outage into an unbounded wait in your process.
-- **Set it on the session** and override per call only with a named constant. A literal `30` at a
-  call site is a number nobody can change safely.
-- Distinguish connect from read where the client allows it. A slow handshake and a slow body are
-  different failures with different budgets.
+Why every call needs a deadline, and where it is configured, is in `python-boundaries`. The niquests
+mechanics:
+
+- **The library default was chosen for nobody; set yours.** Without a `timeout=` a request gets
+  30 seconds to read, or 120 for a write method — numbers that fit no particular dependency.
+- **`Session(timeout=TimeoutConfiguration(connect=..., read=...))`** sets it once; a per-call
+  `timeout=` overrides it. A slow handshake and a slow body are different failures with different
+  budgets, so give them separate numbers.
 
 ## Responses Are Checked, Not Assumed
 
@@ -46,15 +60,16 @@ not transfer is called out.
 - **Decide about redirects deliberately.** Following them is the default; for anything where the
   final URL matters — an API that signals with `301`, a preview page that redirects when access is
   refused — turn it off and read the status.
-- **TLS verification stays on.** Never disable it to make something work; if a certificate is
-  genuinely private, supply the CA bundle.
-- **Re-validate a redirect target** when the original URL came from a user, or the allowlist you
-  checked before the request is worthless.
+- **TLS**: leave `verify` at its default; a private CA goes in as `verify="/path/to/ca.pem"`. Why it
+  stays on is in `python-security`.
+- **A URL that came from a user**: pass `allow_redirects=False` and check each `Location` against
+  the allowlist before following it — the reason is the SSRF rule in `python-security`.
 
 ## Retries
 
-- Retries are a policy decision and belong beside the call, not buried in transport configuration —
-  see the `python-tenacity` skill. Retry transient failures only, bounded, jittered, and at one layer.
+- **Leave the session's `retries=` at its default of `0`.** A retry is a policy decision and belongs
+  beside the call, where it can see the translated error type — `python-tenacity` for the policy,
+  `python-boundaries` for what may be retried. Transport retries underneath it multiply the budget.
 
 ## What Differs From `httpx`
 

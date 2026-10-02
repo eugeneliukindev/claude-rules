@@ -1,11 +1,12 @@
 ---
 name: python-cli
 description: >-
-  Python command-line interface design: an argument parser whose declarations are the interface,
-  main() building and run() executing, exit codes as a contract, stdout for the product and stderr
-  for the conversation, dry-run and verbosity flags, fixed configuration precedence, graceful
-  interrupts, and testing through run(). Use when writing or reviewing a Python entry point with
-  an argument parser, a subcommand or an exit code.
+  Python command-line interface design with argparse, click or typer: an argument parser whose
+  declarations are the interface, main() building and run() executing, exit codes as a contract
+  with one sys.exit in main(), stdout for the product and stderr for the conversation, dry-run and
+  verbosity flags, fixed configuration precedence, graceful interrupts, and testing through run().
+  Use when writing or reviewing a Python entry point, an argparse, click or typer command, a
+  subcommand, a __main__ block, or a sys.exit call and its exit codes.
 ---
 
 # Command-Line Interfaces

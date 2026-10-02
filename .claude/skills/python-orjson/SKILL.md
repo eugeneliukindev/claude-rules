@@ -9,11 +9,15 @@ description: >-
 
 # orjson
 
+Checked against orjson 3.12.
+
 ## Why It Is Here
 
-Speed, and correctness the standard library does not give: `datetime`, `UUID`, `Decimal`,
-`dataclass` and `numpy` shapes serialize without a hand-written encoder. Reach for it in services;
-the standard `json` is fine in a throwaway script.
+Speed, and correctness the standard library does not give: `datetime`, `UUID`, `dataclass` and
+`enum` values serialize without a hand-written encoder, and `numpy` arrays do with
+`OPT_SERIALIZE_NUMPY`. `Decimal` does not — it raises `TypeError`, so money needs an explicit
+`default=` that renders it as a string. Reach for it in services; the standard `json` is fine in a
+throwaway script.
 
 ## The Two Facts That Trip Everyone
 
@@ -37,8 +41,8 @@ the standard `json` is fine in a throwaway script.
 ## Custom Types
 
 - **`default=` is the one escape hatch**, and it is a function that raises `TypeError` for anything
-  it does not know. A `default` that returns `str(obj)` for the unknown case will happily serialize a
-  bug.
+  it does not know. A `default` that returns `str(obj)` for the unknown case will happily
+  serialize a bug.
 - Prefer making the type serializable at the boundary — a `to_dict()` on the value object — over
   growing a `default` that knows about every type in the codebase. That function is a generically
   named unit accumulating concrete knowledge.

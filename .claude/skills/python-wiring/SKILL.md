@@ -34,26 +34,43 @@ the constructor or the function signature.
 - **Tests get their own root**: a helper that builds the object graph with in-memory fakes and a
   fixed clock. If a test needs to patch a dependency, the production wiring is wrong.
 
-  ```python
-  # WRONG — self-wiring class, module-level singleton, import-time side effect
-  engine = create_engine(os.environ["DATABASE_URL"])
+```python
+# WRONG — self-wiring class, module-level singleton, import-time side effect
+engine = create_engine(os.environ["DATABASE_URL"])
 
-  class OrderService:
-      def __init__(self) -> None:
-          self._repository = PostgresOrderRepository(engine)
+class OrderService:
+    def __init__(self) -> None:
+        self._repository = PostgresOrderRepository(engine)
 
-  # CORRECT — one composition root owns construction and lifetime
-  def main() -> None:
-      settings = Settings()                     # fail fast
-      with ExitStack() as resources:
-          engine = resources.enter_context(managed_engine(settings.database_url))
+# CORRECT — one composition root owns construction and lifetime
+def main() -> None:
+    settings = Settings()  # fail fast
+    with ExitStack() as resources:
+        engine = resources.enter_context(managed_engine(settings.database_url))
 
-          order_service = OrderService(
-              repository=PostgresOrderRepository(engine),
-              now=lambda: datetime.now(UTC),
-          )
-          run_consumer(order_service, settings)
-  ```
+        order_service = OrderService(
+            repository=PostgresOrderRepository(engine),
+            now=lambda: datetime.now(UTC),
+        )
+        run_consumer(order_service, batch_size=settings.consumer_batch_size)
+```
+
+## Resource Lifetime
+
+The root acquires, so the root releases; everything below it borrows.
+
+- **Anything acquired is released by a context manager**: files, locks, sessions, transactions,
+  clients, temporary state. `try/finally: close()` is only for *implementing* one.
+- **Own resources get `@contextmanager`** (or the async form): yield exactly once, clean up in
+  `finally`, and name it for the lifecycle — `managed_engine`. A class with `__enter__`/`__exit__`
+  only when the object has other methods besides those two.
+- **A dynamic number of resources → `ExitStack`**, which is also the composition root's shutdown
+  mechanism. Transferring ownership out of a function is `stack.pop_all()`.
+- **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
+  fail, catch and log its failure separately.
+- **No hidden global mutation managers.** One that flips module or process state (`chdir`,
+  environment variables, logging config) is test poison — fine in tests and entry points, never in
+  library or service code.
 
 ## Constants and Configuration
 
@@ -86,7 +103,9 @@ the constructor or the function signature.
   Unpack[SomeOptions]`, with a `TypedDict` naming every field and marking the optional ones. Each
   builder then declares the fields it uses and swallows the rest. That keeps the call site naming
   concrete fields, keeps the checker able to reject a typo, and keeps the dispatcher from having to
-  know the union of everything its builders might want.
+  know the union of everything its builders might want. What it cannot check is that the selected
+  builder got every field it requires: that arrives as a `TypeError` on the first call, so prefer
+  builders that share one signature, and forward a bundle only when they genuinely cannot.
 - **Configuration is validated at startup, before serving.** A missing or malformed variable
   crashes the process immediately with a clear message — never a lazy read that fails on the first
   request hours later. Feature flags are typed fields, read once and injected, never queried ad hoc
@@ -132,10 +151,10 @@ Without it, one implementation imports a helper from its sibling, and the eleven
 new file — it is a new file plus an edit to whichever sibling it borrowed from.
 
 **`forbidden` — a dependency that must not appear where it is not wanted.** The rule that an
-optional library lives only in its own implementation module (the `python-packaging` skill) is stated in prose
-everywhere and checked almost nowhere. Ban the library from the whole package and list every
-permitted edge; the exception list then *is* the inventory of where the extra is allowed, and it is
-reviewed whenever it grows.
+optional library lives only in its own implementation module (the `python-packaging` skill) is
+stated in prose everywhere and checked almost nowhere. Ban the library from the whole package
+and list every permitted edge; the exception list then *is* the inventory of where the extra is
+allowed, and it is reviewed whenever it grows.
 
 ```ini
 [importlinter:contract:no-optional-deps]
@@ -147,7 +166,9 @@ forbidden_modules =
   redis
   boto3
 ignore_imports =
-  myapp.notifications.slack -> boto3
+  # Extra `s3`: the object-storage adapter is the one module that may use its SDK.
+  myapp.storage.s3 -> boto3
+  # Extra `redis`: the cache adapter is the one module that speaks the protocol.
   myapp.cache.redis -> redis
 ```
 
@@ -163,4 +184,4 @@ ignore_imports =
 How directories are named and nested is a project decision, not a general rule: it follows the
 domain, the team and the deployment shape, and a layout copied from elsewhere is a layout nobody
 owns. What is fixed is which way dependencies point, what a package promises, where construction
-happens, and that a contract and its implementations share one directory (`core.md`).
+happens, and that a contract and its implementations share one directory (`python-contracts`).

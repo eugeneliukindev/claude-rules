@@ -18,13 +18,41 @@ description: >-
   sync code. CPU-bound work goes to a **shared** process pool created once in the composition root
   and passed in — never an executor constructed per call, which pays pool startup every time and
   breaks concurrency limits.
+
+```python
+# WRONG — the whole event loop stops while the file is read
+async def load_report(path: Path) -> bytes:
+    return path.read_bytes()
+
+# CORRECT — the read runs on a worker thread and the loop keeps serving
+async def load_report(path: Path) -> bytes:
+    return await asyncio.to_thread(path.read_bytes)
+```
+
 - **Every `await` on external I/O runs under a deadline** — the client's configured timeout or an
   explicit `asyncio.timeout(...)` scope. An unbounded `await` is the async equivalent of an
   infinite loop.
+- **`asyncio.timeout` around `to_thread` stops the waiting, not the thread.** A thread cannot be
+  cancelled: the call runs to completion and keeps its executor slot, so a handful of hung calls
+  exhausts the pool. The deadline for blocking work lives in the blocking client's own timeout.
 - **Structured concurrency by default**: `asyncio.TaskGroup` — tasks cannot leak, the first failure
   cancels siblings and raises an `ExceptionGroup`. **Fire-and-forget `create_task` without keeping
   a reference is forbidden**: the task can be garbage-collected mid-flight and its exception
   silently lost.
+
+```python
+# WRONG — nothing holds either task, and the caller never learns that one failed
+async def complete_order(order: Order, mailer: Mailer, audit: AuditLog) -> None:
+    asyncio.create_task(mailer.send_receipt(order))
+    asyncio.create_task(audit.record(order))
+
+# CORRECT — the group holds both, waits for both, and raises their failures together
+async def complete_order(order: Order, mailer: Mailer, audit: AuditLog) -> None:
+    async with asyncio.TaskGroup() as group:
+        group.create_task(mailer.send_receipt(order))
+        group.create_task(audit.record(order))
+```
+
 - **Cancellation is not an error to swallow.** On cancellation, clean up in `finally` and re-raise.
   Shielding is reserved for genuinely-must-finish commits, always combined with a timeout.
 - **Concurrency is bounded**: fan-outs go through a `Semaphore` with a named constant limit; queues
@@ -66,6 +94,8 @@ overhead is real:
   `contextvars`.
 - **Daemon threads are forbidden** for anything that does work; every thread is joined on shutdown
   with a timeout.
-- **The `multiprocessing` start method is `spawn`**, set explicitly; forking a process that already
-  has threads or an event loop is undefined behaviour in practice.
+- **The `multiprocessing` start method is `spawn` or `forkserver`, set explicitly** — never `fork`:
+  forking a process that already has threads or an event loop is undefined behaviour in practice.
+  Since 3.14 the Linux default is `forkserver` rather than `fork`, so code that silently relied on
+  inherited globals breaks on upgrade; naming the method makes that dependence visible.
 - **Signals are handled in the main thread only**; workers get a stop event, not a signal.

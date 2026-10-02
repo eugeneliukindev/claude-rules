@@ -1,11 +1,12 @@
 ---
 name: python-rules-authoring
 description: >-
-  Conventions for writing the Python rule files and skills in this collection: stating a rule over
-  the widest category it is true for, carve-outs beside prohibitions, naming what breaks and when,
-  paired invented and real examples, examples that name no project, what the tools hold versus
-  what rests on attention, what loads when, and the line budget for the always-loaded rules. Use
-  when editing, adding to, splitting or auditing these Python rule files and skills.
+  Conventions for writing and auditing the Python coding rules in .claude/rules/python/*.md and
+  the python-* skills: stating a rule over its widest category, carve-outs beside prohibitions,
+  WRONG/CORRECT pairs that differ in one dimension and obey every other rule, examples that name no
+  project, one home per rule, rationed emphasis, skill descriptions as triggers, what loads when,
+  the line budget for the always-loaded rules, and the evals that prove a rule changes behaviour.
+  Use when editing, adding to, splitting, auditing or evaluating these rule files and skills.
 ---
 
 # Writing These Rules
@@ -34,8 +35,22 @@ someone in a hurry.
 
 **Examples come in pairs: one invented, one real.** The invented pair — `# WRONG` next to
 `# CORRECT` — shows the shape. The real one shows the price, which no invented example can: an
-incident that actually happened, concrete enough that the failure can be pictured. Keep both; drop
-either and the rule teaches half of itself.
+incident that actually happened, concrete enough that the failure can be pictured, told in one
+sentence beside the pair. Keep both where a real incident exists; never invent one to fill the
+slot — an invented incident teaches a failure nobody has seen.
+
+**The model copies the example, not the prose.** Three consequences, each found in these files by
+an audit that turned up a dozen examples teaching the opposite of the rule above them:
+
+- **The pair differs in exactly the dimension the rule is about.** Same signature, same names, same
+  surrounding code — a `WRONG` that also lacks annotations, uses a global and swallows an error
+  leaves the reader guessing which of the eight differences was the point, and they copy all eight.
+- **A `CORRECT` obeys every other rule in these files** — `kw_only`, `@override`, `Final`, the `_`
+  prefix, units in names, injected dependencies, one-line comments. Where a rule and an example
+  disagree, the model has two instructions and picks one arbitrarily.
+- **A `CORRECT` is real code**: it parses, it passes `mypy --strict`, and its library calls exist in
+  the version the skill names. Run it before committing — `def f(...)` is a syntax error, and an
+  API claim from memory is how a skill came to say `orjson` serialises `Decimal`.
 
 **Both halves travel, which means neither names a project.** These files are read in every
 repository, and a reader who has to know one codebase to understand an example learns nothing from
@@ -101,10 +116,17 @@ costs attention on every edit and buys nothing.
 
 | file | ceiling |
 |---|---|
-| `core.md` | 600 |
-| `naming.md` | 350 |
-| **loaded on every `.py`** | **950** |
+| `core.md` | 500 |
+| `naming.md` | 300 |
+| **loaded on every `.py`** | **800** |
 | any one `SKILL.md` | 500 |
+
+The pair was lowered from 600 + 350 once, with this arithmetic: Anthropic asks for under 200 lines
+in an always-loaded instruction file because adherence falls as the file grows, and 950 lines were
+about twelve thousand tokens on every Python edit. An audit then found the contract sections, the
+resource lifecycle, dunders and the stdlib-shadowing rule reached only by some work — they became
+skill content — and a dozen rules the model follows without being told, which were deleted. What
+remained was 800 lines; the ceiling is set there so the next addition has to displace something.
 
 The number is not sacred; the *fixedness* is. Without one, every addition looks free — each is a
 paragraph, and the file went from 350 lines to three thousand one paragraph at a time. With one,
@@ -126,3 +148,37 @@ current size is not a ceiling.
 more available, not less. Where a positive statement exists, lead with it and let the `# WRONG`
 example carry the negative. Keep a bare `NEVER` for the rules where the wrong answer is genuinely
 tempting and the right one is not obvious from the positive alone.
+
+**Emphasis is rationed, and the reason does the work.** Current models follow instructions closely,
+and capitals make them over-apply a rule to cases it was never meant for; a file where every second
+line says `MUST` has no emphasis left for the one rule that keeps being skipped. State the rule
+plainly with its reason — the model generalises from the reason — and bold the rule's name, not
+its modality.
+
+## One Rule, One Home
+
+**A rule is written in exactly one file, and every other file points to it.** Three copies of the
+retry policy drift into three policies; two files that disagree about where a test fake lives get
+one of them followed at random. When a library skill needs a principle from a topic skill, it names
+the skill — "see `python-boundaries`" — and adds only the library's mechanics.
+
+**A carve-out lives beside its prohibition, even across files.** "Retry only in the adapter" in one
+skill and "a deadlock retries the whole unit of work" in another are two contradictory rules until
+each file states the exception in the same place as the rule.
+
+## A Skill's Description Is Its Trigger
+
+The `description` is all the model sees of a skill until it decides to load it, among a few dozen
+others. It is written in the third person, says **what** the skill covers and then **when** to use
+it, and puts the words a user or a file would actually contain first — library names, `async def`,
+"slow", "migration" — because the listing is truncated from the end. A skill that never loads
+teaches nothing; two skills whose descriptions both match the same work load the same text twice.
+
+## Evaluation Before and After
+
+A rule is a hypothesis that the model behaves differently with it than without it. `evals/` in this
+repository holds scenarios — a realistic task that never mentions the rule, and a check on the code
+produced — and a runner that executes each one with the rules installed and without them. Add a
+scenario before a new rule, run it without the rule to see the default actually fails, and run it
+again after. A rule whose scenario passes without it restates what the model already does, and is
+deleted.
