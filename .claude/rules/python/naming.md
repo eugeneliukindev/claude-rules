@@ -56,7 +56,7 @@ one concept and two vocabularies. Rename the three.
 ## Functions and Methods
 
 - **One name, one action.** Needing "and" to describe it (`validate_and_save_user`) means the
-  function violates SRP — split it.
+  function does two things — split it.
 - **Commands are verbs; pure queries may be nouns; participles are banned.** A function that *does*
   something starts with a verb: `normalize_profile`, `send_invoice`. A side-effect-free query may
   be named after **what it returns** — `pydantic`'s `version_short()`, `sqlalchemy`'s

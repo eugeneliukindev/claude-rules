@@ -71,9 +71,8 @@ And three properties of the system as a whole:
 - **Cost grows slower than the work.** Nothing unbounded: every external collection has a limit,
   every fan-out a semaphore, every run a deadline. Stream what can be streamed. "It has always been
   small" is not a bound.
-- **The next person is you, without the context.** One reason to change per unit; a new case is
-  data or a new file, never a new branch in something that already works. Deleting must be as easy
-  as adding.
+- **The next person is you, without the context.** One actor per module; a new case is data or a
+  new file, never a new branch in something that already works. Deleting must be as easy as adding.
 
 ## YAGNI, KISS, DRY
 
@@ -85,8 +84,8 @@ And three properties of the system as a whole:
 - **The simplest construction that fully solves the problem**, which is not the shortest one.
   Prefer the boring mechanism: a function over a class, a dict over a registry. Simplicity is
   measured at the point of *use*.
-- **DRY is about knowledge, not text.** Two fragments that look identical but change for different
-  reasons are not duplication — merging them couples two things that must be free to move apart,
+- **DRY is about knowledge, not text.** Two fragments that look identical but answer to different
+  actors are not duplication — merging them couples two things that must be free to move apart,
   and the next change arrives as a parameter, then a flag, then a branch. Two fragments that must
   change together are duplication even when they look nothing alike: a limit enforced in a
   validator and repeated in a schema. **Wait for the third occurrence.** The cure is often a shared
@@ -116,7 +115,7 @@ And three properties of the system as a whole:
 
 ## Functions
 
-- **One responsibility.** If describing it needs "and", split it.
+- **Does one thing.** If describing it needs "and", split it. SRP is a different rule, for modules.
 - **Group related parameters into a frozen dataclass** rather than growing the signature.
 
 ### Extraction Must Pay for Itself
@@ -223,8 +222,8 @@ namespace with "methods", so a class has to offer something a module does not.
 **Reliable signs of a class that should not exist**: `__init__` plus one method
 (`Calculator(x).calculate()` is `calculate(x)`); only `@staticmethod`s; a box for constants; a
 stateless "service" with no dependencies. And one more, visible only while reading: **a class whose
-methods want to be grouped by feature** rather than by visibility has more than one responsibility
-— split the class, do not reorder it.
+methods want to be grouped by who asks for their changes** rather than by visibility answers to
+more than one actor — split the class, do not reorder it.
 
 Before reaching for a class, consider `functools.partial` or a closure, a frozen dataclass of
 options as a parameter, or **splitting the module** — a long module of independent functions is
@@ -238,18 +237,37 @@ idiomatic Python and does not improve by growing a `self`.
 
   # CORRECT — trigger 4: the repeated parameters were the constructor
   class ProductCatalogue:
-      def __init__(self, client: Client, settings: Settings) -> None:
-          self._client = client
-          self._settings = settings
-
+      def __init__(self, client: Client, settings: Settings) -> None: ...
       def fetch_page(self, url: str) -> str: ...
       def fetch_listing(self, page: int) -> list[str]: ...
       def fetch_product(self, url: str) -> Product: ...
   ```
 
-**SOLID, in the two forms that get broken**: one responsibility per class, and high-level modules
-depend on abstractions — inject dependencies, never instantiate a collaborator inside a class. A
-subclass is usable wherever its parent is; it never narrows a return type or widens a parameter.
+**The rest of SOLID, where it breaks**: depend on abstractions — inject, never instantiate a
+collaborator inside a class; a subclass never narrows a return type or widens a parameter.
+
+### One Actor per Module and Class
+
+This is SRP, and it is not "does one thing" — that rule is for functions. A responsibility is an
+**actor**: whoever asks for the change — finance for pay rules, HR for the hours report, the DBA
+for the schema. Code answering to two actors does not share a module or a class even when it shares
+the data, or a fix one of them asks for ships to the other. **The test is who, not which layer**:
+name who would ask to change each function, and two answers are two modules; splitting I/O, domain
+and presentation follows from it and does not replace it. The data stays one frozen dataclass, each
+actor gets a module of functions over it, and old entry points survive as a façade that delegates.
+
+  ```python
+  # WRONG — finance, HR and the DBA all edit one class, and a fix for one ships to all three
+  class Employee:
+      def calculate_pay(self) -> Money: ...
+      def report_hours(self) -> HoursReport: ...
+      def save(self) -> None: ...
+
+  # CORRECT — one record, one module per actor
+  def calculate_pay(employee: Employee) -> Money: ...                   # payroll.py
+  def report_hours(employee: Employee) -> HoursReport: ...              # timesheets.py
+  def save_employee(session: Session, employee: Employee) -> None: ...  # employee_store.py
+  ```
 
 ### A Contract Is a Base Class with `@abstractmethod`; `Protocol` Is for Code You Do Not Control
 
@@ -260,25 +278,16 @@ inheritance is free — and it buys two things structural typing cannot:
 - **The failure arrives at the class, not at the call site.** An implementation that forgot a
   method is an error where it is defined; a `Protocol` says nothing until someone passes it
   somewhere, and the error surfaces at that one call site, possibly far away.
-- **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent in
-  the line that defines the class; structural conformance is invisible until you diff the methods
-  by hand.
+- **The inheritance is the documentation.** `class SlackNotifier(Notifier)` states the intent where
+  the class is defined; structural conformance is invisible until you diff the methods by hand.
 
 **`@abstractmethod` alone gets the static guarantee; `ABC` adds a runtime one, and a metaclass.**
-The type checker reports `Cannot instantiate abstract class "X" with abstract attribute "y"` from
-the decorators alone — inheriting `abc.ABC` is not what makes that work. What `ABCMeta` adds is the
-refusal at construction time, and what it costs is a metaclass: it conflicts with Django's model
-metaclass, with mypyc compilation, and with any other library that wants that slot.
-
-- **Default to `ABC`** in an application that compiles nothing and inherits no foreign metaclass.
-  The runtime refusal is free there, and it catches the implementation built through a path the
-  checker does not see.
-- **Drop to a plain base class with `@abstractmethod`** when a metaclass is already spoken for, or
-  the code is compiled. Neither guarantee the checker gives is lost.
-- **Decide once per project and say which**, rather than mixing both shapes in one tree.
-
-`@override` is orthogonal: it works on any base class, and it is mandatory either way — a renamed
-method on the contract then becomes an error in every implementation.
+The checker refuses to instantiate an abstract class from the decorators alone; `ABCMeta` adds the
+refusal at construction time, and costs a metaclass that conflicts with Django's models, with mypyc
+and with any other library wanting that slot. **Default to `ABC`** where nothing is compiled and no
+foreign metaclass is inherited — it also catches an implementation built through a path the checker
+does not see. Otherwise **drop to a plain base class with `@abstractmethod`**, losing nothing the
+checker gives. **Decide once per project**, rather than mixing both shapes in one tree.
 
 Use `Protocol` when you cannot make the other side inherit: a third-party type, a duck-typed shape
 someone else's code produces, a callback signature. **Never wrap a stdlib ABC in a `Protocol`** —
@@ -301,9 +310,8 @@ notifications/
     __init__.py     # the contract and the implementations, nothing else
 ```
 
-- **`base.py` is a position, not a `Base` class.** The module sits at the base of the group; the
-  class inside it is still named for the capability — `Notifier`, never `BaseNotifier`. The two
-  rules do not collide: one is about a file, the other about a class.
+- **`base.py` is a position, not a `Base` class.** The file sits at the base of the group; the
+  class inside is still named for the capability — `Notifier`, never `BaseNotifier`.
 - **The contract's module imports nothing any implementation needs.** That is what makes the split
   worth having: a new implementation is a new file, and no existing file changes. An import of a
   driver in `base.py` silently makes every consumer of the contract depend on that driver.
@@ -346,18 +354,14 @@ cannot precede the class — and when that happens the module is holding two thi
 what is computed from it, so **split it** and the constants land at the top again. Anything else
 that will not fit the order is the same signal: look for the seam, do not renumber the list.
 
-- **One reason to change per module.** A module mixing I/O, domain rules and presentation is split.
 - **Size is a smell, not a limit.** The linters enforce a ceiling; the seam is your judgement.
 - **No executable statements at import time** other than constants and the logger. No network
   calls, no file reads, no settings construction — these make imports slow, order-dependent and
   untestable. **`main()` is a function, never module-level code.**
 - **A module name that reaches `sys.path` directly must not shadow a standard-library module** —
-  `types`, `typing`, `json`, `logging`, `queue`, `io`, `abc` and their neighbours. This bites for a
-  top-level module of a distribution, a loose script, or a scheduler DAG file. Nested inside a
-  package the name is only ever visible as `mypackage.types`, so there is nothing to shadow, and
-  the module is named after its contents — `internal/json.py`, `internal/io.py` are right. The
-  linter does not draw that line (ruff `A005` fires on both), so a package that names modules after
-  their contents turns `A005` off deliberately, once, with the reason written down.
+  `types`, `json`, `logging`, `io`, `abc`: a top-level module of a distribution, a loose script, a
+  scheduler DAG file. Nested in a package it is only ever `mypackage.json` and is named after its
+  contents; ruff `A005` fires on both, so such a package turns it off once, with the reason.
 
 ### Every Top-Level Name Not Used Outside Takes an Underscore
 
@@ -366,10 +370,8 @@ field of the root, a row shape only its own repository builds, a policy only its
 applies, a limit only its own function reads, an alias only its own signatures mention: each takes
 the prefix — `_SectionSettings`, `_LOGGED_ANSWER`, `_Compared`. Without it the name reads as part
 of the module's surface, and the first import from another module makes it one for good.
-
-**Constants and aliases are the ones that get missed.** A class draws attention the moment it is
-imported somewhere; a constant is quietly read from a second module, and by the time anyone looks
-it has two homes and no owner.
+**Constants and aliases are the ones that get missed**: a class draws attention once imported, a
+constant is quietly read from a second module and ends up with two homes and no owner.
 
 The test is mechanical, and worth running over a package at once: for each top-level name, grep it
 across the tree, drop the file that defines it, and prefix everything left with no hits. Run it
@@ -424,11 +426,8 @@ The decisions behind these are in the `python-types` skill; these are the ones t
 - **A string that is user-facing or used twice is a constant** or an `Enum` member. The linter
   catches the magic *number*; a repeated literal string it will not.
 - **`os` is correct where `pathlib` has no answer**, and only there: permission probing
-  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors. The case that
-  costs an evening: a native library refuses to write its output file and reports only an exit
-  code, because the previous build was left behind by a container running as root. There is no
-  `Path.can_write()` to check first, and the linter that rewrites `os.path` calls into `Path` has
-  nothing to say about this one.
+  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors — there is no
+  `Path.can_write()`, and the linter that rewrites `os.path` into `Path` says nothing about these.
 
 ## Errors
 
@@ -583,10 +582,11 @@ of the thing it is attached to**. Both must stay true when anything outside chan
 ## Definition of Done
 
 The formatter, the linters, the type checker in strict mode and the tests run first, in that
-order, and each is clean with no new suppression. Then the seven checks no tool makes — the ones
+order, and each is clean with no new suppression. Then the eight checks no tool makes — the ones
 skipped first under pressure:
 
 - [ ] Every new identifier passes the Naming Self-Check, and survives the relocation test
+- [ ] Every new module and class answers to one actor — name who would ask to change it
 - [ ] Every helper has a reason to exist: reuse, a required callable, hidden complexity, a test
       seam, or a named predicate — and every class has one of the six triggers
 - [ ] Constants sit at the top of the module, and **every top-level name not used outside is

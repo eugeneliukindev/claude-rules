@@ -55,7 +55,7 @@ Three different things, and the difference matters most when a check passes:
 - **The type checker** decides what survives a rename, a narrowed union, a moved field. This is why
   `Any`, a stringly-typed dict and a silent `getattr` cost far more than the line they sit on.
 - **Everything else rests on attention** — every rule here that no tool runs: the encapsulation
-  test, the relocation test for names, one-reason-to-change, the extraction tests, the layer
+  test, the relocation test for names, one actor per module, the extraction tests, the layer
   intent. Nothing fails when they are skipped, and they are skipped first under pressure.
 
 A rule in the third group that is broken in bulk is not a standard, it is a wish. Two honest
