@@ -104,8 +104,8 @@ __all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
   lazy-import table in the same order so the two can be diffed by eye.
 - **A name is either in `__all__` or private.** There is no third state: a public-looking name that
   is not exported is a promise nobody made and everybody will rely on.
-- **NEVER import a private name across a package boundary.** If another package needs it, it is not
-  private: promote it deliberately, with the deprecation guarantees that implies. Copying it is
+- **A private name is never imported across a package boundary.** If another package needs it, it is
+  not private: promote it deliberately, with the deprecation guarantees that implies. Copying it is
   worse.
 - **Deep paths that must stay importable** (plugin entry points) are an explicit, documented part
   of the public surface, not an accident.

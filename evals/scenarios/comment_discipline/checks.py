@@ -1,4 +1,4 @@
-"""Comments are one line, and neither comments nor docstrings refer to callers or ordering."""
+"""Comments are one line, internal docstrings are short, and neither refers to callers or ordering."""
 
 import ast
 import io
@@ -10,6 +10,7 @@ from typing import Final
 from evalkit import Failure, missing_code, parse_workdir
 
 _MAX_COMMENT_BLOCK_LINES: Final = 3
+_MAX_INTERNAL_DOCSTRING_LINES: Final = 3
 _NONLOCAL: Final = re.compile(
     r"\b(called|used|invoked) (by|from)\b|\bcallers?\b|\bmust (run|be called) (before|after)\b",
     re.IGNORECASE,
@@ -46,7 +47,9 @@ def check(workdir: Path) -> list[Failure]:
     for node in ast.walk(module.tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Module):
             docstring = ast.get_docstring(node) or ""
+            line = getattr(node, "lineno", 1)
             if _NONLOCAL.search(docstring):
-                line = getattr(node, "lineno", 1)
                 failures.append(Failure(file=module.name, line=line, reason="docstring refers to a caller"))
+            if len(docstring.splitlines()) > _MAX_INTERNAL_DOCSTRING_LINES:
+                failures.append(Failure(file=module.name, line=line, reason="unpublished docstring longer than three lines"))
     return failures

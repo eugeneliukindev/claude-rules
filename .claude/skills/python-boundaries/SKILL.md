@@ -86,9 +86,9 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
   serializing a domain or ORM object directly — what a serializer can reach, it will publish.
 - **Round-trip is a contract**: `from_dict(to_dict(x)) == x`, covered by a test for every
   serialized type.
-- **NEVER unpickle untrusted data** — it executes code on load. Do not use pickle for persistence
-  or cross-service messages at all, being version-fragile; it is acceptable only inside a single
-  process tree.
+- **Untrusted data is never unpickled** — it executes code on load. Do not use pickle for
+  persistence or cross-service messages at all, being version-fragile; it is acceptable only inside
+  a single process tree.
 - **Safe loaders only** for untrusted text formats; configuration is read once at startup, not
   used as a database.
 - **Versioned payloads**: any shape that crosses a queue or is stored carries an explicit version

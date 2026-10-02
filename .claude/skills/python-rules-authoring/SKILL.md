@@ -99,6 +99,13 @@ So: `core.md` and `naming.md` carry `paths: "**/*.py"`, because only they apply 
 `testing.md` carries its own test-file globs. Everything reached by a task rather than by a file —
 every topic, every library — is a skill, and the map at the top of `core.md` names them.
 
+**The one file with no front matter is `new-files.md`, six lines, and the exception is
+measured.** A path-scoped rule loads when a matching file is *read*; a task that writes `x.py`
+into an empty directory reads nothing, and in the evals every such task ran without `core.md` —
+the dataclass scenario passed three of three with a file to read first and none of three without.
+The six lines cost every session in every language; they buy the rules for the one case the glob
+cannot see.
+
 **Tool configuration is not written down here at all.** Which linters a project runs, what it
 selects, what it excludes and how its hooks are wired changes from repository to repository, and
 the person who owns the repository owns those files. What belongs here is only what survives the
@@ -111,6 +118,16 @@ always-loaded pair by being both **universal** — every Python file could break
 (async, migrations, a CLI, a shipped example) is a skill, and the map gets a row saying when it
 applies. A rule that restates what the model already does by default is deleted, not moved: it
 costs attention on every edit and buys nothing.
+
+**A skill loads only when the work names its topic, so universal practice stays in `core.md` with
+its examples.** Measured, not assumed: a variant that left one-line rules in `core.md` and moved
+the examples for functions, classes, errors and comments into four skills lost to the current
+layout 38 to 42 of 42 runs, and none of the four skills was opened once — the model looks up
+`sqlalchemy`, retries or a subprocess when the task contains them, and never looks up "how to write
+a function". The actor rule was the clearest case: with the example in `core.md` the model split
+pay and hours into two modules three times out of three; with the example one skill away it never
+did. What moves to a skill is what a concrete signal in the task points at — a library, `async
+def`, a migration, an untrusted input.
 
 **The per-edit pair has a budget, and it is a hard number:**
 

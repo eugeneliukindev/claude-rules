@@ -318,7 +318,7 @@ the search cannot see; the script lists those separately, and exempts `main`, `r
 
 ## Types and Data — Defaults
 
-The decisions behind these are in the `python-types` skill; these are the ones that apply everywhere.
+The decisions behind these are in the `python-types` skill; these apply everywhere.
 
 - **mypy `--strict` clean**, which is what makes the annotations mandatory. `T | None`, never
   `Optional[T]`; on a 3.12+ floor PEP 695 generics (`class Repository[T: Entity]`), never
