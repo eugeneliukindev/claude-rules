@@ -5,12 +5,9 @@ paths:
 
 # Naming
 
-Loads with `core.md`, because every line of code names something and no tool judges the meaning a
-name carries. Case conventions, builtin shadowing, single letters, name length and the blacklist of
-filler words are the linters' job and are not repeated here.
-
-Examples are taken from `pydantic` and `sqlalchemy` — both large, long-lived, and named by people
-who then had to live with the choice.
+Loads with the other Python rules, because every line of code names something and no tool judges the
+meaning a name carries. Case conventions, builtin shadowing, single letters, name length and the
+blacklist of filler words are the linters' job and are not repeated here.
 
 ## General
 

@@ -11,7 +11,7 @@ description: >-
 
 # Types — Reference
 
-`core.md` carries the defaults; this file carries the decisions behind them.
+The `types.md` rule carries the defaults; this file carries the decisions behind them.
 
 **Choosing a `collections.abc` ABC** — which one to accept in a parameter, which to return, how to
 check one at runtime, how to implement a container: see [collections-abc.md](collections-abc.md).
@@ -275,11 +275,11 @@ def load_settings(path: Path) -> Settings:
 - **PEP 695 syntax from Python 3.12**: `def first[T](...)`, `class Repository[T: Entity]`. The
   parameter belongs to the signature, so nothing module-level is declared and nothing can be reused
   by accident.
-- **Below 3.12 it is `TypeVar` + `Generic`, and that is not a lapse** — `core.md` asks for PEP 695
-  on a 3.12+ floor, and below it the syntax does not exist yet. The same applies to the `typing`
-  names that arrived with it: `typing_extensions.override` until 3.12, `typing_extensions.TypeIs`
-  until 3.13. A project states its floor once, in `requires-python`, and every one of these choices
-  follows from it rather than being argued per file.
+- **Below 3.12 it is `TypeVar` + `Generic`, and that is not a lapse** — the `types.md` rule asks for
+  PEP 695 on a 3.12+ floor, and below it the syntax does not exist yet. The same applies to the
+  `typing` names that arrived with it: `typing_extensions.override` until 3.12,
+  `typing_extensions.TypeIs` until 3.13. A project states its floor once, in `requires-python`, and
+  every one of these choices follows from it rather than being argued per file.
 - **A `TypeVar` is a module-level name, so it is private and suffixed** — `_T`, `_KT`, `_VT`, `_P`,
   `_R`. Where one module declares several and the letters stop telling them apart, the role goes in
   front of the suffix, never instead of it: `_BackendT`, `_ModelT`. A variance marker goes after

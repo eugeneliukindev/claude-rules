@@ -12,7 +12,7 @@ description: >-
 # Contracts and Implementations
 
 Naming a contract and its implementations is in `naming.md`; when a class is worth writing at all
-is in `core.md`. This is what comes after: which mechanism declares the contract, and where its
+is in `classes.md`. This is what comes after: which mechanism declares the contract, and where its
 implementations live.
 
 ## A Contract Is a Base Class with `@abstractmethod`; `Protocol` Is for Code You Do Not Control

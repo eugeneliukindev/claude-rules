@@ -11,8 +11,8 @@ description: >-
 
 # Packaging and Public Surface
 
-The underscore rule that applies to every module is in `core.md`; this file is about the surface a
-package promises.
+The underscore rule that applies to every module is in the `modules.md` rule; this file is about the
+surface a package promises.
 
 ## The Three Levels of Visibility
 
@@ -40,8 +40,8 @@ module boundaries. That is enough, provided the convention is followed consisten
 
 ### Finding Names That Should Be Private
 
-`core.md`'s test — grep each top-level name, drop its own file, prefix what has no hits left — is
-scripted. Run it, do not read it:
+The `modules.md` rule's test — grep each top-level name, drop its own file, prefix what has no hits
+left — is scripted. Run it, do not read it:
 
 ```bash
 python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py src/yourpackage \

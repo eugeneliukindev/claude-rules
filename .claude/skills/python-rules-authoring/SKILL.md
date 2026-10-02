@@ -5,7 +5,7 @@ description: >-
   the python-* skills: stating a rule over its widest category, carve-outs beside prohibitions,
   WRONG/CORRECT pairs that differ in one dimension and obey every other rule, examples that name no
   project, one home per rule, rationed emphasis, skill descriptions as triggers, what loads when,
-  the line budget for the always-loaded rules, and the evals that prove a rule changes behaviour.
+  the line budget for the always-loaded rules, and testing that a rule changes behaviour.
   Use when editing, adding to, splitting, auditing or evaluating these rule files and skills.
 ---
 
@@ -95,13 +95,16 @@ pair that actually governs each edit waited on a glob. The prose in this section
 opposite arrangement for months and nothing contradicted it, because nothing checks a claim about
 loading.
 
-So: `core.md` and `naming.md` carry `paths: "**/*.py"`, because only they apply to every edit;
-`testing.md` carries its own test-file globs. Everything reached by a task rather than by a file —
-every topic, every library — is a skill, and the map at the top of `core.md` names them.
+So: what applies to every edit carries `paths: "**/*.py"`, one topic per file — `core.md`,
+`naming.md`, `functions.md`, `classes.md`, `modules.md`, `types.md`, `errors.md`, `comments.md` —
+and all of them load together on the first read; `testing.md` carries its own test-file globs.
+Splitting by topic changes the organisation, not the cost: the same text arrives at the same moment.
+Everything reached by a task rather than by a file — every topic, every library — is a skill, and
+the map at the top of `core.md` names them.
 
 **The one file with no front matter is `new-files.md`, six lines, and the exception is
 measured.** A path-scoped rule loads when a matching file is *read*; a task that writes `x.py`
-into an empty directory reads nothing, and in the evals every such task ran without `core.md` —
+into an empty directory reads nothing, and in measured runs every such task went without the rules —
 the dataclass scenario passed three of three with a file to read first and none of three without.
 The six lines cost every session in every language; they buy the rules for the one case the glob
 cannot see.
@@ -113,29 +116,30 @@ choice of tool: the discipline around suppressions and limits, and — where a r
 can be handed to a checker instead of remembered — the name of the check that does it.
 
 **Moving a rule up costs every edit; moving it down costs a lookup.** A rule earns a place in the
-always-loaded pair by being both **universal** — every Python file could break it — and
+always-loaded set by being both **universal** — every Python file could break it — and
 **behaviour-changing**: without it the obvious default is wrong. A rule that only some paths reach
 (async, migrations, a CLI, a shipped example) is a skill, and the map gets a row saying when it
 applies. A rule that restates what the model already does by default is deleted, not moved: it
 costs attention on every edit and buys nothing.
 
-**A skill loads only when the work names its topic, so universal practice stays in `core.md` with
-its examples.** Measured, not assumed: a variant that left one-line rules in `core.md` and moved
-the examples for functions, classes, errors and comments into four skills lost to the current
-layout 38 to 42 of 42 runs, and none of the four skills was opened once — the model looks up
+**A skill loads only when the work names its topic, so universal practice stays in the always-loaded
+rules with its examples.** Measured, not assumed: a variant that left one-line rules in `core.md`
+and moved the examples for functions, classes, errors and comments into four skills lost to the
+current layout 38 to 42 of 42 runs, and none of the four skills was opened once — the model looks up
 `sqlalchemy`, retries or a subprocess when the task contains them, and never looks up "how to write
-a function". The actor rule was the clearest case: with the example in `core.md` the model split
-pay and hours into two modules three times out of three; with the example one skill away it never
-did. What moves to a skill is what a concrete signal in the task points at — a library, `async
-def`, a migration, an untrusted input.
+a function". The actor rule was the clearest case: with the example in `core.md` the model split pay
+and hours into two modules three times out of three; with the example one skill away it never did.
+What moves to a skill is what a concrete signal in the task points at — a library, `async def`, a
+migration, an untrusted input.
 
-**The per-edit pair has a budget, and it is a hard number:**
+**The always-loaded set has a budget, and it is a hard number** — counted without front matter,
+which Claude Code strips before loading:
 
 | file | ceiling |
 |---|---|
-| `core.md` | 500 |
 | `naming.md` | 300 |
-| **loaded on every `.py`** | **800** |
+| any other always-loaded file | 120 |
+| **everything loaded on every `.py`** | **800** |
 | any one `SKILL.md` | 500 |
 
 The pair was lowered from 600 + 350 once, with this arithmetic: Anthropic asks for under 200 lines
@@ -144,6 +148,8 @@ about twelve thousand tokens on every Python edit. An audit then found the contr
 resource lifecycle, dunders and the stdlib-shadowing rule reached only by some work — they became
 skill content — and a dozen rules the model follows without being told, which were deleted. What
 remained was 800 lines; the ceiling is set there so the next addition has to displace something.
+`core.md` was then split by topic with its text unchanged; the files load together, so the split
+changes where a rule lives, not what reaches the model.
 
 The number is not sacred; the *fixedness* is. Without one, every addition looks free — each is a
 paragraph, and the file went from 350 lines to three thousand one paragraph at a time. With one,
@@ -193,9 +199,10 @@ teaches nothing; two skills whose descriptions both match the same work load the
 
 ## Evaluation Before and After
 
-A rule is a hypothesis that the model behaves differently with it than without it. `evals/` in this
-repository holds scenarios — a realistic task that never mentions the rule, and a check on the code
-produced — and a runner that executes each one with the rules installed and without them. Add a
-scenario before a new rule, run it without the rule to see the default actually fails, and run it
-again after. A rule whose scenario passes without it restates what the model already does, and is
-deleted.
+A rule is a hypothesis that the model behaves differently with it than without it. Test it the way
+it will be used: a realistic task that never mentions the rule, run in a fresh session without the
+rule and then with it, a few times each, and the produced code read against the rule. Run it
+without the rule first, to see that the default actually fails. A rule whose task passes without
+it restates what the model already does, and is deleted. Seed the task with a file to read —
+path-scoped rules arrive on a read — and keep the prompt free of requests that outrank the rule:
+"make sure it is well documented" overrides any rule about comments, by design.

@@ -11,8 +11,8 @@ description: >-
 
 # Performance
 
-Algorithmic sanity and `slots=True` are defaults in `core.md` and need no measurement; everything
-here does.
+Algorithmic sanity and `slots=True` are defaults in the always-loaded rules and need no measurement;
+everything here does.
 
 - **Measure before optimizing.** Any performance change references a measurement — a profile for
   CPU, an allocation profile for memory, a benchmark to pin the improvement. An optimization

@@ -9,7 +9,8 @@ paths:
 
 # Testing
 
-Supplement to `core.md`. Governs tests, both writing and reviewing them. `pytest` is the framework.
+Supplement to the other Python rules. Governs tests, both writing and reviewing them. `pytest` is
+the framework.
 
 ## Levels
 
