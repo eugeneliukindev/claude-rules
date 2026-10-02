@@ -7,7 +7,10 @@ paths:
 
 ## Errors
 
-- **Catch the most specific exception the guarded lines can actually raise.**
+The example below carries the four broken most often: the narrowest `except` the guarded lines
+need, a `try` around only those lines, a driver's error translated with `raise … from`, and never
+`None` as an error.
+
 - **Messages include the identifying values**: `f"Order {order_id} cannot be shipped: status is
   {status}"`, not `"Invalid order"`.
 - **Every package defines one root exception**, `<Package>Error(Exception)`, and all its own
@@ -15,12 +18,8 @@ paths:
   Inherit the closest stdlib type as well when the meaning matches:
   `UserNotFoundError(AppError, LookupError)`. Exceptions **carry data as attributes**, not only
   text.
-- **Domain code raises domain exceptions.** A driver's or client's exception never escapes a public
-  function — translate at the boundary, and preserve the cause with `raise … from`.
-- **Never return `None`, `False`, `-1` or an empty collection to signal an error** in a function
-  whose name promises a value. `None` is for `find_…`-style lookups where absent is normal.
-- **Keep `try` blocks minimal**: only the statements that can raise; everything else before the
-  `try` or in `else:`.
+- **`None` is for `find_…`-style lookups where absent is normal**; a function whose name promises a
+  value raises instead of returning `None`, `False`, `-1` or an empty collection.
 - **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
   the missing case is common.** Never both.
 - **Catch at the level that can handle it** — retry, fall back, convert, report. A layer that can

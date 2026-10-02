@@ -83,7 +83,7 @@ one concept and two vocabularies. Rename the three.
 
 ```python
 # WRONG — generic verb, hidden side effect, negated predicate, machinery, participle
-def process_user_data(payload: dict[str, str]) -> None: ...
+def process_user_profile(profile: UserProfile) -> UserProfile: ...
 def fetch_report(report_id: ReportId) -> Report: ...      # also writes to the audit log
 def is_not_ready(job: Job) -> bool: ...
 def run_levenshtein(left: str, right: str) -> int: ...
@@ -193,28 +193,18 @@ class OrderStatus(Enum): ...
 
 ## The Name Fixes the Abstraction Level
 
-A name fixes the abstraction level of a function or class; the body stays at that level.
-Logic "leaks" when a generically named thing starts knowing about specific cases, or when a
-specifically named thing takes over a sibling's responsibility. Both make the name lie, and a lying
-name is worse than no name.
+A generically named unit — `Notifier`, `save_entity`, `calculate_total` — holds only generic logic:
+no branching on concrete types, channels, providers, tenants or environments. **The vocabulary
+test**: from the name alone, predict which domain words may appear in the body; `slack`, `vip` or
+`postgres` inside `save_entity` is a leak, and a lying name is worse than no name.
 
-- **Generic name → only generic logic.** `Notifier`, `save_entity`, `TaskQueue` contain **no**
-  branching on concrete types, channels, providers, tenants or environments.
-- **Concrete logic lives in a concretely named unit, and in exactly one.** Anything Slack-only goes
-  in `SlackNotifier`; anything VIP-only in `VipDiscountPolicy`.
-- **A "special case" branch in a generic body is a design signal, not a fix.** When a generic unit
-  needs "but for X do it differently", do one of these and never add the branch: extract
-  `XSomething` as a separate implementation of the same contract; move the variation into an
-  injected strategy or callable; or, if the variation is data, pass it as data (`discount_rate`).
+- **A special-case branch is a design signal, not a fix.** Make the variation data
+  (`discount_rate`), an injected strategy or callable, or a separate implementation of the
+  contract — and keep the concrete rule in exactly one concretely named place.
 - **Never re-implement a sibling's responsibility.** `OrderValidator` calls `AddressValidator`; it
   does not contain address rules.
-- **Never upgrade a name to hide a leak.** Renaming `Notifier` to `MultiChannelNotifier` because it
-  now branches on channel is not a solution — the branching is the problem.
-- **Generic names are earned, not claimed.** A class deserves one only when a second implementation
-  could be dropped in without touching callers.
-- **The vocabulary test.** From the name alone, predict which domain words may appear in the body.
-  Any word outside that prediction is a leak: `slack`, `vip`, `postgres` inside `save_entity` or
-  `calculate_total`.
+- **Never upgrade a name to hide a leak.** A `MultiChannelNotifier` that branches on the channel
+  still branches — the branching is the problem.
 
 ```python
 # WRONG — a VIP rule leaked into a generic calculation

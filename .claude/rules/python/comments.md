@@ -10,26 +10,21 @@ paths:
 **Which names need a docstring is the linter's decision**; what goes inside one — and whether a
 comment is written at all — is not.
 
-**A comment is one line.** In both reference libraries two thirds of comment blocks are a single
-line and fewer than one in ten runs past three; that ratio is the budget. The common failure is
-not a missing comment but a five-line paragraph restating the statement below it.
+**A comment is one line, in one of four forms** — anything else restates the code:
 
-**A paragraph is earned by one of two things.** *Enumerated cases* — branches a reader cannot
-recover from the code, as a numbered list. *A recorded limitation* — what was deliberately not
-supported and what happens to whoever tries it, ending honestly: "not supported for now".
+```python
+# Cookies that are not fully described:
+_IDLE_TIMEOUT_SECONDS: Final = 30  # the gateway drops idle connections at 35
+# TODO: drop the fallback once the old runtime is no longer supported
+# NOTE: mirrored in limits.h, which cannot import this module
+```
 
-**Four forms, and a comment takes no others:**
-
-- **A caption** — a few words ending in a colon, above the lines it introduces: `# Cookies that
-  are not fully described:`. It indexes the code rather than explaining it.
-- **A reason** — why *this* value, on the same line when it fits and directly above when it does
-  not. Never what the line does.
-- **`# TODO:` naming the condition that removes it** — "when support for the old runtime is
-  dropped" — never an owner, which rots at the first handover. It may be an open question.
-- **`# NOTE:` marking a coupling that code cannot express** — a constant mirrored in a native
-  extension, a type alias duplicated in a stub. Make the coupling real first: one shared constant,
-  one shared type, one call. Across two languages that is impossible, and the prefix is the value:
-  it makes the debt greppable.
+A caption ends in a colon and indexes the lines below. A reason says why *this* value, never what
+the line does. A `TODO` names the condition that removes it, never an owner. A `NOTE` marks a
+coupling code cannot express — make it real first with one shared constant, type or call, and keep
+the prefix for what crosses languages, where it makes the debt greppable. A paragraph is earned only
+by enumerated cases a reader cannot recover from the code, or by a recorded limitation that ends
+honestly: "not supported for now".
 
 A legal header is exempt; where a suppression's reason goes is in `core.md`.
 

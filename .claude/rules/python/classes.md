@@ -42,8 +42,7 @@ for the schema. Code answering to two actors does not share a module or a class 
 the data, or a fix one of them asks for ships to the other. **The test is who, not which layer**:
 name who would ask to change each function, and two answers are two modules; splitting I/O, domain
 and presentation follows from it and does not replace it. The data stays one frozen dataclass; each
-actor gets a module of functions over it, or a class of its own when it has dependencies; old entry
-points survive as a façade that delegates.
+actor gets a module of functions over it, or a class of its own when it has dependencies.
 
 ```python
 # WRONG — one module, two actors: finance changes _regular_hours for pay, HR's report moves too
@@ -55,11 +54,14 @@ def report_hours(timesheet: Timesheet) -> HoursReport: ...   # HR
 
 # WRONG — one class answers to finance and HR, and both edit _regular_hours for their own reasons
 class EmployeeService:
-    def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables) -> None: ...
+    def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables,
+                 calendar: WorkCalendar) -> None: ...
     def gross_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...     # finance
     def net_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...       # finance
+    def payslip(self, employee_id: EmployeeId, month: Month) -> Payslip: ...     # finance
     def hours_report(self, month: Month) -> HoursReport: ...                     # HR
     def overtime_report(self, month: Month) -> OvertimeReport: ...               # HR
+    def absence_report(self, month: Month) -> AbsenceReport: ...                 # HR
     def _regular_hours(self, timesheet: Timesheet) -> Decimal: ...
 
 # CORRECT — one class per actor, each with its own dependencies and its own _regular_hours
@@ -67,11 +69,13 @@ class Payroll:
     def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables) -> None: ...
     def gross_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
     def net_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
+    def payslip(self, employee_id: EmployeeId, month: Month) -> Payslip: ...
 
 class HoursReporting:
-    def __init__(self, timesheets: TimesheetRepository) -> None: ...
+    def __init__(self, timesheets: TimesheetRepository, calendar: WorkCalendar) -> None: ...
     def hours_report(self, month: Month) -> HoursReport: ...
     def overtime_report(self, month: Month) -> OvertimeReport: ...
+    def absence_report(self, month: Month) -> AbsenceReport: ...
 ```
 
 A layer split passes both wrong versions — everything in them is domain logic. The two

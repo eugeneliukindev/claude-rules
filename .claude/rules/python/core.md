@@ -46,8 +46,8 @@ about living with those tools do belong here:
 5. The default (*prefer*) in these files.
 6. Your own judgement — and say so, rather than letting it read as a rule.
 
-A rule that is wrong for the situation gets changed here, with the reasoning — not worked around
-silently in code. A rule that is regularly worked around is a rule that needs changing.
+A rule that is wrong for the situation, or regularly worked around, is changed here with the
+reasoning — never worked around silently in code.
 
 ## Principles
 
@@ -61,12 +61,28 @@ sanity always, anything beyond that with a profile in hand.
 
 And three properties of the system as a whole:
 
-- **A failure stays where it happened.** One bad input, one unreachable dependency must never stop
-  the run. Decide the blast radius *before* writing the `try` — name what is being protected, this
-  row, this source, this request — and catch at exactly that boundary; a `try` around the whole
-  loop turns one bad item into zero results. A failure is recorded with its reason and the run
-  continues. Degradation has a stated direction — skips, retries later, serves stale, returns
-  partial — written where the code makes the choice.
+- **A failure stays where it happened.** One bad input or one unreachable dependency never stops
+  the run: name what is protected — this row, this source, this request — and catch at exactly that
+  boundary, recording the reason. Degradation has a stated direction — skip, retry later, serve
+  stale, return partial — written where the code makes the choice.
+
+  ```python
+  # WRONG — the boundary is the whole loop: one unreachable SKU and nothing after it is updated
+  try:
+      for sku in skus:
+          store.update_price(sku, supplier.fetch_price(sku))
+  except SupplierError:
+      logger.warning("price fetch failed", extra={"sku": sku})
+
+  # CORRECT — the boundary is one SKU: it is recorded and skipped, the run goes on
+  for sku in skus:
+      try:
+          price = supplier.fetch_price(sku)
+      except SupplierError:
+          logger.warning("price fetch failed", extra={"sku": sku})
+          continue
+      store.update_price(sku, price)
+  ```
 - **Cost grows slower than the work.** Nothing unbounded: every external collection has a limit,
   every fan-out a semaphore, every run a deadline. Stream what can be streamed. "It has always been
   small" is not a bound.
@@ -75,11 +91,10 @@ And three properties of the system as a whole:
 
 ## YAGNI, KISS, DRY
 
-- **Build what today's requirement needs.** The cost of a speculative feature is not the hour spent
-  writing it; it is that everything afterwards must keep it working. A generalisation built for one
-  case is a guess about the second, and a wrong abstraction is harder to remove than the
-  duplication it prevented, because callers have grown into it. A configuration option nobody sets
-  and a parameter that is always the default are branches never known to work.
+- **Build what today's requirement needs.** A speculative feature costs everything afterwards that
+  must keep it working. A generalisation built for one case is a guess about the second, and a
+  wrong abstraction outlives the duplication it prevented, because callers have grown into it. An
+  option nobody sets and a parameter always left at its default are branches never known to work.
 - **The simplest construction that fully solves the problem**, which is not the shortest one.
   Prefer the boring mechanism: a function over a class, a dict over a registry. Simplicity is
   measured at the point of *use*.
@@ -92,9 +107,8 @@ And three properties of the system as a whole:
 
 ## Definition of Done
 
-The formatter, the linters, the type checker in strict mode and the tests run first, in that
-order, and each is clean with no new suppression. Then the eight checks no tool makes — the ones
-skipped first under pressure:
+The formatter, the linters, the strict type checker and the tests run first, in that order, each
+clean with no new suppression. Then the eight checks no tool makes, skipped first under pressure:
 
 - [ ] Every new identifier passes `naming.md`'s Self-Check and survives the relocation test
 - [ ] Every new module and class answers to one actor — name who would ask to change it
