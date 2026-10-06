@@ -23,32 +23,34 @@ Every module has the same order, so a reader always knows where to look:
 12. The `__main__` guard — a single call to `main()`, nothing else.
 
 **Where Python's definition order overrides this one, it wins** — a validator comes before the
-type alias built from it. Anything else that will not fit is a seam: a constant derived from a class
-means the module holds the shape and what is computed from it, so **split it** rather than
-renumber the list.
+type alias built from it. Anything else that will not fit is a seam — a constant derived from a class
+means the module holds two things — so **split it** rather than renumber the list.
 
 - **Size is a smell, not a limit.** The linters enforce a ceiling; the seam is your judgement.
-- **No executable statements at import time** other than constants and the logger. No network
-  calls, no file reads, no settings construction — these make imports slow, order-dependent and
-  untestable. **`main()` is a function, never module-level code.**
+- **No executable statements at import time** beyond constants and the logger — no network, file
+  reads or settings, which make imports slow and order-dependent. **`main()` is a function.**
 
 ## Every Top-Level Name Not Used Outside Takes an Underscore
 
-Classes, functions, constants and type aliases alike. A settings section that only appears as a
-field of the root, a row shape only its own repository builds, a policy only its own service
-applies, a limit only its own function reads, an alias only its own signatures mention: each takes
-the prefix — `_RetrySettings`, `_OrderRow`, `_RefundPolicy`, `_MAX_BATCH_ROWS`, `_Headers`. Without
-it the name reads as part of the module's surface, and the first import from another module makes it
-one for good.
-**Constants and aliases are the ones that get missed**: a class draws attention once imported, a
-constant is quietly read from a second module and ends up with two homes and no owner.
+Classes, functions, constants and type aliases alike — a settings section only the root holds, a row
+shape only its repository builds, a limit only its function reads: `_RetrySettings`, `_OrderRow`,
+`_MAX_BATCH_ROWS`. Without the prefix the name reads as surface, and the first outside import makes
+it surface for good.
+**Constants and aliases are the ones missed**: read quietly from a second module, they get two owners.
 
-The test is mechanical: for each top-level name, search the tree without the file that defines
-it, and prefix everything with no hits. A script does it:
-`python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py ROOT`. Run it **after**
-the move that made a name internal — that is when a public name quietly stops being one. A name a
-framework reaches through a decorator — a CLI command, a route handler, a fixture — has a caller
-the search cannot see; the script lists those separately, and exempts `main`, `run` and `logger`.
+The test is mechanical — `python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py
+ROOT` — and runs **after** the move that made a name internal. A name a framework reaches through a
+decorator (a route, a command, a fixture) has a caller the search cannot see; the script lists it apart.
+
+## Façade, Public Module, Internal Module
+
+Who imports a module decides its name. The **façade** `package/__init__.py` — imports and `__all__`
+only — carries the vocabulary nearly every importer needs, and stays light: `import package` pulls no
+heavy or optional library. A **public module** `package/topic.py`, or a sub-package with its own
+façade, holds what only some importers need, what pulls a heavy library, or what would bloat the
+façade. An **internal module** `package/_topic.py` is for its siblings only; needed outside, it is
+renamed public, never reached into. One public path per name. A façade that re-exported everything
+made a job needing one enum load a browser driver and an ORM. The decision table: `python-packaging`.
 
 ## Imports
 
@@ -61,9 +63,5 @@ the search cannot see; the script lists those separately, and exempts `main`, `r
 - **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
 - **Never depend transitively on something you import**; every direct dependency is declared, with
   a lower bound. **Never feature-detect with `try: import x`** in application code.
-
-## Resources
-
-- **Anything acquired is released by a context manager** — files, locks, sessions, transactions,
-  clients. Writing one, `ExitStack` for a dynamic number, and what cleanup may raise: the
-  `python-wiring` skill, which also owns who closes what.
+- **Anything acquired is released by a context manager** — files, locks, sessions, clients; who
+  closes what, `ExitStack` and failing cleanup are in `python-wiring`.

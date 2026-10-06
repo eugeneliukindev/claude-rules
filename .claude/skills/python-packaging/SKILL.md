@@ -1,42 +1,76 @@
 ---
 name: python-packaging
 description: >-
-  The public surface of a Python package: the three levels of visibility, __all__ and the flat
-  façade, _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability
+  The public surface of a Python package: the three levels of visibility, when a name belongs in the
+  __init__.py façade, in a public module or in an internal _module, __all__ and the flat façade,
+  _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability
   tiers as directories, semantic-versioning and deprecation rules, and keeping an optional
   dependency inside the one implementation module that uses it. Use when building a Python package
   other code imports — a library, an SDK, a shared kernel — or when working with __init__.py,
-  optional extras, a façade or a deprecation.
+  optional extras, a façade or a deprecation, or deciding whether to import from a.b or name it a._b.
 ---
 
 # Packaging and Public Surface
 
-The underscore rule that applies to every module is in the `modules.md` rule; this file is about the
-surface a package promises.
+The underscore rule for names inside a module is in `modules.md`; this file is about the surface a
+package promises and where each module sits on it.
 
 ## The Three Levels of Visibility
 
 | Level | How it is marked | Who may import it | What it guarantees |
 |---|---|---|---|
 | Public | listed in the package's `__init__.py` `__all__` | anyone | follows the deprecation rules |
-| Package-internal | a module named `_name.py`, or an `_internal/` sub-package | only modules inside that package | may change in any release |
+| Package-internal | a module named `_name.py` (or, for a library's large private subsystem, an `_internal/` sub-package) | only modules inside that package | may change in any release |
 | Module-private | a name prefixed `_` inside a module | only that module | may change at any time |
 
 **What the underscore actually does**: nothing at runtime except excluding the name from a star
 import. Its value is entirely social and static — the linters flag imports of private names across
 module boundaries. That is enough, provided the convention is followed consistently.
 
-**When to encapsulate a whole module**
+## Façade, Public Module or Internal Module
 
-- **Always, for a package other code imports.** Consumers must read one file and see everything
-  they may rely on.
-- **Whenever a module exists only to serve its siblings** — prefix it with `_` so nobody outside
-  grows a dependency on it.
-- **Underscoring every module is not needed inside an application package** whose only consumer is
-  itself, when layer boundaries are already enforced. There, contracts do the work and a prefix on
-  two hundred modules is noise. This is a carve-out for the *module name* only: the `__init__.py`
-  still declares the surface, because a layer contract enforces *direction* and says nothing about
-  *which names* a neighbouring layer may use.
+Every module in a package — application or library — is one of three, and **who imports it decides
+which**. The underscore is how a reader sees the decision in a file listing, a grep or a traceback
+without opening the façade; a contract is how a tool enforces it.
+
+| Where it lives | Imported as | It belongs there when |
+|---|---|---|
+| façade `package/__init__.py` | `from package import Name` | nearly every importer of the package needs the name, and it is light: importing the package pulls no heavy or optional library. The façade fits on one screen |
+| public module `package/topic.py`, or sub-package `package/topic/` with its own façade | `from package.topic import Name` | only some importers need it; or it pulls a heavy or optional library the façade must not; or the names are many and would bloat the façade; or the module name clarifies the call site (`errors`, `models`, `testing`) |
+| internal module `package/_topic.py` | only by modules inside `package` | it is an implementation detail; nothing outside `package` imports it |
+
+- **One public path per name.** A name is in the façade or in a public module, never both: two
+  spellings of one import drift apart, and grepping for users finds half of them.
+- **A sub-package replaces a module when the topic grows its own internals.** Its `__init__.py` is
+  a façade by the same three rules, recursively.
+- **An internal module is never imported from outside.** When outside code needs it, it becomes a
+  public module — renamed, reviewed as surface — rather than reached into.
+- **Inside a package, siblings import the internal module directly** (`from ._topic import ...`),
+  never through their own `__init__`, which would make load order significant.
+
+```python
+# WRONG — the façade re-exports everything, so `import shop` loads the PDF renderer and the ORM
+# shop/__init__.py
+from shop._invoices import render_invoice_pdf  # pulls a native PDF library
+from shop._orders import Order, OrderStatus
+from shop._repository import PostgresOrderRepository  # pulls the ORM and the driver
+
+__all__ = ["Order", "OrderStatus", "PostgresOrderRepository", "render_invoice_pdf"]
+
+# CORRECT — the façade carries the vocabulary; heavy capabilities are public modules imported by
+# the few callers that need them: `from shop.invoices import render_invoice_pdf`
+# shop/__init__.py
+from shop._orders import Order, OrderStatus
+
+__all__ = ["Order", "OrderStatus"]
+```
+
+A façade that re-exported every capability made a scheduled job that needed one enum import a
+headless-browser driver and an ORM on every run — and slowed every import of the package with it.
+
+**Checked, not remembered**: an import-linter `protected` contract lists the internal modules of a
+package and the package itself as their only importer, so a reach-in fails the build instead of a
+review.
 
 ### Finding Names That Should Be Private
 
