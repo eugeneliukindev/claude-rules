@@ -20,6 +20,11 @@ the constructor or the function signature.
 - **Classes never instantiate their collaborators.** A service receives its repository and its
   notifier; it never builds one, and never reads settings to decide which to build. The constructor
   only assigns.
+- **A default collaborator is the one exception**: `repository: OrderRepository | None = None`,
+  then `self._repository = repository or PostgresOrderRepository(engine)` — what `pydantic`
+  (`ns_resolver or NsResolver()`) and the OpenTelemetry SDK (`span_limits or SpanLimits()`) do.
+  Only when the default is what production runs and the parameter is a seam for a test or a
+  second root; `is None` rather than `or` when a valid value can be falsy — an empty mapping, `0`.
 - **The wiring is plain code**: build settings, build shared resources, build adapters, build
   services, hand them to the entry points. A DI framework is unnecessary until wiring is measured
   in hundreds of objects; if one is used, it is confined to the composition root.
