@@ -42,14 +42,14 @@ The test is mechanical — `python ~/.claude/skills/python-packaging/scripts/fin
 ROOT` — and runs **after** the move that made a name internal. A name a framework reaches through a
 decorator (a route, a command, a fixture) has a caller the search cannot see; the script lists it apart.
 
-## Façade, Public Module, Internal Module
+## Facade, Public Module, Internal Module
 
-Who imports a module decides its name. The **façade** `package/__init__.py` — imports and `__all__`
+Who imports a module decides its name. The **facade** `package/__init__.py` — imports and `__all__`
 only — carries the vocabulary nearly every importer needs, and stays light: `import package` pulls no
 heavy or optional library. A **public module** `package/topic.py`, or a sub-package with its own
-façade, holds what only some importers need, what pulls a heavy library, or what would bloat the
-façade. An **internal module** `package/_topic.py` is for its siblings only; needed outside, it is
-renamed public, never reached into. One public path per name. A façade that re-exported everything
+facade, holds what only some importers need, what pulls a heavy library, or what would bloat the
+facade. An **internal module** `package/_topic.py` is for its siblings only; needed outside, it is
+renamed public, never reached into. One public path per name. A facade that re-exported everything
 made a job needing one enum load a browser driver and an ORM. The decision table: `python-packaging`.
 
 ## Imports
@@ -57,7 +57,7 @@ made a job needing one enum load a browser driver and an ORM. The decision table
 - **Import modules for modules, names for classes and functions.** Then call `invoices.issue(...)`
   or `issue_invoice(...)` — never a three-level attribute chain, which hides what is used.
 - **A function-level import is flagged, and exactly three reasons buy the suppression**: breaking a
-  genuine circular import, loading a heavy or optional implementation on demand, and a façade that
+  genuine circular import, loading a heavy or optional implementation on demand, and a facade that
   exports implementations whose libraries are separate extras. Each carries the reason on the line.
   Generic "lazy loading" is not one of them — restructure instead.
 - **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**

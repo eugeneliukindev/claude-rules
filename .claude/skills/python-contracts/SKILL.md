@@ -71,7 +71,7 @@ does. One directory per capability, named for it; the contract in `base.py`; one
 implementation, named for what makes it concrete; `__init__.py` exporting the contract and the
 implementations and nothing more — except an implementation whose driver is an optional extra,
 which is reached through its builder so that importing the contract never imports the driver (the
-per-extra façade in `python-packaging`).
+per-extra facade in `python-packaging`).
 
 ```
 notifications/

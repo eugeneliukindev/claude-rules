@@ -17,7 +17,7 @@ its own description, or by name:
 | `python-contracts` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live |
 | `python-async` | `async def`, threads, processes |
 | `python-persistence` | a transaction boundary, a repository, a migration plan |
-| `python-packaging` | a package other code imports: `__all__`, façade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
+| `python-packaging` | a package other code imports: `__all__`, facade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
 | `python-cli` | an entry point with an argument parser |
 | `python-security` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
 | `python-performance` | a path already measured and found slow |

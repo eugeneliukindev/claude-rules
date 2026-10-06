@@ -2,12 +2,12 @@
 name: python-packaging
 description: >-
   The public surface of a Python package: the three levels of visibility, when a name belongs in the
-  __init__.py façade, in a public module or in an internal _module, __all__ and the flat façade,
+  __init__.py facade, in a public module or in an internal _module, __all__ and the flat facade,
   _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability
   tiers as directories, semantic-versioning and deprecation rules, and keeping an optional
   dependency inside the one implementation module that uses it. Use when building a Python package
   other code imports — a library, an SDK, a shared kernel — or when working with __init__.py,
-  optional extras, a façade or a deprecation, or deciding whether to import from a.b or name it a._b.
+  optional extras, a facade or a deprecation, or deciding whether to import from a.b or name it a._b.
 ---
 
 # Packaging and Public Surface
@@ -27,29 +27,29 @@ package promises and where each module sits on it.
 import. Its value is entirely social and static — the linters flag imports of private names across
 module boundaries. That is enough, provided the convention is followed consistently.
 
-## Façade, Public Module or Internal Module
+## Facade, Public Module or Internal Module
 
 Every module in a package — application or library — is one of three, and **who imports it decides
 which**. The underscore is how a reader sees the decision in a file listing, a grep or a traceback
-without opening the façade; a contract is how a tool enforces it.
+without opening the facade; a contract is how a tool enforces it.
 
 | Where it lives | Imported as | It belongs there when |
 |---|---|---|
-| façade `package/__init__.py` | `from package import Name` | nearly every importer of the package needs the name, and it is light: importing the package pulls no heavy or optional library. The façade fits on one screen |
-| public module `package/topic.py`, or sub-package `package/topic/` with its own façade | `from package.topic import Name` | only some importers need it; or it pulls a heavy or optional library the façade must not; or the names are many and would bloat the façade; or the module name clarifies the call site (`errors`, `models`, `testing`) |
+| facade `package/__init__.py` | `from package import Name` | nearly every importer of the package needs the name, and it is light: importing the package pulls no heavy or optional library. The facade fits on one screen |
+| public module `package/topic.py`, or sub-package `package/topic/` with its own facade | `from package.topic import Name` | only some importers need it; or it pulls a heavy or optional library the facade must not; or the names are many and would bloat the facade; or the module name clarifies the call site (`errors`, `models`, `testing`) |
 | internal module `package/_topic.py` | only by modules inside `package` | it is an implementation detail; nothing outside `package` imports it |
 
-- **One public path per name.** A name is in the façade or in a public module, never both: two
+- **One public path per name.** A name is in the facade or in a public module, never both: two
   spellings of one import drift apart, and grepping for users finds half of them.
 - **A sub-package replaces a module when the topic grows its own internals.** Its `__init__.py` is
-  a façade by the same three rules, recursively.
+  a facade by the same three rules, recursively.
 - **An internal module is never imported from outside.** When outside code needs it, it becomes a
   public module — renamed, reviewed as surface — rather than reached into.
 - **Inside a package, siblings import the internal module directly** (`from ._topic import ...`),
   never through their own `__init__`, which would make load order significant.
 
 ```python
-# WRONG — the façade re-exports everything, so `import shop` loads the PDF renderer and the ORM
+# WRONG — the facade re-exports everything, so `import shop` loads the PDF renderer and the ORM
 # shop/__init__.py
 from shop._invoices import render_invoice_pdf  # pulls a native PDF library
 from shop._orders import Order, OrderStatus
@@ -57,7 +57,7 @@ from shop._repository import PostgresOrderRepository  # pulls the ORM and the dr
 
 __all__ = ["Order", "OrderStatus", "PostgresOrderRepository", "render_invoice_pdf"]
 
-# CORRECT — the façade carries the vocabulary; heavy capabilities are public modules imported by
+# CORRECT — the facade carries the vocabulary; heavy capabilities are public modules imported by
 # the few callers that need them: `from shop.invoices import render_invoice_pdf`
 # shop/__init__.py
 from shop._orders import Order, OrderStatus
@@ -65,7 +65,7 @@ from shop._orders import Order, OrderStatus
 __all__ = ["Order", "OrderStatus"]
 ```
 
-A façade that re-exported every capability made a scheduled job that needed one enum import a
+A facade that re-exported every capability made a scheduled job that needed one enum import a
 headless-browser driver and an ORM on every run — and slowed every import of the package with it.
 
 **Checked, not remembered**: an import-linter `protected` contract lists the internal modules of a
@@ -103,10 +103,10 @@ whose uses should not count, such as tests when the question is what production 
   whole area; the failure is a tree where half the modules carry the prefix and nobody can say
   which half is deliberate.
 - **The private area's `__init__.py` is empty.** `pydantic/_internal/__init__.py` is zero bytes —
-  internal code imports the module it needs directly. A façade declares a contract, and there is no
+  internal code imports the module it needs directly. A facade declares a contract, and there is no
   contract to declare here.
 
-## The Flat Public Façade
+## The Flat Public Facade
 
 How the standard library, `pydantic` and `attrs` are built:
 
@@ -151,7 +151,7 @@ __all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
 **In an application package: imports and `__all__`, nothing else.** Logic there runs on every
 import of anything below it, and it runs in an order nobody chose.
 
-**In a library façade the bar is different**, because the file is a contract rather than a
+**In a library facade the bar is different**, because the file is a contract rather than a
 convenience, and three things earn their place:
 
 - **A guard that fails fast on an incompatible environment.** `pydantic` checks its compiled core's
@@ -162,7 +162,7 @@ convenience, and three things earn their place:
 
 ### Lazy Exports: `TYPE_CHECKING` Plus `__getattr__`
 
-A façade that imports every submodule eagerly makes `import yourpackage` pay for the whole library,
+A facade that imports every submodule eagerly makes `import yourpackage` pay for the whole library,
 including the parts this process will never touch. The fix is to import on first access, and the
 objection — that a name arriving through `__getattr__` is invisible to the type checker — is
 answered by declaring the imports a second time under `TYPE_CHECKING`:
@@ -198,7 +198,7 @@ and side-by-side ordering is what makes the drift visible in a diff. An unknown 
 `AttributeError`, never the table's `KeyError`: `hasattr`, `getattr` with a default and
 `from yourpackage import submodule` all expect the former, and crash on the latter.
 
-Use it in a façade over many submodules, or where one export pulls a heavy optional dependency.
+Use it in a facade over many submodules, or where one export pulls a heavy optional dependency.
 Do **not** use it to compute names, to export something that does not exist as a real attribute of
 a real module, or in an application package, where the import cost was never the problem.
 
@@ -307,18 +307,18 @@ def create_blob_store(kind: BlobStoreKind, *, bucket: str) -> BlobStore:
 The mapping is built at import time out of *local* functions, so nothing heavy is loaded; the
 driver arrives only when the builder that needs it runs.
 
-## A Façade Over Per-Extra Modules
+## A Facade Over Per-Extra Modules
 
 When the package exports its implementations by name — `from acme.exporters import
 export_spreadsheet` — the package's `__init__` executes *every* implementation module, and a
 consumer holding one extra gets `ImportError` on a library it never asked for. Three shapes work:
 
-- **No façade**: `__init__` stays empty and consumers import the module they need
+- **No facade**: `__init__` stays empty and consumers import the module they need
   (`acme.exporters.spreadsheet`). Imports stay at module top; nothing is lazy.
-- **Façade, and the library is imported inside the function that uses it.** The module then imports
+- **Facade, and the library is imported inside the function that uses it.** The module then imports
   cleanly without its library, and the failure arrives to whoever called the function — with the
   extra named. This is the shape below.
-- **Façade, and the export itself is lazy** — the `TYPE_CHECKING` plus `__getattr__` pattern above.
+- **Facade, and the export itself is lazy** — the `TYPE_CHECKING` plus `__getattr__` pattern above.
   Worth it when the modules are many or expensive; the per-function import is simpler when they
   are few, and simpler wins by default.
 
@@ -333,7 +333,7 @@ def export_spreadsheet(orders: Sequence[Order], path: Path) -> None:
     sheetwriter.write(path, [order.as_row() for order in orders])
 
 
-# acme/exporters/__init__.py — the façade is free: no module runs its library on import
+# acme/exporters/__init__.py — the facade is free: no module runs its library on import
 from .spreadsheet import export_spreadsheet
 
 __all__ = ["export_spreadsheet"]
