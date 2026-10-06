@@ -7,9 +7,8 @@ paths:
 
 ## Control Flow
 
-- **Extract any condition with more than two operands into a named predicate.** The linter measures
-  the complexity but cannot name the concept: `if _is_eligible_for_refund(order):` says what the
-  three clauses meant.
+- **Extract any condition with more than two operands into a named predicate**:
+  `if _is_eligible_for_refund(order):` names what the linter can only count.
 - **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
   of variants or nested data; not to compare one scalar against constants, and not for two branches.
 - **A bare name in a pattern binds, it does not compare**, whatever its case — the one thing about
@@ -42,7 +41,8 @@ exposes.
 **Extract when at least one is true:**
 
 1. **Real reuse** — two or more call sites *today*.
-2. **Required as an object** — a callback, a `key=` function, a dispatch-table value, a hook.
+2. **Required as an object** — a callback, a `key=` function, a dispatch-table value, a hook — unless
+   its body is one library call: pass that call, `now=partial(datetime.now, UTC)`, not a `_now()`.
 3. **It hides genuine complexity** — the body is non-obvious, and afterwards the **name is enough**.
 4. **The parent would otherwise break its limits**, and the extraction restores one level of
    abstraction rather than moving lines out of sight.
