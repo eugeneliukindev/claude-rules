@@ -47,6 +47,24 @@ collide with a field name is a bug waiting for the field to be added.
 - **`model_config = ConfigDict(...)`**, not the v1 inner `class Config`.
 - **Strict boundary models**: `strict=True` stops `"1"` becoming `1`; `extra="forbid"` stops
   unknown fields being dropped in silence; `frozen=True` makes the parsed object safe to pass on.
+
+```python
+# WRONG — lax defaults: "3" becomes 3, and an unknown field is dropped in silence
+@final
+class OrderLine(BaseModel):
+    sku: str
+    quantity: int
+
+# CORRECT — strict, closed and frozen, configured once on the base every boundary model shares
+class BoundaryModel(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
+@final
+class OrderLine(BoundaryModel):
+    sku: str
+    quantity: int
+```
+
 - **Strict models parse JSON with `model_validate_json`.** In JSON mode strict still accepts the
   ISO-8601 and UUID strings JSON has no other way to carry; in Python mode it demands real
   `datetime` and `UUID` objects, so every valid payload fails:
@@ -65,12 +83,22 @@ event = Event.model_validate_json(body)
 ## Fields and Constraints
 
 - **`Annotated[int, Field(ge=1, le=200)]`, not `x: int = Field(ge=1)`.** The annotated form keeps
-  the default separate from the constraint, survives being aliased into a named type, and reads the
-  same in every position.
-- **Name the constrained type once and reuse it** — `type PageSize = Annotated[int, Field(ge=1,
-  le=200)]`. Repeating the same bounds in five signatures is five places to get it wrong.
+  the default separate from the constraint, survives being aliased into a named type — which
+  `python-types` asks for: a constrained type is named once — and reads the same in every position.
 - **`default_factory` for anything mutable or computed**; a bare mutable default is shared.
 - **`SecretStr` / `SecretBytes` for credentials**, so a stray repr or log line cannot leak them.
+
+```python
+# WRONG — repr(settings), a traceback or a debug log prints the key in full
+@final
+class Settings(BaseSettings):
+    payment_api_key: str
+
+# CORRECT — renders as '**********'; get_secret_value() is the one place it is read
+@final
+class Settings(BaseSettings):
+    payment_api_key: SecretStr
+```
 
 ## Validators
 
@@ -81,6 +109,25 @@ event = Event.model_validate_json(body)
 - **A validator raises `ValueError`**, and pydantic turns it into a validation error with the
   field's location attached. Raising your own domain exception inside a validator loses that
   location.
+
+```python
+# WRONG — InvalidSkuError is no ValueError: it escapes past except ValidationError, location lost
+def _check_sku_format(sku: str) -> str:
+    if not _SKU_PATTERN.fullmatch(sku):
+        raise InvalidSkuError(sku)
+    return sku
+
+type Sku = Annotated[str, AfterValidator(_check_sku_format)]
+
+# CORRECT — pydantic turns the ValueError into a validation error located at the field
+def _check_sku_format(sku: str) -> str:
+    if not _SKU_PATTERN.fullmatch(sku):
+        raise ValueError(f"SKU {sku!r} does not match {_SKU_PATTERN.pattern}")
+    return sku
+
+type Sku = Annotated[str, AfterValidator(_check_sku_format)]
+```
+
 - **Validators are pure.** No I/O, no database lookup, no clock — a model that validates by calling
   out cannot be constructed in a test without the world.
 
@@ -88,11 +135,29 @@ event = Event.model_validate_json(body)
 
 - **`model_dump_json()` beats `json.dumps(model_dump())`** — it serializes straight from the core
   schema, without building the intermediate dict.
+
+```python
+# WRONG — model_dump() keeps datetime and Decimal as objects, and json.dumps refuses them
+body = json.dumps(receipt.model_dump())
+
+# CORRECT — serialized straight from the core schema, every field in its wire format
+body = receipt.model_dump_json()
+```
+
 - **`model_dump(mode="json")`** when a dict of JSON-safe primitives is genuinely needed; plain
   `model_dump()` keeps `datetime`, `UUID` and `Decimal` as objects.
 - **`exclude_none` / `exclude_unset` / `exclude_defaults` are contract decisions, not formatting.**
   `exclude_unset` is the correct one for a PATCH-style payload; the other two silently change what a
   consumer sees.
+
+```python
+# WRONG — exclude_none drops an explicit null, so a PATCH can never clear the nickname
+body = changes.model_dump_json(exclude_none=True)
+
+# CORRECT — exactly the fields that were set, an explicit null included
+body = changes.model_dump_json(exclude_unset=True)
+```
+
 - **`model_dump()` is not a mapper**: `Order(**schema.model_dump())` is the splat
   `python-boundaries` forbids. Write `to_domain()` / `from_domain()`.
 
@@ -100,10 +165,35 @@ event = Event.model_validate_json(body)
 
 - **`TypeAdapter` is built once and reused.** Construction compiles a validator and is the expensive
   part; building one per call in a loop is the single most common pydantic performance bug.
+
+```python
+# WRONG — compiles a validator on every call
+def parse_orders(payload: bytes) -> list[OrderPayload]:
+    return TypeAdapter(list[OrderPayload]).validate_json(payload)
+
+# CORRECT — compiled once, when the module loads
+_ORDERS_ADAPTER: Final = TypeAdapter(list[OrderPayload])
+
+def parse_orders(payload: bytes) -> list[OrderPayload]:
+    return _ORDERS_ADAPTER.validate_json(payload)
+```
+
 - **`model_construct()` skips validation** — use it only for data you have already validated, such
   as rows you just wrote yourself. It is a sharp tool: it will happily build an invalid model.
 - **Discriminated unions** (`Field(discriminator="kind")`) turn an O(n) try-every-member walk into a
   single dispatch, and produce a readable error instead of a wall of per-variant failures.
+
+```python
+# WRONG — every member is tried in turn, and a bad payload reports a failure per member
+@final
+class PaymentMessage(BoundaryModel):
+    payment: CardPayment | BankTransfer
+
+# CORRECT — dispatched on kind, and the error names only the member it chose
+@final
+class PaymentMessage(BoundaryModel):
+    payment: Annotated[CardPayment | BankTransfer, Field(discriminator="kind")]
+```
 
 ## Settings
 

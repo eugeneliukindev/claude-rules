@@ -78,7 +78,7 @@ The `modules.md` rule's test — grep each top-level name, drop its own file, pr
 left — is scripted. Run it, do not read it:
 
 ```bash
-python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py src/yourpackage \
+python <this skill's directory>/scripts/find_unprefixed_names.py src/yourpackage \
     --exclude "migrations/*"
 ```
 
@@ -262,7 +262,7 @@ the factory, the package `__init__.py`, or anything above the implementation.
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
   contract bans the library from the whole package and lists every permitted edge — see
-  the `python-wiring` skill.
+  the `python-layers` skill.
 - **Tests for an implementation are skipped, not failed, when its library is absent.**
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.

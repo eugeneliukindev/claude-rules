@@ -49,6 +49,14 @@ async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
 random second is five times the backoff it is supposed to perturb: the exponential curve stops
 mattering and every wait is dominated by noise. State the jitter in proportion to the backoff.
 
+```python
+# WRONG — jitter left at its default of 1 second, five times the 0.2-second first wait
+_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0)
+
+# CORRECT — the jitter stated in proportion to the backoff it perturbs
+_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0, jitter=0.2)
+```
+
 The same care applies to `wait_exponential`'s `multiplier` and `max` — a policy whose numbers were
 never chosen is a policy nobody can reason about during an incident.
 

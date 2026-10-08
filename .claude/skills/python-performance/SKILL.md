@@ -20,14 +20,35 @@ everything here does.
 - **Optimize the algorithm, then the constants.** A quadratic membership scan beats any
   micro-tuning: set and dict lookups, precomputed indexes, and batching are where real wins live.
   N+1 query patterns are bugs, not tuning opportunities.
+
+  ```python
+  # WRONG — a list membership test inside the loop: every order scans every blocked id
+  blocked_user_ids = [user.user_id for user in blocked_users]
+  held_orders = [order for order in orders if order.user_id in blocked_user_ids]
+
+  # CORRECT — built once as a frozenset: each membership test is a hash lookup
+  blocked_user_ids = frozenset(user.user_id for user in blocked_users)
+  held_orders = [order for order in orders if order.user_id in blocked_user_ids]
+  ```
+
 - **Stream, don't materialize**: generators and chunked reads for anything larger than
   memory-trivial; never build a list from a stream just to iterate it once.
-- **`slots=True` on every dataclass** — and `__slots__` on hand-written classes with fixed
-  attributes — as the default, not an optimization: less memory per instance, faster attribute
-  access, and typo-attributes become errors. `slots` is about the *attribute set*, `frozen` about
-  *mutability*; real immutability needs both. Skip slots only for classes needing dynamic
-  attributes, multiple inheritance from slotted bases, framework classes that require `__dict__`,
-  and cached-property users.
+
+  ```python
+  # WRONG — every row is held in memory at once, only to be summed
+  with export_path.open(encoding="utf-8", newline="") as export_file:
+      rows = list(csv.DictReader(export_file))
+  total_cents = sum(int(row["amount_cents"]) for row in rows)
+
+  # CORRECT — the reader yields one row at a time, and only the running sum is kept
+  with export_path.open(encoding="utf-8", newline="") as export_file:
+      total_cents = sum(int(row["amount_cents"]) for row in csv.DictReader(export_file))
+  ```
+
+- **`slots=True` is the `types.md` default**, and a hand-written class with fixed attributes gets
+  `__slots__` for the same reasons: less memory per instance and faster attribute access. Skip it
+  only for classes needing dynamic attributes, multiple inheritance from slotted bases, framework
+  classes that require `__dict__`, and `cached_property` users.
 - **Caching is a contract, not a sprinkle.** Memoize only **pure** functions of hashable arguments,
   with an explicit bound — an unbounded cache is a leak. **Never on methods**: the cache keeps the
   instance alive and grows per instance; cache a module-level function, or use a cached property
@@ -48,6 +69,19 @@ everything here does.
 
 - **Precompile and hoist**: compiled patterns at module level; no attribute chain or dict lookup
   repeated in a hot loop that a local would hoist.
+
+  ```python
+  # WRONG — re.findall looks the pattern up in re's cache on every call
+  def find_order_ids(text: str) -> list[str]:
+      return re.findall(r"ORD-\d{8}", text)
+
+  # CORRECT — compiled once at import, and named for what it matches
+  _ORDER_ID_PATTERN: Final = re.compile(r"ORD-\d{8}")
+
+  def find_order_ids(text: str) -> list[str]:
+      return _ORDER_ID_PATTERN.findall(text)
+  ```
+
 - **Concurrency follows the workload**, and is measured before assuming parallelism helps — pool
   and pickling overhead is real.
 - **Performance-sensitive paths are marked and tested** with a stated budget, so a regression fails

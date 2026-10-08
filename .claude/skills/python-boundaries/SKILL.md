@@ -3,14 +3,15 @@ name: python-boundaries
 description: >-
   Python process boundaries: validating models at the edge versus frozen domain objects inside,
   mandatory timeouts, what may and may not be retried, idempotency keys, nested retry budgets,
-  explicit serialization and payload versioning, and the handling of time, money and identifiers.
-  Use when Python code talks to HTTP, a queue, a cache, a database or a file someone else wrote,
-  or when working with datetimes, Decimal money, UUIDs or any value crossing the process boundary.
+  explicit serialization and payload versioning, atomic file writes and explicit encodings, and the
+  handling of time, money and identifiers. Use when Python code talks to HTTP, a queue, a cache, a
+  database or a file, writes a file another process reads, or works with datetimes, Decimal money,
+  UUIDs or any value crossing the process boundary.
 ---
 
 # Boundaries
 
-Time, money and identifiers are boundary concerns wherever they appear, so they are here too.
+Time, money and identifiers cross every boundary, so their representation is here too.
 
 ## Boundary Validation and Domain Models
 
@@ -29,6 +30,17 @@ Two model families, two jobs. Do not mix them.
 - **Explicit mapping between the families**: a `to_domain()` / `from_domain()` pair, or a mapper
   module. Never construct one family by splatting the other's fields — a field rename then breaks
   it silently, and nothing fails until production.
+
+```python
+# WRONG — the splat is typed Any: a field renamed on either side passes mypy and fails at runtime
+def to_domain(self) -> Order:
+    return Order(**self.model_dump())
+
+# CORRECT — every field named once, so a rename on either side fails the type check here
+def to_domain(self) -> Order:
+    return Order(order_id=OrderId(self.order_id), placed_at=self.placed_at, total=self.total)
+```
+
 - **Validating a bare collection reuses one adapter instance**; constructing the validator is the
   expensive part.
 - **Output shapes are explicit too**: the boundary returns a response model built from the domain
@@ -43,11 +55,46 @@ discipline:
 - **A timeout is mandatory and explicit.** Client-level defaults set once in the composition root,
   overridden per call only with a named constant. A call with no timeout turns a dependency's
   outage into your own.
+
+```python
+# WRONG — no timeout: a server that accepts the connection and never answers holds the worker
+with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+    smtp.send_message(message)
+
+# CORRECT — the connection and every read on it give up at a named deadline
+with smtplib.SMTP(smtp_host, smtp_port, timeout=_SMTP_TIMEOUT_SECONDS) as smtp:
+    smtp.send_message(message)
+```
+
 - **Retry only transient failures**: connect and read timeouts, rate limits, server errors,
   broker disconnects. **Never retry** business rejections, validation errors or auth failures —
   retrying a conflict is a loop, not resilience.
 - **The adapter translates upstream errors into a transient and a permanent error type first**;
   the retry policy then keys on the type, not on status-code checks scattered around.
+
+```python
+# WRONG — one error type for every status, so the retry policy retries a 409 like a 503
+def _raise_for_status(status_code: int, order_id: OrderId) -> None:
+    if status_code >= HTTPStatus.BAD_REQUEST:
+        raise UpstreamError(f"Order {order_id}: upstream answered {status_code}")
+
+# CORRECT — classified once, here; the retry policy keys on TransientUpstreamError alone
+_TRANSIENT_STATUSES: Final = frozenset(
+    {
+        HTTPStatus.TOO_MANY_REQUESTS,
+        HTTPStatus.BAD_GATEWAY,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        HTTPStatus.GATEWAY_TIMEOUT,
+    }
+)
+
+def _raise_for_status(status_code: int, order_id: OrderId) -> None:
+    if status_code in _TRANSIENT_STATUSES:
+        raise TransientUpstreamError(f"Order {order_id}: upstream answered {status_code}")
+    if status_code >= HTTPStatus.BAD_REQUEST:
+        raise PermanentUpstreamError(f"Order {order_id}: upstream answered {status_code}")
+```
+
 - **Retries are bounded, exponential, and jittered**, with the jitter set in proportion to the
   backoff rather than left at a library default — the numbers are in `python-tenacity`.
 - **Retry a write only if it is idempotent.** Carry an idempotency key when the API supports one;
@@ -69,6 +116,22 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
 
 - **Consumers are idempotent**: at-least-once delivery means every handler must tolerate the same
   message twice.
+
+```python
+# WRONG — a redelivered message credits the account a second time
+def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
+    with unit_of_work:
+        unit_of_work.accounts.credit(message.account_id, message.amount)
+
+# CORRECT — the message id is recorded in the same transaction, and a repeat is skipped
+def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
+    with unit_of_work:
+        if unit_of_work.processed_messages.contains(message.message_id):
+            return
+        unit_of_work.accounts.credit(message.account_id, message.amount)
+        unit_of_work.processed_messages.add(message.message_id)
+```
+
 - **Retry at one level: the adapter.** Services see one call that either succeeded or raised a
   final error, and never contain retry loops. Budgets nest multiplicatively — four attempts inside
   a caller that also makes four is sixteen, and a five-second budget becomes eighty — so the
@@ -84,6 +147,17 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
 - **Serialization is explicit and lives at the boundary**: a boundary model, or a dedicated
   `to_dict` / `from_dict` on a value object. Never `obj.__dict__`, never `vars(obj)`, never
   serializing a domain or ORM object directly — what a serializer can reach, it will publish.
+
+```python
+# WRONG — everything the object holds is published: password_hash today, every new field tomorrow
+def to_payload(user: User) -> dict[str, object]:
+    return dataclasses.asdict(user)
+
+# CORRECT — the payload names each field it publishes, and nothing else gets out
+def to_payload(user: User) -> dict[str, object]:
+    return {"user_id": str(user.user_id), "email": user.email}
+```
+
 - **Round-trip is a contract**: `from_dict(to_dict(x)) == x`, covered by a test for every
   serialized type.
 - **Untrusted data is never unpickled** — it executes code on load. Do not use pickle for
@@ -94,10 +168,69 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
 - **Versioned payloads**: any shape that crosses a queue or is stored carries an explicit version
   field, and consumers tolerate unknown *added* fields. That tolerance is for stored and queued
   data, achieved by explicit migration on read — requests still reject extras.
+
+```python
+# WRONG — once the shape changes, a consumer cannot tell an old message from a new one
+def to_payload(event: OrderPlaced) -> dict[str, object]:
+    return {"order_id": str(event.order_id), "total": str(event.total)}
+
+# CORRECT — the shape names its version, so a consumer can migrate an old one on read
+def to_payload(event: OrderPlaced) -> dict[str, object]:
+    return {
+        "version": _ORDER_PLACED_VERSION,
+        "order_id": str(event.order_id),
+        "total": str(event.total),
+    }
+```
+
 - **Binary formats follow the same rules**: explicit schema, explicit version, adapters at the
   edge, never in domain code.
 
-## Time, Money, and Identifiers
+## Files
+
+A file is a boundary too: another process reads it, possibly while it is being written, possibly
+on a machine with another locale.
+
+- **A file someone else reads is replaced, never rewritten in place.** Write a temporary file in
+  the same directory, flush it to disk, and `os.replace` it over the target: a reader sees the old
+  file or the new one, never half of either. The same directory matters — a rename is atomic only
+  within one filesystem.
+
+```python
+# WRONG — a crash or a full disk mid-write leaves a truncated file where a whole one stood
+def write_report(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
+
+# CORRECT — written beside the target, flushed to disk, then renamed over it in one step
+def write_report(path: Path, payload: bytes) -> None:
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=f".{path.name}.", delete_on_close=False
+    ) as temporary:
+        temporary.write(payload)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary.close()
+        os.replace(temporary.name, path)
+```
+
+  `delete_on_close=False` (3.12+) keeps the file through `close()` and still removes it when
+  anything fails before the rename.
+- **Text names its encoding**: `open(path, encoding="utf-8")`, `path.read_text(encoding="utf-8")`,
+  `subprocess.run(..., encoding="utf-8")`. Without it Python uses the locale's encoding — UTF-8 on
+  the machine that wrote the code, cp1252 on a Windows host — and the same file reads differently.
+  CSV files are opened with `newline=""` as well, or quoted line breaks are mangled.
+
+```python
+# WRONG — the locale picks the encoding, and a \r\n inside a quoted field comes back as \n
+with path.open() as file:
+    rows = list(csv.DictReader(file))
+
+# CORRECT — the encoding is named, and csv reads the line endings as the file has them
+with path.open(encoding="utf-8", newline="") as file:
+    rows = list(csv.DictReader(file))
+```
+
+## Time
 
 - **Datetimes are always timezone-aware UTC**: `datetime.now(UTC)` — never `datetime.now()` /
   `datetime.utcnow()`, which are naive, and the second is deprecated. Convert to local time only at
@@ -114,15 +247,49 @@ def _system_clock() -> datetime:
 ```
 
 - Naive datetimes are rejected at the boundary: a schema accepting a datetime requires an offset.
+
+```python
+# WRONG — accepts "2026-03-01T09:00:00", an instant in no zone at all
+placed_at: datetime
+
+# CORRECT — pydantic rejects a value without an offset
+placed_at: AwareDatetime
+```
+
 - **Store and serialize as ISO-8601** (`.isoformat()` / `datetime.fromisoformat`); epoch numbers
   only for machine-to-machine metrics.
 - **Never compare or mix naive and aware**; never do date arithmetic across DST with a plain
   `timedelta` on local times — do it in UTC.
+
+```python
+# WRONG — wall-clock arithmetic: on the night the clocks change, the token lives 23 hours or 25
+expires_at = issued_at.astimezone(user_zone) + _TOKEN_LIFETIME
+
+# CORRECT — elapsed time is added in UTC; the user's zone is for display
+expires_at = issued_at.astimezone(UTC) + _TOKEN_LIFETIME
+```
+
 - **`date` for calendar concepts, `datetime` for instants** — a birthday is a `date`, and storing
   it as midnight `datetime` invents a timezone bug.
 - **Time is a dependency.** Any code that needs "now" takes a clock (`now: Callable[[], datetime]`
   or a tiny `Clock` protocol) injected from the composition root; `datetime.now(UTC)` appears only
   in the default wiring, and tests use a fixed clock.
+
+```python
+# WRONG — "now" is read inside, so no test can say when it is
+def issue_invitation(email: str) -> Invitation:
+    return Invitation(email=email, expires_at=datetime.now(UTC) + _INVITATION_LIFETIME)
+
+# CORRECT — the clock is a parameter: the system clock in production, a fixed one in tests
+def issue_invitation(now: Callable[[], datetime], email: str) -> Invitation:
+    return Invitation(email=email, expires_at=now() + _INVITATION_LIFETIME)
+```
+
+- **Durations are `timedelta`**, and a duration or a size stored as a number is an integer of an
+  explicit unit — never a float of ambiguous unit.
+
+## Money
+
 - **Money is `Decimal`, never `float`.** Construct from `str` or `int`; quantize explicitly at
   boundaries (`amount.quantize(Decimal("0.01"), ROUND_HALF_EVEN)`); wrap in a `Money` value object
   with currency, so amounts in different currencies cannot be added.
@@ -134,8 +301,17 @@ price = Decimal(19.99)
 price = Decimal("19.99")
 ```
 
-- **Durations and sizes are `timedelta` and integers of an explicit unit**, never floats of
-  ambiguous unit.
-- **Identifiers**: `uuid.uuid4()` for opaque ids; `uuid.uuid7()` (stdlib since 3.14) when ids
-  must sort by creation time for index locality; **never** auto-increment integers exposed
-  publicly, which invites enumeration, and never `random`-derived ids. Wrap ids in `NewType`.
+## Identifiers
+
+- **`uuid.uuid4()` for opaque ids**; `uuid.uuid7()` (stdlib since 3.14) when ids must sort by
+  creation time for index locality. **Never** auto-increment integers exposed publicly, which
+  invites enumeration, and never `random`-derived ids. Wrap ids in `NewType`.
+
+```python
+# WRONG — sequential and public: whoever holds invoice 1042 can ask for 1041
+InvoiceId = NewType("InvoiceId", int)
+
+# CORRECT — random and opaque: one invoice id says nothing about any other
+InvoiceId = NewType("InvoiceId", UUID)
+invoice_id = InvoiceId(uuid.uuid4())
+```

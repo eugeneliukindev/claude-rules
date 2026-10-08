@@ -45,6 +45,20 @@ metaclass, with mypyc compilation, and with any other library that wants that sl
 renamed on the contract then becomes an error in every implementation instead of a silent orphan.
 
 ```python
+# WRONG — a Protocol for our own contract: a forgotten send surfaces only where it is passed
+class Notifier(Protocol):
+    def send(self, recipient: UserId, message: Message) -> None: ...
+
+
+@final
+class SmtpNotifier:
+    def __init__(self, client: SmtpClient) -> None:
+        self._client = client
+
+    def send(self, recipient: UserId, message: Message) -> None: ...
+
+
+# CORRECT — inherited: mypy reports a forgotten send on SmtpNotifier's own class line
 class Notifier(ABC):
     @abstractmethod
     def send(self, recipient: UserId, message: Message) -> None: ...
@@ -61,8 +75,35 @@ class SmtpNotifier(Notifier):
 
 Use `Protocol` when you cannot make the other side inherit: a third-party type, a duck-typed shape
 someone else's code produces, a callback signature. **A stdlib ABC already names the capability** —
-`Iterable`, `Mapping`, `Sized` — so it is used directly, never wrapped in a `Protocol`. **A class
-with no abstract methods is not a contract**, whatever it is called.
+`Iterable`, `Mapping`, `Sized` — so it is used directly, never wrapped in a `Protocol`:
+
+```python
+# WRONG — a Protocol restating Iterable: a reader opens OrderSource to learn it is a for loop
+class OrderSource(Protocol):
+    def __iter__(self) -> Iterator[Order]: ...
+
+
+def total_revenue(orders: OrderSource) -> Money: ...
+
+
+# CORRECT — the stdlib ABC is the contract, and every list, tuple and generator fits it
+def total_revenue(orders: Iterable[Order]) -> Money: ...
+```
+
+**A class with no abstract methods is not a contract**, whatever it is called:
+
+```python
+# WRONG — no abstract method: an implementation without send is accepted and fails when called
+class Notifier(ABC):
+    def send(self, recipient: UserId, message: Message) -> None:
+        raise NotImplementedError
+
+
+# CORRECT — abstract: the checker refuses an implementation that does not define send
+class Notifier(ABC):
+    @abstractmethod
+    def send(self, recipient: UserId, message: Message) -> None: ...
+```
 
 ## A Contract and Its Implementations Are One Directory
 

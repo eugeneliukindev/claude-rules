@@ -27,12 +27,30 @@ throwaway script.
 - **`orjson.loads` accepts `bytes` directly.** Do not decode a response body to `str` first; hand it
   the bytes.
 
+```python
+# WRONG — decoded to str only for the broker to encode it again, and decoded again to parse
+broker.publish(_ORDER_EVENTS_TOPIC, orjson.dumps(event.to_dict()).decode())
+payload = orjson.loads(message.body.decode())
+
+# CORRECT — bytes out, bytes in
+broker.publish(_ORDER_EVENTS_TOPIC, orjson.dumps(event.to_dict()))
+payload = orjson.loads(message.body)
+```
+
 ## Options Are Explicit
 
 - **`OPT_NON_STR_KEYS`** when a mapping is keyed by anything other than `str` — otherwise it raises
   rather than silently stringifying, which is the right default and a surprise the first time.
 - **`OPT_SORT_KEYS`** wherever the output is compared, hashed, or checked into a fixture. Unsorted
   keys make a diff meaningless and a content hash unstable.
+
+  ```python
+  # WRONG — keys come out in insertion order, so two equal payloads can hash differently
+  content_hash = hashlib.sha256(orjson.dumps(payload)).hexdigest()
+
+  # CORRECT — sorted keys, nested ones included: equal payloads give equal bytes
+  content_hash = hashlib.sha256(orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)).hexdigest()
+  ```
 - **`OPT_OMIT_MICROSECONDS`** only when the consumer's format demands it; otherwise keep the
   precision you were given.
 - **Never `OPT_NAIVE_UTC` as a substitute for aware datetimes.** Fix the datetime at its source; the
@@ -43,6 +61,19 @@ throwaway script.
 - **`default=` is the one escape hatch**, and it is a function that raises `TypeError` for anything
   it does not know. A `default` that returns `str(obj)` for the unknown case will happily
   serialize a bug.
+
+  ```python
+  # WRONG — default=str accepts anything, so a stray object ships as its str() instead of failing
+  body = orjson.dumps(payload, default=str)
+
+  # CORRECT — Decimal becomes a string; anything else still raises TypeError
+  def _encode_decimal(value: object) -> str:
+      if isinstance(value, Decimal):
+          return str(value)
+      raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+  body = orjson.dumps(payload, default=_encode_decimal)
+  ```
 - Prefer making the type serializable at the boundary — a `to_dict()` on the value object — over
   growing a `default` that knows about every type in the codebase. That function is a generically
   named unit accumulating concrete knowledge.
