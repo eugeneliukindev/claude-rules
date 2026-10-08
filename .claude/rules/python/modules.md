@@ -27,20 +27,21 @@ type alias built from it. Anything else that will not fit is a seam — a consta
 means the module holds two things — so **split it** rather than renumber the list.
 
 - **Size is a smell, not a limit.** The linters enforce a ceiling; the seam is your judgement.
-- **No executable statements at import time** beyond constants and the logger — no network, file
-  reads or settings, which make imports slow and order-dependent. **`main()` is a function.**
+- **No executable statements at import time** beyond constants, the logger and its kin — tracer,
+  meter, a context variable (`python-observability`) — no network, file reads or settings, which
+  make imports slow and order-dependent. **`main()` is a function.**
 
 ## Every Top-Level Name Not Used Outside Takes an Underscore
 
 Classes, functions, constants and type aliases alike — a settings section only the root holds, a row
 shape only its repository builds, a limit only its function reads: `_RetrySettings`, `_OrderRow`,
 `_MAX_BATCH_ROWS`. Without the prefix the name reads as surface, and the first outside import makes
-it surface for good.
+it surface for good. A one-off script nobody imports is the exception (`python-scripts`).
 **Constants and aliases are the ones missed**: read quietly from a second module, they get two owners.
 
-The test is mechanical — `python ~/.claude/skills/python-packaging/scripts/find_unprefixed_names.py
-ROOT` — and runs **after** the move that made a name internal. A name a framework reaches through a
-decorator (a route, a command, a fixture) has a caller the search cannot see; the script lists it apart.
+The test is mechanical — `find_unprefixed_names.py ROOT`, in `python-packaging` — and runs
+**after** the move that made a name internal. A name a framework reaches through a decorator (a
+route, a command, a fixture) has a caller the search cannot see; the script lists it apart.
 
 ## Facade, Public Module, Internal Module
 
@@ -64,4 +65,4 @@ made a job needing one enum load a browser driver and an ORM. The decision table
 - **Never depend transitively on something you import**; every direct dependency is declared, with
   a lower bound. **Never feature-detect with `try: import x`** in application code.
 - **Anything acquired is released by a context manager** — files, locks, sessions, clients; who
-  closes what, `ExitStack` and failing cleanup are in `python-wiring`.
+  closes what and failing cleanup are in `python-wiring`.

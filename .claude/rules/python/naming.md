@@ -5,9 +5,8 @@ paths:
 
 # Naming
 
-Loads with the other Python rules, because every line of code names something and no tool judges the
-meaning a name carries. Case conventions, builtin shadowing, single letters, name length and the
-blacklist of filler words are the linters' job and are not repeated here.
+Every line of code names something, and no tool judges the meaning a name carries. Case, builtin
+shadowing, single letters, length and the filler-word blacklist are the linters' job.
 
 ## General
 
@@ -36,11 +35,9 @@ kind, then see whether the names share a shape. The shapes worth copying:
   variable.
 - **Derive a copy** — `with_only_columns`, `with_hint`, `with_for_update`: `with_` returns a new
   object that also carries X.
-- **Negated variant** — `correlate` / `correlate_except`, so both read the same way.
-- **Symmetric pair** — `get_label_style` / `set_label_style`, differing by verb only.
 - **Plurality** — `scalar` / `scalars`: singular returns one, plural returns many.
-- **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `start`/`stop`,
-  `serialize`/`deserialize`, `commit`/`rollback`.
+- **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `get_label_style` /
+  `set_label_style`, `correlate` / `correlate_except`: one part differs, the rest reads the same.
 
 A codebase with twelve `duration_in(text)`-shaped names and three `find_duration`-shaped ones has
 one concept and two vocabularies. Rename the three.
@@ -54,10 +51,9 @@ one concept and two vocabularies. Rename the three.
   be named after **what it returns** — `pydantic`'s `version_short()`, `sqlalchemy`'s
   `selected_columns`; a noun promises purity as reliably as a verb promises action. **Never a past
   participle**: `matched(posting)`, `collapsed(text)`, `grouped(rows)` — the reader cannot tell a
-  predicate from a builder. Write the one you mean: `is_matched` or `match_posting`. Neither
-  library has a name of this shape anywhere. This is about **callables only**: a type alias or a
-  variable may be a participle, because neither can be mistaken for an action — `Compared`,
-  `Generated`, `discounted_price` all read as what they are.
+  predicate from a builder. Write the one you mean: `is_matched` or `match_posting`. This is about
+  **callables only**: a type alias or a variable may be a participle, because neither can be
+  mistaken for an action — `Compared`, `Generated`, `discounted_price` all read as what they are.
 - **The verb names the outcome, not the machinery.** `find_shortest_route`, not `run_dijkstra`.
   Implementation changes, intent does not.
 - **A generic verb is a design signal, not a naming problem.** `process`, `handle`, `manage`, `do`
@@ -130,8 +126,6 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
   `UserManager` says less than `UserRegistration`, `UserDirectory` or `SessionStore`.
 - **A family shares the noun and varies the qualifier.** `pydantic`'s URL types are the model:
   `AnyUrl`, `HttpUrl`, `FileUrl`, `FtpUrl` — one noun, one axis of variation.
-- **Describe what it is, not how it is built.** `TaskQueue`, not `RedisTaskQueue` — unless a second
-  implementation exists and the distinction is the point.
 - **A contract is named after the capability, without a prefix.** A contract base class — or, at a
   foreign boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more:
   `Notifier`, `UserRepository`, `Comparable`. Never a mechanism suffix (`…Protocol`, `…Interface`,
@@ -161,7 +155,8 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
   `NoSuchColumnError`, `NoReferencedTableError`, `AmbiguousColumnError`, `CircularDependencyError`
   — each says what went wrong precisely enough to act on. **A package prefix is for libraries
   only**: `PydanticUserError` earns it in someone else's traceback; in an application every
-  exception in the traceback is yours, and the prefix is noise.
+  exception in the traceback is yours, and the prefix is noise. The package's root exception is the
+  one name that carries it, in both (`errors.md`).
 - **Methods drop the class name**: `Order.total()`. **Properties are nouns, methods are verbs** — a
   property that does I/O or heavy computation is a bug; make it a `fetch_…` / `compute_…` method.
 - **Type aliases name the domain meaning**: `type Headers = dict[str, str]`. A structural type
@@ -169,10 +164,9 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
   the distinction between related aliases — `Color` is the class, `ColorTuple` the shape,
   `ColorType` the set of accepted inputs. Prefer `NewType` over a bare alias when two values share
   a runtime type but must not be confused.
-- **Type parameters are single capital letters** — `T` by default, `K`/`V` for key/value, `P`/`R`
-  for `ParamSpec`/return. The bound carries the meaning (`[T: BaseModel]`); the letter does not
-  need to. Descriptive names are for the rare generic with three or more parameters. Below 3.12 a
-  `TypeVar` takes the private suffixed shape — `_T`, `_BackendT`; the details are in `python-types`.
+- **Type parameters are single capital letters** — `T`, `K`/`V`, `P`/`R` for `ParamSpec`/return;
+  the bound carries the meaning (`[T: BaseModel]`), and only a generic with three or more spells
+  them out. Below 3.12 a `TypeVar` is private and suffixed — `_T`, `_BackendT` (`python-types`).
 
 ```python
 # WRONG — Base on a contract, the mechanism as the name, a suffix that names nothing, plural enum
@@ -181,13 +175,16 @@ class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
 class DataManager(ABC): ...
 class OrderStatuses(Enum): ...
 
-# CORRECT — the contract names the capability, the implementations name what makes them concrete
+# CORRECT — the contract names the capability, an implementation names what makes it concrete
 class UserDirectory(ABC):
     @abstractmethod
     def find(self, email: str) -> User | None: ...
 
-class LdapUserDirectory(UserDirectory): ...
-class InMemoryUserDirectory(UserDirectory): ...
+@final
+class LdapUserDirectory(UserDirectory):
+    @override
+    def find(self, email: str) -> User | None: ...
+
 class OrderStatus(Enum): ...
 ```
 
@@ -247,19 +244,13 @@ Four kinds leak, and each becomes a lie on a predictable day:
   vendor nobody in the codebase still calls.
 
 ```python
-# WRONG — one name carries the argument's history, the other a place in this project
+# WRONG — the argument's history and a place in this project; the vendor answering; the caller
 def archive_logs(merged: Path, runs: Path) -> Path: ...
-
-# CORRECT — the signature states the roles
-def archive_logs(source: Path, into: Path) -> Path: ...
-```
-
-```python
-# WRONG — the class is named for whoever answers it, the function for whoever calls it
 class AcmeCrmCustomerSchema(BaseModel): ...
 def parse_for_nightly_job(payload: bytes) -> Customer: ...
 
-# CORRECT — named for what they describe and what they do
+# CORRECT — the signature states the roles; each is named for what it describes or does
+def archive_logs(source: Path, into: Path) -> Path: ...
 class CustomerSchema(BaseModel): ...
 def parse_customer(payload: bytes) -> Customer: ...
 ```

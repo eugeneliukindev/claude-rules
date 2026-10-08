@@ -16,7 +16,8 @@ namespace with "methods", so a class has to offer something a module does not.
 3. **The behaviour must be swappable** — two or more implementations behind one contract, or a test
    needs a fake.
 4. **Several operations share the same dependencies** — three or more functions in a module taking
-   the same two or more parameters. Those repeated parameters *are* a constructor.
+   the same two or more collaborators. Those repeated parameters *are* a constructor; repeated
+   *values* that form one concept are a parameter object instead (`functions.md`).
 5. **There is a lifecycle** — acquire/release, `__enter__`/`__exit__`, `close()`.
 6. **A framework demands it** — `Enum`, `Exception`, a dataclass.
 
@@ -53,6 +54,7 @@ def report_hours(timesheet: Timesheet) -> HoursReport: ...   # HR
 # CORRECT — payroll.py and hours_report.py, each with its own private _regular_hours
 
 # WRONG — one class answers to finance and HR, and both edit _regular_hours for their own reasons
+@final
 class EmployeeService:
     def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables,
                  calendar: WorkCalendar) -> None: ...
@@ -65,12 +67,14 @@ class EmployeeService:
     def _regular_hours(self, timesheet: Timesheet) -> Decimal: ...
 
 # CORRECT — one class per actor, each with its own dependencies and its own _regular_hours
+@final
 class Payroll:
     def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables) -> None: ...
     def gross_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
     def net_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
     def payslip(self, employee_id: EmployeeId, month: Month) -> Payslip: ...
 
+@final
 class HoursReporting:
     def __init__(self, timesheets: TimesheetRepository, calendar: WorkCalendar) -> None: ...
     def hours_report(self, month: Month) -> HoursReport: ...

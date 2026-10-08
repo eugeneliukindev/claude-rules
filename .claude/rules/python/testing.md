@@ -9,8 +9,8 @@ paths:
 
 # Testing
 
-Supplement to the other Python rules. Governs tests, both writing and reviewing them. `pytest` is
-the framework.
+Supplement to the other Python rules, for writing and reviewing tests. `pytest` is the framework;
+its mechanics — async tests, property tests, HTTP and container fixtures — are in `python-pytest`.
 
 ## Levels
 
@@ -31,9 +31,10 @@ naming — is a project decision; that the three exist and stay separated is not
   `tests/fakes.py`, inheriting the contract like any implementation — injected in unit tests. A
   fake exercises the contract; a `MagicMock` records calls and happily accepts methods that do not
   exist.
-- **Mock only at a process boundary you do not own** — the network, the clock, the broker. Then use
-  the `mocker` fixture (or `unittest.mock.patch` as a context manager) and always `spec=` the real
-  class, so a nonexistent attribute fails.
+- **Mock only at a process boundary you do not own** — the network, the broker; never the clock,
+  which is injected and replaced by a fixed one. Then use the `mocker` fixture (or
+  `unittest.mock.patch` as a context manager) and always `spec=` the real class, so a nonexistent
+  attribute fails.
 - **Patching your own module is a design signal**: `patch("app.registration._send_welcome")` means
   the dependency should have been injected. Fix the constructor rather than patch. Patching stays
   legitimate for boundaries that cannot be injected — stdlib internals, third-party module state.
@@ -110,18 +111,17 @@ def test_total_includes_tax(
 - **Test data says only what matters**: values relevant to the behaviour are explicit in the test,
   everything else comes from the factory defaults. A magic value outside a parametrize table gets
   the same named-constant treatment as production code.
-- **Determinism is enforced**: time comes from the injected clock (or `time-machine` at a
-  boundary), randomness is seeded, `pytest-randomly` surfaces hidden ordering dependencies, and
-  waiting polls with a timeout instead of `sleep()`.
+- **Determinism is enforced**: time comes from the injected clock (`time-machine` only for code you
+  do not own that reads the clock itself), randomness is seeded, `pytest-randomly` surfaces hidden
+  ordering dependencies, and waiting polls with a timeout instead of `sleep()`.
 - Unit tests may use pytest's sandboxes such as `tmp_path`; they never touch the network, real
   time, or global state.
 
 ## Coverage
 
 - **Branch coverage on** (`--cov-branch`); line coverage alone hides untested `else` arms.
-- **No single magic number.** Domain and services aim at ~100%; adapters and handlers are covered
-  mainly by integration tests; generated code, migrations and `__main__` are excluded explicitly in
-  configuration, not ignored silently.
-- The floor is enforced mechanically (`--cov-fail-under`) and only ever ratchets up.
+- **No single magic number.** Domain and services aim at ~100%, adapters mainly through integration
+  tests; generated code, migrations and `__main__` are excluded in configuration, not silently. The
+  floor is enforced (`--cov-fail-under`) and only ever ratchets up.
 - **Coverage detects untested code; it is never a target.** A test that exists to colour lines green
   converts an honest unknown into false confidence, which is worse than the gap it hides.

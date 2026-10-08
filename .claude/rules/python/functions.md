@@ -3,36 +3,11 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Functions and Control Flow
-
-## Control Flow
-
-- **Extract any condition with more than two operands into a named predicate.** The linter measures
-  the complexity but cannot name the concept: `if _is_eligible_for_refund(order):` says what the
-  three clauses meant.
-- **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
-  of variants or nested data; not to compare one scalar against constants, and not for two branches.
-- **A bare name in a pattern binds, it does not compare**, whatever its case — the one thing about
-  `match` worth memorising. Constants in patterns are dotted:
-
-  ```python
-  case Order(status=PAID): ...              # WRONG — matches every order and binds PAID
-  case Order(status=OrderStatus.PAID): ...  # CORRECT — compares
-  ```
-- **Every `match` over a union or `Enum` ends with exhaustiveness**: `case _: assert_never(value)`,
-  or a named error. A silent fall-through is forbidden.
-- **A factory dispatches through a mapping, not through `match`.** Kind in, builder out:
-  `_BUILDER_BY_KIND[source.kind](**options)`. Adding a kind is one entry, and the set is readable
-  in one place instead of spread over branches.
-- **A comprehension holds one transformation; anything more is a loop.** The judgement is about
-  how much the reader can hold, not how much fits.
-- **Write a generator function for any lazy sequence longer than a one-line expression**, and for
-  anything reading from a stream, file, cursor or paginated API.
-
-## Functions
+# Python — Functions
 
 - **Does one thing.** If describing it needs "and", split it. SRP is a different rule, for modules.
-- **Group related parameters into a frozen dataclass** rather than growing the signature.
+- **Values that travel together become one frozen dataclass** (the test is in `python-wiring`);
+  collaborators that travel together are a constructor instead (`classes.md`, trigger 4).
 
 ## Extraction Must Pay for Itself
 
@@ -60,11 +35,8 @@ exposes.
 - **Wrapper** — the body is one library call, one `logger.*`, or one arithmetic expression.
 - **Stage** — the name is a moment (`_step_two`, `_after_parse`, `_log_outcome`), not an action.
 
-**Never extract a function to have somewhere to put a docstring** — reasoning that does not fit
-the code is one inline "why" comment, not a comment with call overhead.
-
 ```python
-# WRONG — a stage name, one call site, a docstring several times the size of the body
+# WRONG — extracted to make room for a docstring: a stage name, one call site, a one-line body
 def _log_outcome(imported: int, requests: int) -> None:
     """Log both counts.
 
@@ -81,8 +53,9 @@ logger.info("import finished", extra={"imported": imported, "requests": requests
 
 **Guards → work → result.** Guard clauses first, with an immediate `return` or `raise`; the happy
 path at indentation level 1 — if it is nested inside an `if`, invert the condition and return
-early; one blank line between logical steps, none inside a step; more than three steps → extract;
-the result computed into a well-named local and returned last.
+early; one blank line between logical steps, none inside a step; a step below its siblings' level
+is extracted (reason 4), and length alone never is; the result computed into a well-named local and
+returned last.
 
 - **A boolean parameter that gets past the linter is still two functions.** Made keyword-only it
   stops being a boolean trap and stays a design fault: `export(orders, *, as_csv=True)` does two

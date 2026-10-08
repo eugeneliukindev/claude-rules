@@ -3,9 +3,7 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Errors and Logging
-
-## Errors
+# Python — Errors
 
 The example below carries the four broken most often: the narrowest `except` the guarded lines
 need, a `try` around only those lines, a driver's error translated with `raise … from`, and never
@@ -13,11 +11,11 @@ need, a `try` around only those lines, a driver's error translated with `raise �
 
 - **Messages include the identifying values**: `f"Order {order_id} cannot be shipped: status is
   {status}"`, not `"Invalid order"`.
-- **Every package defines one root exception**, `<Package>Error(Exception)`, and all its own
-  exceptions inherit from it, so callers can catch "anything from this library" with one clause.
-  Inherit the closest stdlib type as well when the meaning matches:
-  `UserNotFoundError(AppError, LookupError)`. Exceptions **carry data as attributes**, not only
-  text.
+- **Every package defines one root exception, named for the package** — `BillingError(Exception)`
+  — and all its own exceptions inherit from it, so callers catch "anything from billing" with one
+  clause. The leaves name the failure without the prefix (`naming.md`), and inherit the closest
+  stdlib type too when the meaning matches: `InvoiceNotFoundError(BillingError, LookupError)`.
+  Exceptions **carry data as attributes**, not only text.
 - **`None` is for `find_…`-style lookups where absent is normal**; a function whose name promises a
   value raises instead of returning `None`, `False`, `-1` or an empty collection.
 - **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
@@ -47,14 +45,3 @@ def load_user(client: Client, user_id: UserId) -> User:
         raise UserServiceError(f"Fetching user {user_id} failed") from error
     return User.from_payload(response.json())
 ```
-
-## Logging
-
-- `logging.getLogger(__name__)`, once per module. `ERROR` means someone must look — never for an
-  expected user mistake.
-- **Never log secrets or PII** — tokens, passwords, card numbers, raw request payloads. Log
-  identifiers, not objects, and structured fields (`extra={...}`) rather than text encoding them.
-- Message style: lower-case start, no trailing punctuation, present tense, event first then
-  context — `"payment captured"`, not `"Captured the payment successfully!"`.
-- Configure logging **once** at the entry point, never in a library or on import. Timing and
-  counters are metrics, not logs; never log in a hot loop.

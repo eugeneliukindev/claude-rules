@@ -5,30 +5,33 @@ paths:
 
 # Python — Core
 
-What applies to every Python edit, one topic per file in this directory, all loaded together;
-`testing.md` loads in test files. Everything else is a skill, invoked when the work reaches it — by
-its own description, or by name:
+What applies to every Python edit is in this directory, one topic per file, loaded together;
+`testing.md` loads in test files. Everything else is a skill, reached by its description or by name:
 
 | Skill | When |
 |---|---|
 | `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc`, a dunder |
-| `python-boundaries` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
-| `python-wiring` | an entry point, where an object is built, a settings field, a layer argument |
+| `python-boundaries` | HTTP, queues, caches, files, serialization, timeouts, retries, time, money, identifiers |
+| `python-wiring` | an entry point, where an object is built, a resource's lifetime, a settings field |
+| `python-layers` | which layer may import which, an import-linter contract |
 | `python-contracts` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live |
 | `python-async` | `async def`, threads, processes |
-| `python-persistence` | a transaction boundary, a repository, a migration plan |
+| `python-persistence` | a transaction boundary, a repository |
+| `python-migrations` | a schema change, a backfill |
 | `python-packaging` | a package other code imports: `__all__`, facade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
+| `python-project` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration |
+| `python-scripts` | a one-off script, a notebook, a backfill — what relaxes there and what never does |
 | `python-cli` | an entry point with an argument parser |
 | `python-security` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
+| `python-observability` | metrics, tracing, correlation ids, where logging is configured |
 | `python-performance` | a path already measured and found slow |
 | `python-examples` | an example that ships — docstring, README, `examples/` |
 | `python-rules-authoring` | editing these rules or skills |
-| `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `tenacity`, `niquests`, `orjson` |
+| `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `alembic`, `fastapi`, `tenacity`, `niquests`, `orjson`, `pytest` |
 
-Style, layout and mechanical complexity belong to the formatter, the linters and the type checker.
-**Nothing here restates what a tool decides**, and which tools a project runs is the project's
-business. When a tool and these files disagree, the tool wins and the file gets a PR. Two things
-about living with those tools do belong here:
+Style, layout and complexity belong to the formatter, the linters and the type checker, which the
+project picks; **nothing here restates what a tool decides**, and where they disagree the tool wins
+and this file gets a PR. Two things do belong here:
 
 - **A suppression carries its rule code and its reason on its line**, or directly above when it
   will not fit — never wrapped away by the formatter. The count only ever ratchets down.
@@ -40,24 +43,26 @@ about living with those tools do belong here:
 
 1. An explicit instruction from the person you are working with, for this task.
 2. A rule these files state without qualification.
-3. What `pydantic` or `sqlalchemy` does in the same situation — they are large, long-lived, and
-   have paid for their choices.
-4. Consistency with the surrounding code of the same package.
+3. What `pydantic` or `sqlalchemy` does in the same situation — they have paid for their choices.
+4. Consistency with the surrounding code of the same package — for a *prefer*, never against (2).
 5. The default (*prefer*) in these files.
 6. Your own judgement — and say so, rather than letting it read as a rule.
 
 A rule that is wrong for the situation, or regularly worked around, is changed here with the
 reasoning — never worked around silently in code.
 
+**In old code, what the task writes obeys these files; what it only passes stays as it is** —
+reformatting or renaming beyond the task buries the change in its diff. A violation noticed and
+left goes in the summary or the PR description, never copied into the new code.
+
 ## Principles
 
 Five, in priority order; when two rules conflict the earlier principle wins. **Correct** — the code
-does what its name and signature promise, for every input the types allow, and fails loudly
-otherwise. **Readable** — a teammate who has never seen the file understands it top-down without
-opening other files; names carry the meaning, comments are the exception. **Simple** — the least
-machinery that solves today's problem. **Typed** — illegal states are unrepresentable, and the
-checker catches the mistake rather than the reviewer. **Fast enough, by measurement** — algorithmic
-sanity always, anything beyond that with a profile in hand.
+does what its name and signature promise for every input the types allow, and fails loudly
+otherwise. **Readable** — a teammate new to the file understands it top-down without opening
+others; names carry the meaning. **Simple** — the least machinery that solves today's problem.
+**Typed** — illegal states are unrepresentable; the checker catches the mistake, not the reviewer.
+**Fast enough, by measurement** — algorithmic sanity always, anything more with a profile in hand.
 
 And three properties of the system as a whole:
 
@@ -91,35 +96,29 @@ And three properties of the system as a whole:
 
 ## YAGNI, KISS, DRY
 
-- **Build what today's requirement needs.** A speculative feature costs everything afterwards that
-  must keep it working. A generalisation built for one case is a guess about the second, and a
-  wrong abstraction outlives the duplication it prevented, because callers have grown into it. An
-  option nobody sets and a parameter always left at its default are branches never known to work.
-- **The simplest construction that fully solves the problem**, which is not the shortest one.
-  Prefer the boring mechanism: a function over a class, a dict over a registry. Simplicity is
-  measured at the point of *use*.
-- **DRY is about knowledge, not text.** Two fragments that look identical but answer to different
-  actors are not duplication — merging them couples two things that must be free to move apart,
-  and the next change arrives as a parameter, then a flag, then a branch. Two fragments that must
-  change together are duplication even when they look nothing alike: a limit enforced in a
-  validator and repeated in a schema. **Wait for the third occurrence.** The cure is often a shared
-  constant or a shared type, not a new unit that has to be named.
+- **Build what today's requirement needs.** A speculative feature costs everything that must keep
+  it working; a generalisation built for one case is a guess about the second, and outlives the
+  duplication it prevented. An option nobody sets is a branch never known to work.
+- **The simplest construction that fully solves the problem**, not the shortest: the boring
+  mechanism — a function over a class, a dict over a registry — judged at the point of *use*.
+- **DRY is about knowledge, not text.** Identical fragments answering to different actors are not
+  duplication — merged, the next change arrives as a parameter, then a flag, then a branch.
+  Fragments that must change together are duplication however different they look — a limit in a
+  validator and in a schema. **Wait for the third occurrence**; a shared constant often cures it.
 
 ## Definition of Done
 
 The formatter, the linters, the strict type checker and the tests run first, in that order, each
-clean with no new suppression. Then the eight checks no tool makes, skipped first under pressure:
+clean with no new suppression. Then the eight checks no tool makes, skipped first under pressure —
+`/python-review` runs the whole list over a diff:
 
 - [ ] Every new identifier passes `naming.md`'s Self-Check and survives the relocation test
 - [ ] Every new module and class answers to one actor — name who would ask to change it
-- [ ] Every helper has a reason to exist: reuse, a required callable, hidden complexity, a test
-      seam, or a named predicate — and every class has one of the six triggers in `classes.md`
+- [ ] Every helper has a reason from `functions.md`, every class a trigger from `classes.md`
 - [ ] Constants sit at the top of the module, and **every top-level name not used outside is
       prefixed** — `find_unprefixed_names.py` reports nothing new
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
-- [ ] No `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on every
-      override, `Final` on every constant
+- [ ] No `Any`, magic literal or cross-layer `dict[str, Any]`; `@override` and `Final` where due
 - [ ] Every conversion preserves the cause; nothing returns `None`/`False`/`-1` to signal an error;
       errors are logged once, at the boundary, with no secrets or PII
-- [ ] Every comment and docstring passes the relocation test; no credentials, URLs or
-      environment-specific values are hardcoded
+- [ ] Every comment and docstring passes the relocation test; no credential or URL is hardcoded
