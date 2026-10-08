@@ -15,7 +15,7 @@ description: >-
 
 These files are read while writing code, under time pressure, by someone already holding a
 different problem in their head. A rule that is technically correct and easy to misread will be
-misread. Four conventions prevent that; a rule breaking one of them is a defect **in this
+misread. The conventions below prevent that; a rule breaking one of them is a defect **in this
 document**, fixed here rather than worked around in code.
 
 **Stated over the widest category it is true for.** A rule written about a class gets applied to
@@ -40,7 +40,8 @@ sentence beside the pair. Keep both where a real incident exists; never invent o
 slot — an invented incident teaches a failure nobody has seen.
 
 **The model copies the example, not the prose.** Three consequences, each found in these files by
-an audit that turned up a dozen examples teaching the opposite of the rule above them:
+audits that turned up examples teaching the opposite of the rule above them
+([history.md](history.md)):
 
 - **The pair differs in exactly the dimension the rule is about.** Same signature, same names, same
   surrounding code — a `WRONG` that also lacks annotations, uses a global and swallows an error
@@ -51,6 +52,11 @@ an audit that turned up a dozen examples teaching the opposite of the rule above
 - **A `CORRECT` is real code**: it parses, it passes `mypy --strict`, and its library calls exist in
   the version the skill names. Run it before committing — `def f(...)` is a syntax error, and an
   API claim from memory is how a skill came to say `orjson` serialises `Decimal`.
+
+**A rule says whether it holds in a script.** These files are written for code that lives, and the
+model applies them to a forty-line one-off as readily as to a service. `python-scripts` lists what
+relaxes there and what never does; a new rule that would be ceremony in a script joins the first
+list in the same change, and one that protects data, money or a credential joins the second.
 
 **Both halves travel, which means neither names a project.** These files are read in every
 repository, and a reader who has to know one codebase to understand an example learns nothing from
@@ -76,7 +82,9 @@ Three different things, and the difference matters most when a check passes:
 A rule in the third group that is broken in bulk is not a standard, it is a wish. Two honest
 outcomes: write the check and move it into the first group, or delete it from this document. Run
 that audit whenever violations turn up by the dozen — a rule nobody has followed for months was
-never holding anything up.
+never holding anything up. Between the two sits a procedure: the Definition of Done in `core.md` is
+eight such rules, and `python-review` walks them over a diff, so they are run on purpose rather
+than remembered. A rule that belongs on that list and is missing from it is added to both.
 
 ## What Loads When
 
@@ -88,32 +96,40 @@ Two mechanisms, and which one a file lives in is the decision:
 | enters context | when a matching file is read | at launch, every session, every language | when its `description` matches the work, or by `/name` |
 | always costs | nothing | its whole length | its `description`, ~40 tokens |
 
-**A rule with no front matter is the expensive one, and it is the easy mistake.** Sixteen
-reference files sat in `~/.claude/rules/` with no `paths:`, which is the documented instruction to
-load every one of them into every session in every language — eighteen hundred lines, while the
-pair that actually governs each edit waited on a glob. The prose in this section described the
-opposite arrangement for months and nothing contradicted it, because nothing checks a claim about
-loading.
+**A rule with no front matter is the expensive one, and it is the easy mistake**: it is the
+documented instruction to load the file into every session in every language. That once happened to
+sixteen reference files at once, and nothing noticed ([history.md](history.md)).
 
 So: what applies to every edit carries `paths: "**/*.py"`, one topic per file — `core.md`,
-`naming.md`, `functions.md`, `classes.md`, `modules.md`, `types.md`, `errors.md`, `comments.md` —
-and all of them load together on the first read; `testing.md` carries its own test-file globs.
-Splitting by topic changes the organisation, not the cost: the same text arrives at the same moment.
+`naming.md`, `functions.md`, `control-flow.md`, `classes.md`, `modules.md`, `types.md`,
+`errors.md`, `logging.md`, `comments.md` — and all of them load together on the first read;
+`testing.md` carries its own test-file globs. Splitting by topic changes the organisation, not the
+cost: the same text arrives at the same moment.
+
+**A skill splits when its halves have different triggers and do not need each other.** Then the
+work loads only the half it reaches: `python-alembic` arrives with `import alembic`, and a migration
+plan does not pull in transaction design. Halves that one task needs together stay one skill —
+"pass fields, not the settings object" is a rule about the composition root, and split away from it
+it loads without the rule it depends on. Every split costs a description in every session and a row
+in the map, which the always-loaded budget pays for. An "and" in a title is a prompt to ask the
+question, not the answer. Always-loaded rule files load together whatever their split, so they
+split only to give a rule its own address — `logging.md` for what other files point at.
 Everything reached by a task rather than by a file — every topic, every library — is a skill, and
-the map at the top of `core.md` names them.
+`core.md` names every one of them.
 
 **The one file with no front matter is `new-files.md`, six lines, and the exception is
-measured.** A path-scoped rule loads when a matching file is *read*; a task that writes `x.py`
-into an empty directory reads nothing, and in measured runs every such task went without the rules —
-the dataclass scenario passed three of three with a file to read first and none of three without.
-The six lines cost every session in every language; they buy the rules for the one case the glob
-cannot see.
+measured.** A path-scoped rule loads when a matching file is *read*; a task that writes `x.py` into
+an empty directory reads nothing, and in measured runs such tasks went without the rules. The six
+lines cost every session in every language; they buy the rules for the one case the glob cannot
+see.
 
-**Tool configuration is not written down here at all.** Which linters a project runs, what it
-selects, what it excludes and how its hooks are wired changes from repository to repository, and
-the person who owns the repository owns those files. What belongs here is only what survives the
-choice of tool: the discipline around suppressions and limits, and — where a rule in these files
-can be handed to a checker instead of remembered — the name of the check that does it.
+**Tool configuration is not written down here, with one exception.** Which linters a project runs,
+what it selects and how its hooks are wired changes from repository to repository, and the person
+who owns the repository owns those files. What belongs here is what survives the choice of tool:
+the discipline around suppressions and limits, and — where a rule can be handed to a checker
+instead of remembered — the name of the check that does it. The exception is `python-project`,
+which writes the defaults for an empty directory, where nobody has chosen yet; in an existing
+repository the owner's files win.
 
 **Moving a rule up costs every edit; moving it down costs a lookup.** A rule earns a place in the
 always-loaded set by being both **universal** — every Python file could break it — and
@@ -123,39 +139,28 @@ applies. A rule that restates what the model already does by default is deleted,
 costs attention on every edit and buys nothing.
 
 **A skill loads only when the work names its topic, so universal practice stays in the always-loaded
-rules with its examples.** Measured, not assumed: a variant that left one-line rules in `core.md`
-and moved the examples for functions, classes, errors and comments into four skills lost to the
-current layout 38 to 42 of 42 runs, and none of the four skills was opened once — the model looks up
-`sqlalchemy`, retries or a subprocess when the task contains them, and never looks up "how to write
-a function". The actor rule was the clearest case: with the example in `core.md` the model split pay
-and hours into two modules three times out of three; with the example one skill away it never did.
-What moves to a skill is what a concrete signal in the task points at — a library, `async def`, a
-migration, an untrusted input.
+rules with its examples.** The model looks up `sqlalchemy`, retries or a subprocess when the task
+contains them, and never looks up "how to write a function": with the examples for functions,
+classes, errors and comments moved into skills, the measured layout lost almost every run and none
+of those skills was opened ([history.md](history.md)). What moves to a skill is what a concrete
+signal in the task points at — a library, `async def`, a migration, an untrusted input.
 
-**The always-loaded set has a budget, and it is a hard number** — counted without front matter,
-which Claude Code strips before loading:
+**The always-loaded set has a budget, and it is a hard number**, counted from the line after the
+front matter's closing `---` — the blank line included, because the model receives it:
 
 | file | ceiling |
 |---|---|
 | `naming.md` | 300 |
-| any other always-loaded file | 120 |
+| any other rule file | 120 |
 | **everything loaded on every `.py`** | **800** |
 | any one `SKILL.md` | 500 |
 
-The pair was lowered from 600 + 350 once, with this arithmetic: Anthropic asks for under 200 lines
-in an always-loaded instruction file because adherence falls as the file grows, and 950 lines were
-about twelve thousand tokens on every Python edit. An audit then found the contract sections, the
-resource lifecycle, dunders and the stdlib-shadowing rule reached only by some work — they became
-skill content — and a dozen rules the model follows without being told, which were deleted. What
-remained was 800 lines; the ceiling is set there so the next addition has to displace something.
-`core.md` was then split by topic with its text unchanged; the files load together, so the split
-changes where a rule lives, not what reaches the model.
-
 The number is not sacred; the *fixedness* is. Without one, every addition looks free — each is a
-paragraph, and the file went from 350 lines to three thousand one paragraph at a time. With one,
-**an addition displaces something**: find the rule it makes redundant, the example that has stopped
+paragraph, and the file once grew to three thousand lines one paragraph at a time. With one, **an
+addition displaces something**: find the rule it makes redundant, the example that has stopped
 earning its lines, or the section that belongs in a skill, and cut that first. If nothing can be
-cut, the new rule was not worth the space, and it becomes a skill with a row in the map.
+cut, the new rule was not worth the space, and it becomes a skill with a row in the map. How the
+numbers were set is in [history.md](history.md).
 
 The 500-line ceiling on a `SKILL.md` is not this project's invention — it is what Anthropic's
 authoring guidance asks for, and past it a skill splits into reference files linked from
@@ -163,9 +168,9 @@ authoring guidance asks for, and past it a skill splits into reference files lin
 fragments, `head -100` at a time, and the rule at line 200 silently does not arrive. A reference
 file past a hundred lines opens with its own table of contents for the same reason.
 
-Raising the ceiling is allowed exactly once per good argument, written down here with the
-arithmetic — never because the file happens to have grown past it. A ceiling adjusted to fit the
-current size is not a ceiling.
+Raising the ceiling is allowed exactly once per good argument, written down in
+[history.md](history.md) with the arithmetic — never because the file happens to have grown past
+it. A ceiling adjusted to fit the current size is not a ceiling.
 
 **Prefer the positive.** Steering by prohibition backfires — naming the thing to avoid makes it
 more available, not less. Where a positive statement exists, lead with it and let the `# WRONG`
@@ -177,6 +182,22 @@ and capitals make them over-apply a rule to cases it was never meant for; a file
 line says `MUST` has no emphasis left for the one rule that keeps being skipped. State the rule
 plainly with its reason — the model generalises from the reason — and bold the rule's name, not
 its modality.
+
+## Checked, Not Remembered
+
+A budget counted by eye was broken by six lines before anyone noticed. What this file can hand to a
+machine, `scripts/check_rules.py` checks: the budget, that every `python` block parses, that every
+skill and `.md` file a document names exists, that `core.md` names every skill, and that every
+`SKILL.md` has a `name` matching its directory and a `description`.
+
+```bash
+python <this skill's directory>/scripts/check_rules.py ~/.claude
+```
+
+Point it at `.claude` in a clone of the rules. Run it before every commit to these files; exit code
+1 means a finding, printed as `path:line: message`. What it cannot check stays a step of its own:
+that a `CORRECT` passes `mypy --strict` and runs against its library at the version the skill
+names — paste the block into a file with the names it uses declared, and run both.
 
 ## One Rule, One Home
 
