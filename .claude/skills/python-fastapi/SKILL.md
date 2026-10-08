@@ -24,9 +24,9 @@ used, in most tutorials, as a service locator.
   `app = FastAPI()` whose engine is created beside it is the global singleton `python-wiring`
   forbids. Serve the factory: `uvicorn --factory shop.api:create_app`, or an `asgi.py` whose one
   statement is `app = create_app(Settings())`.
-- **The `lifespan` builds every shared resource once and closes it**: one `async with` per
-  resource — the engine, the HTTP client — the services built from them inside, and a mapping of
-  what requests need yielded; Starlette puts it on `request.state`. The nested blocks close in
+- **The `lifespan` builds every shared resource once and closes it**: one `async with` with an
+  item per resource — the engine, the HTTP client — the services built from them inside, and a
+  mapping of what requests need yielded; Starlette puts it on `request.state`. The items close in
   reverse order on shutdown.
   `@app.on_event("startup")` is the deprecated shape of the same thing.
 - **Settings are built once, by whoever calls the factory, and passed in.** The documentation's
@@ -107,9 +107,12 @@ async def refund_order(order_id: OrderId, orders: OrderServiceDep) -> OrderRespo
 ```
 
 - **The response is an explicit model built from the domain object** —
-  `OrderResponse.from_domain(order)` — with the return annotation as the response model. Returning
-  the domain or ORM object and letting `response_model` filter it is the accidental serialization
-  `python-boundaries` forbids: one added attribute is one leaked field.
+  `OrderResponse.from_domain(order)` — with the return annotation as the response model. A route
+  annotated `-> Order` makes the domain type the response model, and then every field it has is
+  published — one added attribute is one leaked field, the accidental serialization
+  `python-boundaries` forbids. Returning the domain object under an explicit
+  `response_model=OrderResponse` does drop the extra fields, but the mapping then happens by
+  attribute name, out of sight; `from_domain` states it.
 
 ```python
 # WRONG — the domain dataclass is the response model: every field added to Order is published

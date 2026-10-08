@@ -125,9 +125,11 @@ subprocess.run(f"gzip --keep {filename}", shell=True, check=True, timeout=_GZIP_
 subprocess.run(["gzip", "--keep", "--", filename], check=True, timeout=_GZIP_TIMEOUT_SECONDS)
 ```
 
-- **Untrusted formats go through the safe parser**: `yaml.safe_load`, never `yaml.load` with the
-  full loader, which builds arbitrary objects; XML through `defusedxml`, which refuses entity
-  expansion and external entities; `json` as it is. No `eval`, `exec` or `pickle.loads` on anything
+- **Untrusted formats go through the safe parser**: `yaml.safe_load`, never `yaml.unsafe_load` or
+  `yaml.load(..., Loader=yaml.Loader)`, which call whatever a `!!python/object/apply` tag names —
+  and not `FullLoader` either: it refuses those tags but still resolves `!!python/name` references
+  to anything already imported, a surface `safe_load` does not have. XML through `defusedxml`,
+  which refuses entity expansion and external entities; `json` as it is. No `eval`, `exec` or `pickle.loads` on anything
   that came from outside — `ast.literal_eval` when the input really is a Python literal.
 
 ```python

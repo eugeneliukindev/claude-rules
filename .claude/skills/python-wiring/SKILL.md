@@ -51,7 +51,7 @@ class InvoiceService:
   services, hand them to the entry points. A DI framework is unnecessary until wiring is measured
   in hundreds of objects; if one is used, it is confined to the composition root.
 - **Resource lifetime is owned by the root**: pools and clients are created once, passed down, and
-  closed in reverse order on shutdown — nested `with` blocks or the framework's lifespan hook, never
+  closed in reverse order on shutdown — one `with` statement or the framework's lifespan hook, never
   `atexit`, never per-request construction of pooled resources.
 - **No global singletons, no service locator.** A module-level connection or a globally reachable
   container is hidden global state: import-time side effects, un-fakeable tests, ordering bugs. The
@@ -110,9 +110,11 @@ def managed_engine(database_url: str) -> Iterator[Engine]:
         engine.dispose()
 ```
 
-- **A known set of resources is nested `with` blocks** — one per resource, closed in reverse
-  order. `ExitStack` only when the number is known at runtime alone, such as one connection per
-  configured shard; for two or three fixed resources it hides what a nested `with` shows.
+- **A known set of resources is one `with` statement with an item per resource** — the
+  parenthesized form, which closes them in reverse order exactly as nesting would, and which ruff's
+  `SIM117` asks for instead of nested blocks. `ExitStack` only when the number is known at runtime
+  alone, such as one connection per configured shard; for two or three fixed resources it hides
+  what the items of one `with` show.
 
 ```python
 # WRONG — an ExitStack for two fixed resources hides what is open and in which order it closes

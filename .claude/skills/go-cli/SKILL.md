@@ -32,8 +32,8 @@ func main() {
 ## Flags Are the Interface
 
 - **A `flag.FlagSet` built inside `run`**, never the package-level `flag.Parse()`: the global set is
-  shared by every test in the binary, and a second parse in the same process panics on the
-  redefined flags.
+  shared by every test in the binary, and the second call of `run` in one process panics when it
+  defines the same flags again.
 - **`ContinueOnError`, so parsing fails with a code**: `flag.ErrHelp` is exit 0 after the usage
   text, any other parse error exit 2 — the convention every Unix tool follows.
 

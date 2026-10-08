@@ -43,6 +43,10 @@ testify replaces the `if got != want { t.Errorf(…) }` lines and nothing else.
   cancel()
   require.NoError(t, <-done)
   ```
+- **In a test, a goroutine starts with `wg.Add(1)`, `go` and `defer wg.Done()`, not `wg.Go`.**
+  `testifylint`'s `go-require` reads the body of a `go` statement and not the closure handed to
+  `wg.Go`, so the shorter form `core.md` asks for hides a `require` on the wrong goroutine from the
+  one check that finds it.
 
 ## Arguments
 

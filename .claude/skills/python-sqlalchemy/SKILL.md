@@ -49,8 +49,10 @@ user = session.scalars(select(User).where(User.id == user_id)).one_or_none()
 user = session.get(User, user_id)
 ```
 
-- **`.scalar_one()` / `.scalar_one_or_none()` when exactly one row is the contract.** `.first()`
-  hides a broken query behind a plausible answer; `scalar_one()` raises when the assumption breaks.
+- **Exactly one row is asked for as exactly one row**: `.one()` / `.one_or_none()` on the result of
+  `session.scalars(...)`, `.scalar_one()` / `.scalar_one_or_none()` on `session.execute(...)`.
+  `.first()` hides a broken query behind a plausible answer; `one()` raises when the assumption
+  breaks.
 
 ```python
 # WRONG — a second invoice for the order is silently ignored
@@ -233,9 +235,11 @@ def add(self, order: Order) -> OrderId:
 
 ## Writing
 
-- **Bulk insert is `session.execute(insert(Order), rows)`** with a list of dicts, which the
-  dialect batches; a set-based change is one `update(Order).where(...).values(...)`. Not a loop of
-  `session.add()`.
+- **Bulk insert is `session.execute(insert(Order), rows)`** with a list of dicts. A loop of
+  `session.add()` pays an ORM object, an identity-map entry and change tracking per row, and
+  whether its INSERTs are batched depends on the driver — PostgreSQL drivers batch them, SQLite
+  sends one per row. **A set-based change is one `update(Order).where(...).values(...)`**, never a
+  loop over loaded rows, which reads every row first and then writes each one back.
 
 ```python
 # WRONG — loads every expired order to change one column, then writes each row back

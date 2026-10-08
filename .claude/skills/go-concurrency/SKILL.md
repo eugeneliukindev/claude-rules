@@ -26,7 +26,8 @@ often a connection, and nothing reports it until memory runs out.
   most common leak there is.
 - **`errgroup.WithContext` is the default for related work that can fail**: the first error
   cancels the others, and `Wait` returns it. `sync.WaitGroup` with `wg.Go(f)` is for work that
-  cannot fail or reports through its own channel.
+  cannot fail or reports through its own channel — in a test that uses testify, `wg.Add(1)`, `go`
+  and `defer wg.Done()` instead, which `testifylint` can read (`go-testify`).
 - **A panic in a goroutine kills the process**; no caller can recover it. Code that must survive a
   panicking task — a server's request handler does this for you — recovers inside the goroutine
   and turns it into an error.

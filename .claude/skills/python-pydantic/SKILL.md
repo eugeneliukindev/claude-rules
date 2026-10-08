@@ -85,7 +85,27 @@ event = Event.model_validate_json(body)
 - **`Annotated[int, Field(ge=1, le=200)]`, not `x: int = Field(ge=1)`.** The annotated form keeps
   the default separate from the constraint, survives being aliased into a named type — which
   `python-types` asks for: a constrained type is named once — and reads the same in every position.
-- **`default_factory` for anything mutable or computed**; a bare mutable default is shared.
+- **A model that is really immutable is immutable all the way down** — `frozen=True` plus
+  `tuple[str, ...]` and `frozenset` instead of `list` and `set`. A parsed payload almost always is;
+  a model that is built up step by step is not, and drops `frozen` instead of pretending. `frozen`
+  stops reassigning a field, not appending to the list inside it.
+
+```python
+# WRONG — frozen, and still line.tags.append("gift") changes it
+@final
+class OrderLine(BoundaryModel):
+    sku: Sku
+    tags: list[str] = []
+
+# CORRECT — nothing reachable from the model can change
+@final
+class OrderLine(BoundaryModel):
+    sku: Sku
+    tags: tuple[str, ...] = ()
+```
+
+- **`default_factory` is for a computed default** — a timestamp, a generated id. A mutable default
+  needs none: pydantic copies it for every instance, unlike a dataclass.
 - **`SecretStr` / `SecretBytes` for credentials**, so a stray repr or log line cannot leak them.
 
 ```python
@@ -106,23 +126,28 @@ class Settings(BaseSettings):
   model validator to check a single field puts the rule where nobody looks for it.
 - **`mode="before"` transforms raw input; `mode="after"` checks an already-typed value.** Prefer
   `after` — it runs on the parsed type, so the body does not re-implement coercion.
-- **A validator raises `ValueError`**, and pydantic turns it into a validation error with the
-  field's location attached. Raising your own domain exception inside a validator loses that
-  location.
+- **A validator raises `ValueError`, or a domain error that inherits it** — the closest stdlib
+  type, as `errors.md` asks — and pydantic turns it into a validation error with the field's
+  location attached. An exception that is no `ValueError` escapes past `except ValidationError`
+  and loses that location.
 
 ```python
 # WRONG — InvalidSkuError is no ValueError: it escapes past except ValidationError, location lost
+class InvalidSkuError(ShopError):
+    def __init__(self, sku: str) -> None:
+        super().__init__(f"SKU {sku!r} does not match {_SKU_PATTERN.pattern}")
+        self.sku = sku
+
+# CORRECT — a ValueError too, so pydantic reports it as a validation error at the field
+class InvalidSkuError(ShopError, ValueError):
+    def __init__(self, sku: str) -> None:
+        super().__init__(f"SKU {sku!r} does not match {_SKU_PATTERN.pattern}")
+        self.sku = sku
+
+
 def _check_sku_format(sku: str) -> str:
     if not _SKU_PATTERN.fullmatch(sku):
         raise InvalidSkuError(sku)
-    return sku
-
-type Sku = Annotated[str, AfterValidator(_check_sku_format)]
-
-# CORRECT — pydantic turns the ValueError into a validation error located at the field
-def _check_sku_format(sku: str) -> str:
-    if not _SKU_PATTERN.fullmatch(sku):
-        raise ValueError(f"SKU {sku!r} does not match {_SKU_PATTERN.pattern}")
     return sku
 
 type Sku = Annotated[str, AfterValidator(_check_sku_format)]

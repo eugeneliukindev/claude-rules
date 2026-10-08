@@ -175,8 +175,9 @@ err := pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, f
 - **A serialization failure or deadlock** — `pgerrcode.SerializationFailure`,
   `pgerrcode.DeadlockDetected` — **retries the whole `BeginTxFunc`**, with a small budget; nothing
   inside the function retries.
-- **A hand-written `Begin` is followed by `defer tx.Rollback(ctx)`**, which is a no-op returning
-  `pgx.ErrTxClosed` after a successful `Commit`.
+- **A hand-written `Begin` is followed by a deferred rollback whose error is discarded on purpose** —
+  `defer func() { _ = tx.Rollback(ctx) }()`, since errcheck rejects a bare `defer tx.Rollback(ctx)`.
+  After a successful `Commit` it is a no-op returning `pgx.ErrTxClosed`.
 
 ```go
 // WRONG — an early return leaves the transaction open, holding its locks and its connection

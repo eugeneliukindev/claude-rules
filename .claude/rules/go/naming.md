@@ -34,8 +34,8 @@ must match it, and any outlier gets renamed. The standard library's shapes are t
 - **Must form** — `regexp.MustCompile`, `uuid.MustParse`: panics instead of returning an error.
 - **Derive a copy** — `context.WithTimeout`, `Logger.With`: a new value that also carries X.
 - **Iterator methods** — `All`, `Keys`, `Values`, `Backward`, each returning an `iter.Seq`.
-- **Parse and format** — `ParseInt`/`FormatInt`, `time.Parse`/`Time.Format`: text in is `Parse`,
-  text out is `Format`, `String` or `Append`. **From form** — `netip.AddrFrom4`, `time.UnixMilli`.
+- **Parse and format** — `time.Parse`/`Time.Format` decode and encode a format; a constructor that
+  validates is `New` even from a string, `NewEmail(raw)`. **From form** — `netip.AddrFrom4`.
 - **Opposites are symmetrical** — `Lock`/`Unlock`, `Open`/`Close`, `Marshal`/`Unmarshal`,
   `Encode`/`Decode`, `Commit`/`Rollback`.
 

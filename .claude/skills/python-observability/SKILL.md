@@ -142,7 +142,8 @@ class RequestIdFilter(logging.Filter):
 ```
 
 The entry point sets it around each request — `token = request_id.set(incoming_id)`, then
-`request_id.reset(token)` in `finally` — and puts `%(request_id)s` in the formatter.
+`request_id.reset(token)` in `finally` — and the JSON formatter below writes it as a field of
+every line, like any other attribute on the record.
 
 ```python
 # WRONG — the id threaded by hand through every signature, until one call site forgets it

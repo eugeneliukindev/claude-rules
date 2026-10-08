@@ -43,7 +43,11 @@ func serve(ctx context.Context, settings serverSettings) (err error) {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer func() { err = errors.Join(err, db.Close()) }()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close database: %w", closeErr))
+		}
+	}()
 
 	orders := NewOrderService(postgres.NewOrderRepository(db), time.Now)
 	return listenAndServe(ctx, settings.listenAddress, NewOrderHandler(orders))
@@ -80,13 +84,21 @@ The root acquires, so the root releases; everything below borrows.
   	if err != nil {
   		return fmt.Errorf("open database: %w", err)
   	}
-  	defer func() { err = errors.Join(err, db.Close()) }()
+  	defer func() {
+  		if closeErr := db.Close(); closeErr != nil {
+  			err = errors.Join(err, fmt.Errorf("close database: %w", closeErr))
+  		}
+  	}()
 
   	queue, err := dialQueue(ctx, settings.queueAddress)
   	if err != nil {
   		return fmt.Errorf("dial queue: %w", err)
   	}
-  	defer func() { err = errors.Join(err, queue.Close()) }()
+  	defer func() {
+  		if closeErr := queue.Close(); closeErr != nil {
+  			err = errors.Join(err, fmt.Errorf("close queue: %w", closeErr))
+  		}
+  	}()
 
   	return consumeOrders(ctx, queue, db)
   }
@@ -109,10 +121,14 @@ The root acquires, so the root releases; everything below borrows.
   	return nil
   }
 
-  // CORRECT — the named result collects the error from Close
+  // CORRECT — the named result collects the error from Close, wrapped with what was closing
   func compressReport(w io.Writer, report []byte) (err error) {
   	zw := gzip.NewWriter(w)
-  	defer func() { err = errors.Join(err, zw.Close()) }()
+  	defer func() {
+  		if closeErr := zw.Close(); closeErr != nil {
+  			err = errors.Join(err, fmt.Errorf("close gzip writer: %w", closeErr))
+  		}
+  	}()
 
   	if _, err := zw.Write(report); err != nil {
   		return fmt.Errorf("compress report: %w", err)

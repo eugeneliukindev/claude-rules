@@ -4,13 +4,13 @@ description: >-
   tenacity retry policies: keying retry= on a translated exception type rather than a status code,
   always setting stop= with a total time budget and reraise=True, choosing jitter in proportion to
   the backoff instead of the one-second default, before_sleep_log for visibility, and testing a
-  policy through copy(wait=wait_none()). Use when Python code imports tenacity or applies the
+  policy through retry_with(wait=wait_none()). Use when Python code imports tenacity or applies the
   @retry decorator.
 ---
 
 # tenacity
 
-Checked against tenacity 9.1. Where retries belong, what may be retried and how budgets nest is
+Checked against tenacity 9.2. Where retries belong, what may be retried and how budgets nest is
 in `python-boundaries`; this skill is how to write the policy once that is decided.
 
 ## The Shape of a Retry Policy
@@ -26,7 +26,7 @@ async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
 # CORRECT
 @retry(
     retry=retry_if_exception_type(TransientUpstreamError),
-    wait=wait_exponential_jitter(initial=0.2, max=5.0, jitter=0.2),
+    wait=wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2),
     stop=stop_after_attempt(3) | stop_after_delay(_FETCH_BUDGET_SECONDS),
     reraise=True,
 )
@@ -45,20 +45,22 @@ async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
 
 ## Set the Jitter Explicitly
 
-`wait_exponential_jitter` defaults to `jitter=1`, measured in seconds. With `initial=0.2` that
+`wait_exponential_jitter` defaults to `jitter=1`, measured in seconds. With `multiplier=0.2` that
 random second is five times the backoff it is supposed to perturb: the exponential curve stops
 mattering and every wait is dominated by noise. State the jitter in proportion to the backoff.
 
 ```python
 # WRONG — jitter left at its default of 1 second, five times the 0.2-second first wait
-_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0)
+_FETCH_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0)
 
 # CORRECT — the jitter stated in proportion to the backoff it perturbs
-_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0, jitter=0.2)
+_FETCH_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2)
 ```
 
-The same care applies to `wait_exponential`'s `multiplier` and `max` — a policy whose numbers were
-never chosen is a policy nobody can reason about during an incident.
+The first wait is `multiplier=`; `initial=` is its deprecated name since 9.2 and warns when the
+policy is built — at import, for a module-level one — which a suite running with warnings as errors
+turns into a failure. The same care applies to `max` — a policy whose numbers were never chosen is a
+policy nobody can reason about during an incident.
 
 ## What Not to Retry
 
@@ -75,8 +77,26 @@ and their carve-out are in `python-boundaries`.
 
 - **Test a copy of the policy with `wait=wait_none()`** — the attempt count and the exception
   classification stay under test, which is what matters, and the suite does not sleep through the
-  backoff. `fn.retry_with(wait=wait_none())` does this at runtime, but the decorator is typed as
-  returning the original callable, so `mypy --strict` reports `attr-defined`. The typed route is a
-  policy object: `_RETRY_POLICY = Retrying(...)` in the adapter,
-  `_RETRY_POLICY.copy(wait=wait_none())` in the test, called as `policy(fetch_rates)`.
+  backoff. `fetch_rates.retry_with(wait=wait_none())` is that copy, and since 9.2 the decorator is
+  typed so that `mypy --strict` accepts it; the test calls the public function it already tests,
+  and reaches into nothing private.
+
+```python
+# WRONG — the test sleeps through the real backoff on every run
+def test_fetch_rates_retries_transient_failures() -> None:
+    upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
+
+    fetch_rates(upstream)
+
+    assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
+
+# CORRECT — the same policy without the waits; attempts and classification stay under test
+def test_fetch_rates_retries_transient_failures() -> None:
+    upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
+
+    fetch_rates.retry_with(wait=wait_none())(upstream)
+
+    assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
+```
+
 - Assert the number of attempts against a fake that counts calls, not against timing.

@@ -29,7 +29,7 @@ func (s *Store) WithinTx(ctx context.Context, fn func(tx *sql.Tx) error) (err er
 	}
 	defer func() {
 		if rollbackErr := tx.Rollback(); !errors.Is(rollbackErr, sql.ErrTxDone) {
-			err = errors.Join(err, rollbackErr)
+			err = errors.Join(err, fmt.Errorf("roll back transaction: %w", rollbackErr))
 		}
 	}()
 

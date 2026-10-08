@@ -166,8 +166,9 @@ type subscriptionPayload struct {
 - **An `UnmarshalText` validates**: an enum rejects unknown names, an ID rejects malformed input.
   Unmarshalling is the boundary, and this method is the only code that sees the raw value.
 - **A method on a value receiver for marshalling, a pointer receiver for unmarshalling** — the
-  standard library's own shape; a pointer-receiver `MarshalJSON` is silently skipped for map values
-  and for anything passed by value.
+  standard library's own shape. v1 silently skips a pointer-receiver `MarshalJSON` for map values
+  and for anything passed by value; v2 makes the value addressable and calls it. The value receiver
+  is the one that works under both.
 
   ```go
   // WRONG — a pointer receiver: encoding/json (v1) skips it for a status held by value, and
