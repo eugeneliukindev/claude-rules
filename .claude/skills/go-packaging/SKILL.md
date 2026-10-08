@@ -34,7 +34,7 @@ a breaking change.
 that no file in another package of the module references. Run it from anywhere:
 
 ```
-go run ~/.claude/skills/go-packaging/scripts/find_overexported.go ROOT
+go run <this skill's directory>/scripts/find_overexported.go ROOT
 ```
 
 It reads `go.mod` under `ROOT` for the module path, parses every package with the standard
@@ -56,10 +56,35 @@ public packages by the API review below.
 - **A breaking change is a new major version with a new import path**: `module
   example.com/billing/v2` in `go.mod`, and every importer changes its import. Two majors can be
   imported side by side, which is the point.
+
+  ```
+  // WRONG — v2.0.0 tagged with the v1 path in go.mod: the go command rejects it as invalid
+  module example.com/billing
+
+  // CORRECT — the major version is part of the module path, and of every import of it
+  module example.com/billing/v2
+  ```
 - **What breaks a caller is more than removal**: a changed signature, a new method on an exported
   interface (every implementation outside breaks), a new field in a struct callers construct
   positionally, a changed constant value, a narrowed accepted input, a type that stops being
   comparable. Adding a function, a type, a method to a struct or an optional field is safe.
+
+  ```go
+  // WRONG — v1.4.0 adds a method: every Store implemented outside the module stops compiling
+  type Store interface {
+  	Find(ctx context.Context, id OrderID) (Order, error)
+  	Archive(ctx context.Context, id OrderID) error
+  }
+
+  // CORRECT — the new method is a new interface, discovered by assertion (go-interfaces)
+  type Store interface {
+  	Find(ctx context.Context, id OrderID) (Order, error)
+  }
+
+  type Archiver interface {
+  	Archive(ctx context.Context, id OrderID) error
+  }
+  ```
 - **`apidiff` or `gorelease` runs before every tag**, comparing against the last release, and
   reports exactly these. A human reviewing a diff does not.
 - **A retracted version is declared in `go.mod`** — `retract v1.4.2 // publishes a broken
@@ -69,6 +94,18 @@ public packages by the API review below.
 ## Deprecation
 
 ```go
+// WRONG — no paragraph starts "Deprecated:", so no tool sees it, and callers migrate by hand
+
+// Charge charges amount with a fresh idempotency key. It is deprecated: use
+// [ChargeWithKey], which makes retries idempotent.
+func Charge(ctx context.Context, amount Cents) error {
+	return ChargeWithKey(ctx, amount, NewIdempotencyKey())
+}
+
+// CORRECT — staticcheck reports every caller, and go fix rewrites each call to the body
+
+// Charge charges amount with a fresh idempotency key.
+//
 // Deprecated: Use [ChargeWithKey], which makes retries idempotent.
 //
 //go:fix inline

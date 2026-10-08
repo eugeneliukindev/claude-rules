@@ -60,6 +60,23 @@ return group.Wait()
 - **A queue has a capacity and a policy when full** — block the producer (backpressure), drop with
   a counter, or reject with an error. An unbuffered or small buffered channel is the policy
   "block"; a huge buffer is the same policy with the failure postponed and hidden.
+
+```go
+// WRONG — p.events has a buffer of 100 000: "block", postponed until that many sit in memory
+func (p *Publisher) Enqueue(event Event) {
+	p.events <- event
+}
+
+// CORRECT — a buffer of 1 and a stated policy: when the consumer is behind, drop and count
+func (p *Publisher) Enqueue(event Event) {
+	select {
+	case p.events <- event:
+	default:
+		p.dropped.Add(1)
+	}
+}
+```
+
 - **Buffer sizes are 0 or 1 unless a number is justified** — by a measured burst, or by the count
   of senders that must never block. A buffer that "makes it faster" usually hides a race.
 
@@ -71,15 +88,118 @@ return group.Wait()
 - **The sender closes, never the receiver**, and exactly one sender closes. Several senders close
   through their owner after `wg.Wait()`. Closing is a broadcast — "no more values" — not a resource
   release; an unclosed channel nobody references is collected.
+
+```go
+// WRONG — every worker closes results when it finishes: the second close panics
+for range workers {
+	wg.Go(func() {
+		r.work(ctx, requests, results)
+		close(results)
+	})
+}
+
+// CORRECT — the owner closes once, after the last sender has returned
+for range workers {
+	wg.Go(func() {
+		r.work(ctx, requests, results)
+	})
+}
+go func() {
+	wg.Wait()
+	close(results)
+}()
+```
+
 - **A function's channel parameters state their direction**: `requests <-chan ResizeRequest`,
   `thumbnails chan<- Thumbnail`. The compiler then enforces who may send and who may close.
 - **`sync.Mutex` is a named field above the fields it guards** (`types.md`). Hold it for the shortest region, never across I/O or a call into unknown code, and never
   copy a struct containing one (`go vet` `copylocks`).
+
+```go
+// WRONG — the lock is held across the network call: every reader waits for the slowest fetch
+c.mu.Lock()
+defer c.mu.Unlock()
+if price, ok := c.priceBySKU[sku]; ok {
+	return price, nil
+}
+price, err := c.supplier.FetchPrice(ctx, sku)
+if err != nil {
+	return 0, fmt.Errorf("price %s: %w", sku, err)
+}
+c.priceBySKU[sku] = price
+return price, nil
+
+// CORRECT — locked to read and to store, never while the fetch is in flight
+c.mu.Lock()
+price, ok := c.priceBySKU[sku]
+c.mu.Unlock()
+if ok {
+	return price, nil
+}
+price, err := c.supplier.FetchPrice(ctx, sku)
+if err != nil {
+	return 0, fmt.Errorf("price %s: %w", sku, err)
+}
+c.mu.Lock()
+c.priceBySKU[sku] = price
+c.mu.Unlock()
+return price, nil
+```
+
+Two callers may both miss and both fetch; where that matters, `golang.org/x/sync/singleflight`
+merges them — still without holding the lock.
+
 - **`sync/atomic` types for a single word** — `atomic.Int64`, `atomic.Bool`, `atomic.Pointer[T]` —
   never the function forms on a bare `int64`. Two related atomics are a race between them; that is
   a mutex.
+
+```go
+// WRONG — the function form on a bare int64: one plain read of processed elsewhere is a race
+type Stats struct {
+	processed int64
+}
+
+func (s *Stats) RecordProcessed() {
+	atomic.AddInt64(&s.processed, 1)
+}
+
+// CORRECT — atomic.Int64 offers no way to read or write it non-atomically
+type Stats struct {
+	processed atomic.Int64
+}
+
+func (s *Stats) RecordProcessed() {
+	s.processed.Add(1)
+}
+```
+
 - **`sync.OnceValue` and `sync.OnceValues` for lazy, once-only initialisation** that returns a
   value and an error; a hand-rolled check-then-set is a race.
+
+```go
+// WRONG — two requests both see nil and both parse; the race detector reports the write
+func (r *Renderer) templates() (*template.Template, error) {
+	if r.parsed == nil {
+		parsed, err := template.ParseFS(r.files, "*.html")
+		if err != nil {
+			return nil, fmt.Errorf("parse templates: %w", err)
+		}
+		r.parsed = parsed
+	}
+	return r.parsed, nil
+}
+
+// CORRECT — parsed once, by whichever call comes first; every other call waits for its result
+func NewRenderer(files fs.FS) *Renderer {
+	return &Renderer{templates: sync.OnceValues(func() (*template.Template, error) {
+		parsed, err := template.ParseFS(files, "*.html")
+		if err != nil {
+			return nil, fmt.Errorf("parse templates: %w", err)
+		}
+		return parsed, nil
+	})}
+}
+```
 
 ## Context, Cancellation, Deadlines
 
@@ -92,6 +212,14 @@ return group.Wait()
 - **Work that must outlive the request** — an audit write after the response — runs on
   `context.WithoutCancel(ctx)`, which keeps the values and drops the cancellation, with its own
   timeout. Never `context.Background()`, which also drops the trace.
+
+```go
+// WRONG — Background drops the trace and the request ID along with the cancellation
+auditCtx, cancel := context.WithTimeout(context.Background(), auditTimeout)
+
+// CORRECT — the request's values stay; only its cancellation is dropped
+auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditTimeout)
+```
 
 ```go
 func (r *Resizer) run(ctx context.Context, requests <-chan ResizeRequest, thumbnails chan<- Thumbnail) error {
@@ -150,12 +278,15 @@ Stop accepting, drain with a deadline shorter than the orchestrator's kill timeo
 what the drained work was using. Calling `stop` as soon as the signal arrives restores the default
 handling, so a second Ctrl-C kills a shutdown that hangs.
 
-## Races and Leaks
+## Races
 
 - **`go test -race` runs in CI on every package**, and a race report is a bug, never a flake. The
   detector finds only races that execute, so tests exercise the concurrent paths.
 - **A loop variable is per-iteration since Go 1.22**: the `id := id` copy before a closure is dead
   code, and `go fix` removes it.
+
+## Leaks
+
 - **Leaks are found by the `goroutineleak` profile** (Go 1.27, `/debug/pprof/goroutineleak`) in a
   running service, and by asserting in tests that the goroutine count returns to its baseline —
   or with `testing/synctest`, which waits for every goroutine in the bubble to exit and fails the
@@ -168,3 +299,31 @@ advances only when every goroutine in it is blocked. `time.Sleep(time.Hour)` ret
 deterministically, `synctest.Wait()` waits until everything else is blocked, and on Go 1.27
 `httptest.NewTestServer` gives the bubble an in-memory network. Prefer it to real sleeps and
 polling: a test that sleeps is slow when it passes and flaky when the machine is busy.
+
+```go
+// WRONG — every run waits two real seconds, and a one-minute timeout would make it a minute
+func TestQuoteGivesUpAfterTimeout(t *testing.T) {
+	quoter := NewQuoter(blockingSupplier{}, 2*time.Second)
+
+	_, err := quoter.Quote(t.Context(), "sku-1")
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Quote() error = %v, want %v", err, context.DeadlineExceeded)
+	}
+}
+
+// CORRECT — the bubble's clock jumps to the deadline as soon as every goroutine is blocked
+func TestQuoteGivesUpAfterTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		quoter := NewQuoter(blockingSupplier{}, 2*time.Second)
+
+		_, err := quoter.Quote(t.Context(), "sku-1")
+
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Quote() error = %v, want %v", err, context.DeadlineExceeded)
+		}
+	})
+}
+```
+
+`blockingSupplier` is a fake whose `FetchPrice` waits for `<-ctx.Done()` and returns `ctx.Err()`.

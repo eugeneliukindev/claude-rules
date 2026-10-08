@@ -11,8 +11,8 @@ description: >-
 
 # pgx
 
-Checked against pgx v5.11.0. Transaction boundaries, repositories, N+1 and migrations are designed
-in `go-persistence`; this is how pgx carries them out.
+Checked against pgx v5.11.0. Transaction boundaries, repositories and N+1 are designed in
+`go-persistence`, schema changes in `go-migrations`; this is how pgx carries them out.
 
 ## Native Interface or `database/sql`
 
@@ -103,19 +103,54 @@ func (r *Repository) Recent(ctx context.Context, limit int) ([]Order, error) {
 - **`Exec` returns a `pgconn.CommandTag`**: an `UPDATE` or `DELETE` that matched nothing is
   `tag.RowsAffected() == 0`, and the repository turns that into `ErrNotFound` — PostgreSQL does not
   report it as an error.
-- **Constraint violations are recognised by code, not by message**:
 
-  ```go
-  if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
-  	return fmt.Errorf("create user %s: %w", email, ErrEmailTaken)
-  }
-  ```
+```go
+// WRONG — an UPDATE that matched nothing is no error to PostgreSQL: a missing order "succeeds"
+_, err := r.db.Exec(ctx, updateOrderStatus, id, status)
+if err != nil {
+	return fmt.Errorf("set status of order %s: %w", id, err)
+}
+return nil
 
-  `pgErr.ConstraintName` says which constraint, when a table has more than one.
-  `github.com/jackc/pgerrcode` names every code; a literal `"23505"` is a magic string.
+// CORRECT — zero rows affected is this package's ErrNotFound
+tag, err := r.db.Exec(ctx, updateOrderStatus, id, status)
+if err != nil {
+	return fmt.Errorf("set status of order %s: %w", id, err)
+}
+if tag.RowsAffected() == 0 {
+	return fmt.Errorf("set status of order %s: %w", id, ErrNotFound)
+}
+return nil
+```
+
+- **Constraint violations are recognised by code, not by message.** `pgErr.ConstraintName` says
+  which constraint, when a table has more than one. `github.com/jackc/pgerrcode` names every code;
+  a literal `"23505"` is a magic string.
+
+```go
+// WRONG — the message is for people: lc_messages translates it, and new versions reword it
+if err != nil && strings.Contains(err.Error(), "duplicate key") {
+	return fmt.Errorf("create user %s: %w", email, ErrEmailTaken)
+}
+
+// CORRECT — the SQLSTATE code is the contract
+if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
+	return fmt.Errorf("create user %s: %w", email, ErrEmailTaken)
+}
+```
+
 - **Arguments are always `$n` parameters** — values never formatted into the SQL (`go-security`).
   A list is one parameter: `WHERE id = ANY($1)` with a Go slice, which is also the fix for N+1.
   `pgx.NamedArgs{"status": s}` with `@status` in the SQL when a statement has many parameters.
+
+```go
+// WRONG — the IDs are formatted into the SQL: an injection, and a new statement per list length
+query := "SELECT id, status FROM orders WHERE id IN ('" + strings.Join(ids, "', '") + "')"
+rows, err := r.db.Query(ctx, query)
+
+// CORRECT — the whole slice is one parameter
+rows, err := r.db.Query(ctx, "SELECT id, status FROM orders WHERE id = ANY($1)", ids)
+```
 
 ## Transactions
 
@@ -143,19 +178,75 @@ err := pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, f
 - **A hand-written `Begin` is followed by `defer tx.Rollback(ctx)`**, which is a no-op returning
   `pgx.ErrTxClosed` after a successful `Commit`.
 
+```go
+// WRONG — an early return leaves the transaction open, holding its locks and its connection
+tx, err := s.pool.Begin(ctx)
+if err != nil {
+	return fmt.Errorf("begin transaction: %w", err)
+}
+if err := s.orders.Save(ctx, tx, order); err != nil {
+	return fmt.Errorf("place order %s: %w", order.ID, err)
+}
+
+// CORRECT — rolled back on every path that does not reach Commit
+tx, err := s.pool.Begin(ctx)
+if err != nil {
+	return fmt.Errorf("begin transaction: %w", err)
+}
+defer func() {
+	_ = tx.Rollback(ctx) // a no-op after Commit; a failed rollback closes the connection
+}()
+if err := s.orders.Save(ctx, tx, order); err != nil {
+	return fmt.Errorf("place order %s: %w", order.ID, err)
+}
+```
+
 ## Bulk Work
 
-- **`CopyFrom` for thousands of rows** — `pool.CopyFrom(ctx, pgx.Identifier{"order_lines"},
-  columns, pgx.CopyFromSlice(len(lines), …))` — an order of magnitude faster than inserts, inside a
+- **`CopyFrom` for thousands of rows** — an order of magnitude faster than inserts, inside a
   transaction when it must be all or nothing.
+
+```go
+// WRONG — one round trip per line: 10 000 lines are 10 000 INSERTs
+for _, line := range lines {
+	if _, err := tx.Exec(ctx, insertOrderLine, line.OrderID, line.SKU, line.Quantity); err != nil {
+		return fmt.Errorf("insert order line %s: %w", line.SKU, err)
+	}
+}
+
+// CORRECT — one COPY streams every row
+columns := []string{"order_id", "sku", "quantity"}
+_, err := tx.CopyFrom(ctx, pgx.Identifier{"order_lines"}, columns,
+	pgx.CopyFromSlice(len(lines), func(i int) ([]any, error) {
+		return []any{lines[i].OrderID, lines[i].SKU, lines[i].Quantity}, nil
+	}))
+if err != nil {
+	return fmt.Errorf("copy %d order lines: %w", len(lines), err)
+}
+```
+
 - **A `pgx.Batch` for many small independent statements in one round trip**: queue them,
   `SendBatch`, read every result in order, and `Close` the results, whose error is the first
   failure.
 
-## Observability and Tests
+```go
+// WRONG — nothing reads the results: every failure is lost, and the connection never returns to
+// the pool
+s.pool.SendBatch(ctx, batch)
+
+// CORRECT — Close reads every result still unread and returns the first failure
+if err := s.pool.SendBatch(ctx, batch).Close(); err != nil {
+	return fmt.Errorf("set order statuses: %w", err)
+}
+```
+
+## Tracing
 
 - **Query tracing is `config.ConnConfig.Tracer`** — `tracelog.TraceLog` with a logger adapter, or an
   OpenTelemetry tracer — configured in the root, never by wrapping the pool.
+
+## Tests
+
 - **Repositories are tested against a real PostgreSQL** — a container started by the test suite or
   the project's compose file — with each test in its own transaction or schema. A mocked pool
   proves only that the mock was called (`testing.md`).

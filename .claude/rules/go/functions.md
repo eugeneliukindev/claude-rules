@@ -3,31 +3,7 @@ paths:
   - "**/*.go"
 ---
 
-# Go — Functions and Control Flow
-
-## Control Flow
-
-- **The happy path runs down the left margin.** Handle the error or the edge case first and
-  return; the normal flow continues unindented — never nested inside `if err == nil`.
-- **Extract any condition with more than two operands into a named predicate.** The linter counts
-  the branches but cannot name the concept: `if isEligibleForRefund(order) {` says what the three
-  clauses meant.
-- **A `switch` replaces an `if`–`else if` chain**; never `fallthrough` to share code — list the
-  cases together: `case StatusPaid, StatusShipped:`.
-- **Every `switch` over an enum or a closed set of types ends with a `default` that fails**:
-  `return fmt.Errorf("unknown status %v", s)`, or a `panic` where reaching it is a bug in this
-  package. A silent fall-through is forbidden; the `exhaustive` linter checks the cases, the
-  `default` catches the value nobody declared.
-- **A factory over an open set dispatches through a map**: `build, ok :=
-  buildersByKind[source.Kind]` — adding a kind is one entry. A closed enum stays a `switch`, which
-  `exhaustive` can check.
-- **A loop that filters or maps into a new slice stays a loop** — a chain of generic helpers
-  standing in for a comprehension Go does not have is harder to read than the loop.
-- **Write an iterator (`iter.Seq`) for any sequence a caller may stop early** or that reads from a
-  stream, a file, a cursor or a paginated API — the caller's `break` then stops the reading. The
-  details are in `go-types`.
-
-## Functions
+# Go — Functions
 
 - **Does one thing** — "and" in its description means split it. SRP is a different rule.
 - **`ctx context.Context` is the first parameter of anything that blocks, does I/O or calls
@@ -90,7 +66,7 @@ the result computed into a well-named variable and returned last.
 - **Errors are the last result, and the other results are zero when it is non-nil** — a caller
   never reads a value beside a non-nil error.
 - **Parameters are ordered `ctx`, dependencies, subject, inputs, options.** Once several functions
-  share the same dependencies, they become a struct's fields (trigger 4 in `interfaces.md`).
+  share the same dependencies, they become a struct's fields (trigger 4 in `methods.md`).
 - **Do not reach outside.** A function uses only its parameters, its receiver and package-level
   constants: no package-level mutable variable, no `os.Getenv`. Where the result depends on the
   date or on chance, the clock is an injected `now func() time.Time` — a timestamp only logged is

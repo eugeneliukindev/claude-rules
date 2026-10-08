@@ -24,7 +24,7 @@ only what is different for Go.
 
 | file | loads |
 |---|---|
-| `rules/go/core.md`, `naming.md`, `functions.md`, `types.md`, `interfaces.md`, `packages.md`, `errors.md`, `comments.md` | together, on the first read of any `**/*.go` |
+| `rules/go/core.md`, `naming.md`, `functions.md`, `control-flow.md`, `types.md`, `methods.md`, `interfaces.md`, `packages.md`, `errors.md`, `logging.md`, `comments.md` | together, on the first read of any `**/*.go` |
 | `rules/go/testing.md` | on a read of `**/*_test.go`, `**/testdata/**` or `**/*test/*.go` |
 | `rules/go/new-files.md` | every session — six lines, for the module written into an empty directory |
 | `skills/go-*/SKILL.md` | when the description matches the work, or by `/name` |

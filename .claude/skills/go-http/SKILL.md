@@ -50,19 +50,110 @@ func (h *OrderHandler) getOrder(w http.ResponseWriter, r *http.Request) {
   client holds a connection open forever (`gosec` G112) — and `ReadTimeout`, `WriteTimeout`,
   `IdleTimeout` chosen for the slowest legitimate request. `http.ListenAndServe(addr, h)` sets
   none of them, so it is for examples only.
+
+```go
+// WRONG — no timeouts: a client that sends one header byte a minute holds a connection forever
+err := http.ListenAndServe(settings.listenAddress, handler)
+
+// CORRECT — every phase of a connection has a deadline
+server := &http.Server{
+	Addr:              settings.listenAddress,
+	Handler:           handler,
+	ReadHeaderTimeout: 5 * time.Second,
+	ReadTimeout:       30 * time.Second,
+	WriteTimeout:      30 * time.Second,
+	IdleTimeout:       2 * time.Minute,
+}
+err := server.ListenAndServe()
+```
+
 - **Bodies are bounded before decoding** (`go-boundaries`), in a handler with
   `r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)`.
+
+```go
+// WRONG — the decoder reads as much as the client cares to send
+var request createOrderRequest
+if err := json.UnmarshalRead(r.Body, &request); err != nil {
+	writeError(w, http.StatusBadRequest, "invalid order")
+	return
+}
+
+// CORRECT — past maxBodyBytes the read fails, and the server closes the connection
+r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+var request createOrderRequest
+if err := json.UnmarshalRead(r.Body, &request); err != nil {
+	writeError(w, http.StatusBadRequest, "invalid order")
+	return
+}
+```
+
 - **The internal error is logged; the client gets a stable message and a status.** Never
   `err.Error()` in a response — it leaks table names, file paths and the shape of the network.
+
+```go
+// WRONG — the client reads "find order 42: dial tcp 10.0.3.7:5432: connect: connection refused"
+if err != nil {
+	writeError(w, http.StatusInternalServerError, err.Error())
+	return
+}
+
+// CORRECT — the log gets the whole chain; the client gets a status and a stable message
+if err != nil {
+	h.logger.ErrorContext(r.Context(), "find order failed", "order_id", id, "error", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
+	return
+}
+```
+
 - **`r.Context()` is the request's lifetime**: it is cancelled when the client goes away, and every
   call the handler makes takes it.
 - **Write the status once, headers before it.** `w.WriteHeader` after a `Write` is ignored with a
   log line; set `Content-Type` before either.
+
+```go
+// WRONG — a header set after WriteHeader is never sent: the client sees text/plain
+w.WriteHeader(http.StatusCreated)
+w.Header().Set("Content-Type", "application/json")
+
+// CORRECT — headers, then the status, then the body
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(http.StatusCreated)
+```
+
 - **Middleware is `func(http.Handler) http.Handler`**, composed in one visible place in the root.
   A middleware that wraps `ResponseWriter` implements `Unwrap() http.ResponseWriter`, so
   `http.ResponseController` still reaches `Flush` and deadlines.
+
+```go
+// WRONG — Flush and SetWriteDeadline through http.ResponseController fail with "feature not
+// supported": the wrapper hides the writer that has them
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(status int) {
+	s.status = status
+	s.ResponseWriter.WriteHeader(status)
+}
+
+// CORRECT — the same wrapper, and Unwrap lets http.ResponseController reach the writer beneath
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+```
+
 - **Browser-facing endpoints that change state are wrapped in `http.CrossOriginProtection`**
   (Go 1.25), which rejects cross-site non-safe requests using `Sec-Fetch-Site` and `Origin`.
+
+```go
+// WRONG — a page on any other site can submit a form here, and the browser sends the session cookie
+handler := withRequestLog(logger, mux)
+
+// CORRECT — a cross-origin POST, PUT, PATCH or DELETE is answered 403 before the mux sees it
+handler := withRequestLog(logger, http.NewCrossOriginProtection().Handler(mux))
+```
+
 - **Shutdown is `server.Shutdown(ctx)` with a deadline**; `ListenAndServe` then returns
   `http.ErrServerClosed`, which is not an error. The pattern is in `go-concurrency`.
 

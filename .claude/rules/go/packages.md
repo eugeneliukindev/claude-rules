@@ -39,8 +39,8 @@ good. **Constants and struct fields are the ones that get missed**: a constant q
 a second package ends up with two homes and no owner.
 
 The test is mechanical: for each exported name, search the module outside the package that
-declares it, and unexport everything with no hits. A script does it:
-`go run ~/.claude/skills/go-packaging/scripts/find_overexported.go ROOT`. Run it **after** the move
+declares it, and unexport everything with no hits. A script does it: `find_overexported.go ROOT`,
+in the `go-packaging` skill's `scripts/`. Run it **after** the move
 that made a name internal — that is when an exported name quietly stops being one. A method that
 satisfies an interface, a field a marshaler reads by reflection and a symbol in a published module
 have callers the search cannot see; the script skips methods and fields, and a library's API is

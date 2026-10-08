@@ -28,7 +28,42 @@ code, and trusted completely. A wrong one is a bug in every program that copies 
 - **`// Unordered output:`** when the order is a map's — never sort in the example only to make it
   testable, which shows the caller a step they do not need.
 
+  ```go
+  // WRONG — the sort is there only for the test, and the caller copies a step they do not need
+  func ExampleSumByCurrency() {
+  	amounts := []money.Amount{money.MustParse("15.00 EUR"), money.MustParse("10.00 USD")}
+  	totals := money.SumByCurrency(amounts)
+  	for _, currency := range slices.Sorted(maps.Keys(totals)) {
+  		fmt.Println(currency, totals[currency])
+  	}
+  	// Output:
+  	// EUR 1500
+  	// USD 1000
+  }
+
+  // CORRECT — the map is ranged as a caller would, and the lines are compared as a set
+  func ExampleSumByCurrency() {
+  	amounts := []money.Amount{money.MustParse("15.00 EUR"), money.MustParse("10.00 USD")}
+  	for currency, total := range money.SumByCurrency(amounts) {
+  		fmt.Println(currency, total)
+  	}
+  	// Unordered output:
+  	// EUR 1500
+  	// USD 1000
+  }
+  ```
+
 ```go
+// WRONG — no Output comment: go test compiles it, never runs it, and it rots unnoticed
+func ExampleParse() {
+	amount, err := money.Parse("19.99 EUR")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(amount.Minor(), amount.Currency())
+}
+
+// CORRECT — go test runs it and fails when the printed line changes
 func ExampleParse() {
 	amount, err := money.Parse("19.99 EUR")
 	if err != nil {
@@ -53,8 +88,42 @@ should see that the error is handled without seeing a handling policy that is no
   person.
 - **Deterministic**: no clock, no randomness, no map iteration in the printed output; where the
   API takes a clock, the example passes a fixed one.
+
+  ```go
+  // WRONG — the date changes every day, so the example can have no Output and never runs
+  func ExampleDueDate() {
+  	fmt.Println(invoice.DueDate(time.Now(), invoice.Net30).Format(time.DateOnly))
+  }
+
+  // CORRECT — a fixed date, and go test checks the result
+  func ExampleDueDate() {
+  	issued := time.Date(2026, time.March, 2, 0, 0, 0, 0, time.UTC)
+  	fmt.Println(invoice.DueDate(issued, invoice.Net30).Format(time.DateOnly))
+  	// Output: 2026-04-01
+  }
+  ```
 - **One example per error a caller must handle**: `ExampleParse_invalidCurrency` shows the error
   and the `errors.Is` check, so the recovery is as copyable as the success.
+
+  ```go
+  // WRONG — err != nil cannot tell the caller which failure it is recovering from
+  func ExampleParse_invalidCurrency() {
+  	_, err := money.Parse("19.99 XYZ")
+  	if err != nil {
+  		fmt.Println("invalid amount")
+  	}
+  	// Output: invalid amount
+  }
+
+  // CORRECT — the sentinel a caller branches on, matched by identity
+  func ExampleParse_invalidCurrency() {
+  	_, err := money.Parse("19.99 XYZ")
+  	if errors.Is(err, money.ErrUnknownCurrency) {
+  		fmt.Println("unknown currency")
+  	}
+  	// Output: unknown currency
+  }
+  ```
 - **Follows every rule the rest of the code does** — wrapped errors, a `ctx`, keyed literals. An
   example that cuts a corner teaches the corner.
 

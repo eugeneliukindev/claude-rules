@@ -5,9 +5,8 @@ paths:
 
 # Naming
 
-Loads with the other Go rules, because no tool judges the meaning a name carries. `MixedCaps`,
-receiver names, `Err`/`Error` affixes, stutter and the `f` on printf-style functions are the
-linters' job — `revive`, `errname`, `goprintffuncname` — and are not repeated here.
+No tool judges what a name means. `MixedCaps`, receiver names, `Err`/`Error` affixes, stutter and
+printf `f` suffixes are the linters' job: `revive`, `errname`, `goprintffuncname`.
 
 ## General
 

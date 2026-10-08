@@ -47,7 +47,7 @@ server := &http.Server{
 ```
 
 - **`gin.New()` and the middleware you chose**, not `gin.Default()`, whose logger writes its own
-  text format to stdout beside the application's structured logs.
+  text format to stdout beside the application's JSON logs.
 - **Never `engine.Run`** — it is `http.ListenAndServe`: no timeouts and nothing to call `Shutdown`
   on. The engine is an `http.Handler`; the server around it is configured and shut down as
   `go-http` and `go-concurrency` describe.
@@ -76,6 +76,32 @@ order, err := h.orders.Find(c.Request.Context(), id)
 - **`*gin.Context` is pooled and reused after the handler returns.** Work that outlives the handler
   gets `c.Copy()` — or better, the values it needs and a context from `context.WithoutCancel`
   (`go-concurrency`), so no gin type crosses the goroutine.
+
+```go
+// WRONG — c goes back to gin's pool when the handler returns, and the goroutine reads whichever
+// request uses it next
+h.tasks.Go(func() {
+	ctx, cancel := context.WithTimeout(c, auditTimeout)
+	defer cancel()
+	if err := h.audit.Record(ctx, c.Param("id"), c.ClientIP()); err != nil {
+		h.logger.WarnContext(ctx, "audit record failed", "error", err)
+	}
+})
+
+// CORRECT — the values are read now; the context keeps the request's values, not its cancellation
+id, clientIP := c.Param("id"), c.ClientIP()
+detached := context.WithoutCancel(c.Request.Context())
+h.tasks.Go(func() {
+	ctx, cancel := context.WithTimeout(detached, auditTimeout)
+	defer cancel()
+	if err := h.audit.Record(ctx, id, clientIP); err != nil {
+		h.logger.WarnContext(ctx, "audit record failed", "error", err)
+	}
+})
+```
+
+`h.tasks` is a `*sync.WaitGroup` the root waits on after `Shutdown`, so the goroutine has an owner.
+
 - **Values a middleware attaches** — the authenticated user, the request ID — go into the request's
   context under an unexported key, read through a typed accessor, so the service layer can read
   them without gin. `c.Set` and `c.Get` hand back `any`.
@@ -85,27 +111,124 @@ order, err := h.orders.Find(c.Request.Context(), id)
 - **`ShouldBindJSON`, never `BindJSON`.** The `Bind` family aborts and writes 400 itself, so the
   status the handler then chooses is silently dropped — a 422 goes out as 400 with the handler's
   body. `Should` returns the error and the handler answers.
+
+```go
+// WRONG — BindJSON has already written 400 and aborted: this 422 goes out as a 400
+var request createOrderRequest
+if err := c.BindJSON(&request); err != nil {
+	c.JSON(http.StatusUnprocessableEntity, toBindingProblem(err))
+	return
+}
+
+// CORRECT — ShouldBindJSON only returns the error, and the handler answers
+var request createOrderRequest
+if err := c.ShouldBindJSON(&request); err != nil {
+	c.JSON(http.StatusUnprocessableEntity, toBindingProblem(err))
+	return
+}
+```
+
 - **Bind into a wire struct**, with `json` and `binding` tags — `binding:"required,min=1"` — never
   into a domain type; the handler converts afterwards (`go-boundaries`).
 - **`required` means "not the zero value"**: a `quantity` of `0` or a `bool` of `false` fails it
   before any other rule runs. A field where zero is a legitimate answer is a pointer, or is not
   `required`.
+
+```go
+// WRONG — required rejects the zero value, so "is_gift": false fails as if it were missing
+type giftRequest struct {
+	SKU    string `json:"sku" binding:"required"`
+	IsGift bool   `json:"is_gift" binding:"required"`
+}
+
+// CORRECT — a pointer: nil is missing, false is an answer
+type giftRequest struct {
+	SKU    string `json:"sku" binding:"required"`
+	IsGift *bool  `json:"is_gift" binding:"required"`
+}
+```
+
 - **Path and query parameters bind too**: `ShouldBindUri` with `uri:"id"` tags. A field whose type
   validates itself through `encoding.TextUnmarshaler` needs the option spelled out —
   `uri:"id,parser=encoding.TextUnmarshaler"` (gin 1.12). Without it gin assigns the raw string and
   `UnmarshalText` never runs.
+
+```go
+// WRONG — gin assigns the raw string: any ID binds, and OrderID.UnmarshalText never runs
+type orderURI struct {
+	ID OrderID `uri:"id" binding:"required"`
+}
+
+// CORRECT — the parser option makes gin call OrderID.UnmarshalText
+type orderURI struct {
+	ID OrderID `uri:"id,parser=encoding.TextUnmarshaler" binding:"required"`
+}
+```
+
 - **Unknown JSON fields are rejected by `binding.EnableDecoderDisallowUnknownFields = true`**, set in
   `main` — a process-wide choice, so the per-boundary decision in `go-json` becomes one decision
   for the whole server.
 - **The body is bounded by a middleware** that wraps `c.Request.Body` in `http.MaxBytesReader`, and
   the handler answers 413 when the error is an `*http.MaxBytesError`. Built with the `go_json` or
   `sonic` tags, gin's JSON decoder loses that error type, and an oversized body becomes a 400.
+
+```go
+// WRONG — an oversized body is answered as if it were malformed
+if err := c.ShouldBindJSON(&request); err != nil {
+	c.JSON(http.StatusBadRequest, toBindingProblem(err))
+	return
+}
+
+// CORRECT — the limit's own error is a 413
+if err := c.ShouldBindJSON(&request); err != nil {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		c.JSON(http.StatusRequestEntityTooLarge, errorBody{Message: "request body too large"})
+		return
+	}
+	c.JSON(http.StatusBadRequest, toBindingProblem(err))
+	return
+}
+```
+
 - **Validation errors are translated before they reach the client.** The raw message names Go
   struct fields — `Key: 'createOrderRequest.Quantity' Error:Field validation for 'Quantity' failed
   on the 'required' tag` — which is internal and useless to the caller. In `main`, take the engine
   — `validate, ok := binding.Validator.Engine().(*validator.Validate)` — register a tag-name
   function that returns the `json` name, and map each `validator.FieldError` to the field and the
-  rule.
+  rule. The validator caches each struct on first use, so the registration comes before any
+  request is bound.
+
+```go
+// WRONG — the client reads "Key: 'createOrderRequest.Quantity' Error:Field validation for…"
+if err := c.ShouldBindJSON(&request); err != nil {
+	c.JSON(http.StatusBadRequest, errorBody{Message: err.Error()})
+	return
+}
+
+// CORRECT — each failure is named by its JSON field and its rule
+if err := c.ShouldBindJSON(&request); err != nil {
+	c.JSON(http.StatusBadRequest, toBindingProblem(err))
+	return
+}
+
+validate.RegisterTagNameFunc(func(field reflect.StructField) string { // in main
+	name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	return name
+})
+
+func toBindingProblem(err error) errorBody {
+	fieldErrs, ok := errors.AsType[validator.ValidationErrors](err)
+	if !ok {
+		return errorBody{Message: "malformed request body"}
+	}
+	body := errorBody{Message: "invalid request"}
+	for _, fieldErr := range fieldErrs {
+		problem := fieldProblem{Field: fieldErr.Field(), Rule: fieldErr.Tag()}
+		body.Fields = append(body.Fields, problem)
+	}
+	return body
+}
+```
 
 ## Responses and Errors
 
@@ -115,6 +238,25 @@ order, err := h.orders.Find(c.Request.Context(), id)
   are written twice and some never.
 - **A middleware that rejects** — authentication, rate limiting — calls `c.AbortWithStatusJSON` and
   returns; plain `c.JSON` lets the rest of the chain run.
+
+```go
+// WRONG — the 401 is written, and the chain runs on: the handler serves an anonymous caller
+func requireUser(c *gin.Context) {
+	if _, ok := UserFrom(c.Request.Context()); !ok {
+		c.JSON(http.StatusUnauthorized, errorBody{Message: "sign in required"})
+		return
+	}
+}
+
+// CORRECT — Abort stops the handlers after this one from running
+func requireUser(c *gin.Context) {
+	if _, ok := UserFrom(c.Request.Context()); !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, errorBody{Message: "sign in required"})
+		return
+	}
+}
+```
+
 - **`gin.Recovery` writes a 500 for a panic**; the panic is a bug, logged with the stack, and the
   client gets a stable body — never the panic value.
 

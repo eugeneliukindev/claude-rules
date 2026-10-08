@@ -11,7 +11,7 @@ description: >-
 
 # Interfaces and Implementations
 
-When a type earns methods and the core interface rules are in `interfaces.md`; naming is in
+When a type earns methods is in `methods.md`, the core interface rules in `interfaces.md`, naming in
 `naming.md`. This is what comes after: where the pieces live and how they meet.
 
 ## Who Declares the Interface
@@ -20,6 +20,39 @@ When a type earns methods and the core interface rules are in `interfaces.md`; n
 `Notifier` beside the code that calls it, and every implementation satisfies it without importing
 that package. Go's structural typing exists for exactly this: the implementation does not need to
 know the consumer's name, so the consumer can be written — and tested — first.
+
+```go
+// WRONG — the producer exports an interface beside its only implementation, and signup imports
+// smtpnotify, SMTP client and all, only to name what it depends on
+package smtpnotify
+
+type Notifier interface {
+	Send(ctx context.Context, recipient, text string) error
+}
+
+type SMTPNotifier struct{ client *smtp.Client }
+
+package signup
+
+type Service struct {
+	notifier smtpnotify.Notifier
+}
+
+// CORRECT — signup declares the one method it calls; smtpnotify ships only its concrete type
+package smtpnotify
+
+type SMTPNotifier struct{ client *smtp.Client }
+
+package signup
+
+type Notifier interface {
+	Send(ctx context.Context, recipient, text string) error
+}
+
+type Service struct {
+	notifier Notifier
+}
+```
 
 **The producer declares it in two cases, and both are deliberate:**
 
@@ -77,6 +110,22 @@ checks it, and the assertion is noise.
 - **Embedding a struct promotes its whole method set into your API.** `type Store struct{
   *sql.DB }` hands every caller `Exec`, `Close` and `SetMaxOpenConns`. A named field and the
   methods you mean to expose say what the type is.
+
+  ```go
+  // WRONG — every caller of Store can now Exec any SQL, Close the shared pool or resize it
+  type Store struct {
+  	*sql.DB
+  }
+
+  func (s *Store) Find(ctx context.Context, id OrderID) (Order, error)
+
+  // CORRECT — a named field; Store's API is the methods written on purpose
+  type Store struct {
+  	db *sql.DB
+  }
+
+  func (s *Store) Find(ctx context.Context, id OrderID) (Order, error)
+  ```
 - **Embedding interfaces in an interface composes capabilities**: `io.ReadCloser` is `Reader` plus
   `Closer`. Compose only what one consumer genuinely needs together.
 
@@ -87,10 +136,64 @@ A consumer may check whether a value also implements something more — `io.Writ
 standard library grows behaviour without growing interfaces. **Wrapping a value hides its optional
 methods** — the `http.ResponseWriter` case is in `go-http`.
 
+```go
+// WRONG — Flush joins the interface: every Store must implement it, buffered or not
+type Store interface {
+	Save(ctx context.Context, order Order) error
+	Flush(ctx context.Context) error
+}
+
+if err := store.Flush(ctx); err != nil {
+	return fmt.Errorf("flush orders: %w", err)
+}
+
+// CORRECT — Store keeps one method; a Store that also buffers is discovered by assertion
+type Store interface {
+	Save(ctx context.Context, order Order) error
+}
+
+type flusher interface {
+	Flush(ctx context.Context) error
+}
+
+if f, ok := store.(flusher); ok {
+	if err := f.Flush(ctx); err != nil {
+		return fmt.Errorf("flush orders: %w", err)
+	}
+}
+```
+
 ## Fakes
 
 - **A fake satisfying a consumer's interface lives in the consumer's test file** — it is three
   lines, and it is private to the tests that use it.
+
+  ```go
+  // WRONG — a shared mocks package: exported, imported by tests it was not written for, and
+  // changed for all of them whenever one needs something new
+  package mocks
+
+  type Notifier struct {
+  	Sent []string
+  }
+
+  func (n *Notifier) Send(_ context.Context, recipient, _ string) error {
+  	n.Sent = append(n.Sent, recipient)
+  	return nil
+  }
+
+  // CORRECT — in signup's own test file, beside the tests that use it
+  package signup
+
+  type fakeNotifier struct {
+  	sent []string
+  }
+
+  func (n *fakeNotifier) Send(_ context.Context, recipient, _ string) error {
+  	n.sent = append(n.sent, recipient)
+  	return nil
+  }
+  ```
 - **A fake other packages' tests need is exported from an `xxxtest` package** beside the interface
   — `notifytest.Recorder` — as the standard library ships `httptest` and `fstest`. It is built
   from the same contract tests the real implementations run, so it cannot drift.

@@ -21,23 +21,94 @@ description: >-
   by guessing. `gosec` G404 reports every call, so legitimate uses carry `//nolint:gosec // jitter,
   not a secret` — or the project excludes G404 for the one package that computes backoff.
 
+```go
+// WRONG — math/rand/v2 promises nothing about guessing, and 64 bits is half a token
+token := strconv.FormatUint(rand.Uint64(), 36)
+
+// CORRECT — at least 128 bits from crypto/rand, base32-encoded
+token := rand.Text()
+```
+
 ## Secrets and Credentials
 
 - **Passwords are hashed with an adaptive function** — `golang.org/x/crypto/bcrypt` or `argon2id` —
   never a bare SHA-256, salted or not: a GPU tries billions of SHA-256 guesses a second.
+
+```go
+// WRONG — a GPU tries billions of SHA-256 guesses a second, salted or not
+sum := sha256.Sum256([]byte(salt + password))
+
+// CORRECT — slow by design, with the salt and the cost stored inside the hash
+hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+if err != nil {
+	return nil, fmt.Errorf("hash password: %w", err)
+}
+```
+
 - **A secret is compared with `subtle.ConstantTimeCompare`**, never `==` or `bytes.Equal`, which
   return as soon as one byte differs and leak the prefix through timing. Compare hashes of equal
   length.
+
+```go
+// WRONG — == returns at the first byte that differs, and the timing says how many matched
+func isValidAPIKey(presented, expected string) bool {
+	return presented == expected
+}
+
+// CORRECT — hashes of equal length, compared in constant time
+func isValidAPIKey(presented, expected string) bool {
+	presentedSum, expectedSum := sha256.Sum256([]byte(presented)), sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(presentedSum[:], expectedSum[:]) == 1
+}
+```
+
 - **Secrets come from the environment or a secret store at startup**, never from code, a default,
-  or a committed file; a type holding one redacts itself in logs (`errors.md`).
+  or a committed file; a type holding one redacts itself in logs (`logging.md`).
 - **TLS verification stays on.** `InsecureSkipVerify: true` is a finding in every context outside
   a test against a throwaway certificate; trust a private CA by adding it to `RootCAs`.
+
+```go
+// WRONG — any certificate is accepted: anyone on the path can read and change the traffic
+transport := &http.Transport{
+	TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12},
+}
+
+// CORRECT — the private CA is trusted beside the system roots, and verification stays on
+roots, err := x509.SystemCertPool()
+if err != nil {
+	return nil, fmt.Errorf("load system roots: %w", err)
+}
+if !roots.AppendCertsFromPEM(caPEM) {
+	return nil, errors.New("add private CA: no certificate in PEM")
+}
+transport := &http.Transport{
+	TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+}
+```
 
 ## Injection
 
 - **SQL takes parameters, always**: `db.QueryContext(ctx, "SELECT … WHERE email = $1", email)`.
   Identifiers cannot be parameters — an `ORDER BY` column or a table name is chosen from a fixed
   map of allowed values, never formatted in from input.
+
+```go
+// WRONG — the input is SQL, and whatever the client sent after the column name runs too
+query := "SELECT id, total_cents FROM orders ORDER BY " + sortBy + " LIMIT $1"
+
+// CORRECT — the input only chooses among columns this code wrote
+var orderColumnBySortKey = map[string]string{
+	"newest":  "created_at DESC",
+	"largest": "total_cents DESC",
+}
+
+column, ok := orderColumnBySortKey[sortBy]
+if !ok {
+	return nil, fmt.Errorf("list orders by %q: %w", sortBy, ErrUnknownSortKey)
+}
+query := "SELECT id, total_cents FROM orders ORDER BY " + column + " LIMIT $1"
+```
+
 - **A subprocess gets an argument list, never a shell string**, and `--` before anything a user
   controls:
 
@@ -51,8 +122,39 @@ cmd := exec.CommandContext(ctx, "git", "log", "--format=%H", "--", path)
 
 - **HTML is rendered with `html/template`**, which escapes by context — element, attribute, URL,
   script. `text/template` writing HTML is an XSS, and so is converting input to `template.HTML`.
+
+```go
+// WRONG — template.HTML tells html/template the text is already safe: a <script> in the bio runs
+type profilePage struct {
+	Bio template.HTML
+}
+
+page := profilePage{Bio: template.HTML(user.Bio)}
+
+// CORRECT — a plain string, escaped for wherever the template places it
+type profilePage struct {
+	Bio string
+}
+
+page := profilePage{Bio: user.Bio}
+```
+
 - **Untrusted archives, images and XML are parsed with limits**: decompressed size capped by an
   `io.LimitReader`, image dimensions checked with `image.DecodeConfig` before `Decode`.
+
+```go
+// WRONG — a megabyte of gzip can decompress into gigabytes, all of it in memory
+data, err := io.ReadAll(gz)
+
+// CORRECT — one byte past the cap is read, so an upload at the cap is told from one beyond it
+data, err := io.ReadAll(io.LimitReader(gz, maxDecompressedBytes+1))
+if err != nil {
+	return nil, fmt.Errorf("decompress upload: %w", err)
+}
+if len(data) > maxDecompressedBytes {
+	return nil, errors.New("decompress upload: larger than the limit")
+}
+```
 
 ## Paths
 
@@ -74,6 +176,19 @@ file, err := root.Open(name)
 ```
 
 - **`filepath.IsLocal(name)`** is the check when the name is only stored or forwarded, not opened.
+
+```go
+// WRONG — rejects "v1..2.txt", accepts "/etc/passwd"
+if strings.Contains(name, "..") {
+	return fmt.Errorf("store attachment %q: %w", name, ErrInvalidName)
+}
+
+// CORRECT — false for an escape upwards, an absolute path, an empty name, and NUL on Windows
+if !filepath.IsLocal(name) {
+	return fmt.Errorf("store attachment %q: %w", name, ErrInvalidName)
+}
+```
+
 - **An `embed.FS` or `fs.Sub` serves static files** — never `http.FileServer(http.Dir("."))` over a
   directory that also holds configuration.
 
@@ -91,6 +206,38 @@ connection time, and a redirect can go anywhere:
   short timeout, a response size limit and a redirect limit.
 - **Only `https`** — and `http` only where a test needs it — checked on the parsed `*url.URL`.
 
+```go
+// CORRECT — the dialer sees the resolved address, for the first request and every redirect
+dialer := &net.Dialer{
+	Timeout: 5 * time.Second,
+	Control: func(network, address string, _ syscall.RawConn) error {
+		addrPort, err := netip.ParseAddrPort(address)
+		if err != nil {
+			return fmt.Errorf("parse dial address %q: %w", address, err)
+		}
+		if isInternal(addrPort.Addr()) {
+			return fmt.Errorf("dial %s: %w", addrPort.Addr(), ErrInternalAddress)
+		}
+		return nil
+	},
+}
+client := &http.Client{
+	Timeout:   10 * time.Second,
+	Transport: &http.Transport{DialContext: dialer.DialContext},
+}
+
+func isInternal(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() ||
+		addr.IsUnspecified()
+}
+```
+
+`Unmap` is there for `IsUnspecified`, which does not see `::ffff:0.0.0.0` as the `0.0.0.0` it is;
+the other three predicates already look through the mapping. The `Transport` is built rather than
+cloned from `http.DefaultTransport`, whose `Proxy` would route the request through a proxy, and
+the dialer would check the proxy's address instead of the target's.
+
 ## Request Limits
 
 - **Bodies are bounded, servers set their timeouts, and browser-facing state changes sit behind
@@ -98,12 +245,63 @@ connection time, and a redirect can go anywhere:
   without them is held open by a client that sends one byte a minute.
 - **Cookies carrying a session are `Secure`, `HttpOnly` and `SameSite=Lax`** or stricter.
 
+```go
+// WRONG — readable by any script on the page, and sent over plain HTTP
+http.SetCookie(w, &http.Cookie{Name: "session", Value: sessionID, Path: "/"})
+
+// CORRECT
+http.SetCookie(w, &http.Cookie{
+	Name:     "session",
+	Value:    sessionID,
+	Path:     "/",
+	Secure:   true,
+	HttpOnly: true,
+	SameSite: http.SameSiteLaxMode,
+})
+```
+
 ## Failing Closed
 
 - **An authorization check that errors denies.** `allowed, err := policy.Allow(…)` with an error
   returns 500 or 403, never falls through to the handler.
+
+```go
+// WRONG — only a definite "no" denies: while the policy service is down, everyone may refund
+allowed, err := h.policy.Allow(r.Context(), user, ActionRefund)
+if err == nil && !allowed {
+	writeError(w, http.StatusForbidden, "not allowed")
+	return
+}
+
+// CORRECT — an error denies too
+allowed, err := h.policy.Allow(r.Context(), user, ActionRefund)
+if err != nil {
+	h.logger.ErrorContext(r.Context(), "policy check failed", "user_id", user.ID, "error", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
+	return
+}
+if !allowed {
+	writeError(w, http.StatusForbidden, "not allowed")
+	return
+}
+```
+
 - **A missing security setting stops startup** — no TLS certificate, no signing key, no allowed
   origins list — rather than running without it.
+
+```go
+// WRONG — a missing key falls back to one every clone of the repository knows
+sessionKey := getenv("SESSION_KEY")
+if sessionKey == "" {
+	sessionKey = "dev-only-session-key"
+}
+
+// CORRECT — a missing key stops startup
+sessionKey := getenv("SESSION_KEY")
+if sessionKey == "" {
+	return settings{}, errors.New("load settings: SESSION_KEY is not set")
+}
+```
 - **Errors returned to the client say what the client can fix**, nothing about the server: no
   stack trace, no SQL, no file path, no `err.Error()` of an internal failure.
 

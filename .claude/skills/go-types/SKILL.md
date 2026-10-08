@@ -51,6 +51,32 @@ A defined type does **not** stop a conversion: `OrderID(userInput)` compiles. Wh
 accident — passing a `CustomerID` where an `OrderID` was meant. The deliberate conversion belongs
 in exactly one parsing function at the boundary.
 
+Rung 4 closes that gap for a value with rules: the conversion itself is unavailable.
+
+```go
+// WRONG — an exported field: Email{Address: "not an email"} compiles, and nothing validated it
+type Email struct {
+	Address string
+}
+
+// CORRECT — the field is unexported, so NewEmail is the only way to an Email
+type Email struct {
+	address string
+}
+
+func NewEmail(raw string) (Email, error) {
+	parsed, err := mail.ParseAddress(raw)
+	if err != nil {
+		return Email{}, fmt.Errorf("parse email %q: %w", raw, ErrInvalidEmail)
+	}
+	return Email{address: parsed.Address}, nil
+}
+
+func (e Email) String() string {
+	return e.address
+}
+```
+
 ## Enums
 
 ```go
@@ -70,6 +96,24 @@ const (
   `tool` directive in `go.mod`. Hand-written `String` methods drift from the constants.
 - **A wire format stores the name, not the number.** `iota` values renumber when a constant is
   inserted; implement `MarshalText`/`UnmarshalText` and reject unknown names there.
+
+```go
+var orderStatusByName = map[string]OrderStatus{
+	"pending": OrderStatusPending,
+	"paid":    OrderStatusPaid,
+	"shipped": OrderStatusShipped,
+}
+
+func (s *OrderStatus) UnmarshalText(text []byte) error {
+	status, ok := orderStatusByName[string(text)]
+	if !ok {
+		return fmt.Errorf("unknown order status %q", text)
+	}
+	*s = status
+	return nil
+}
+```
+
 - **A `string`-based enum** — `type Currency string` with constants — is right when the value is
   already a stable name on the wire and nothing iterates the set.
 - **Exhaustiveness is a linter's job**: `exhaustive` reports a `switch` missing a constant. The
@@ -115,9 +159,43 @@ data; when they differ only in a name, it is an enum.
   `fmt.Errorf("unexpected %T in config", v)`.
 - **`map[string]any` is a struct nobody wrote.** Decode into a struct — unknown keys can be
   rejected there, and a missing key is a zero value you can check, not a panic on assertion.
+
+```go
+// WRONG — JSON numbers arrive in an any as float64, so this ok is always false
+var request map[string]any
+if err := json.Unmarshal(body, &request); err != nil {
+	return 0, fmt.Errorf("decode search request: %w", err)
+}
+limit, ok := request["limit"].(int)
+
+// CORRECT — the struct is the schema: "limit": "ten" fails the decode, which names the field
+var request searchRequest
+if err := json.Unmarshal(body, &request); err != nil {
+	return 0, fmt.Errorf("decode search request: %w", err)
+}
+limit := request.Limit
+```
+
 - **`context.Value` carries request-scoped data that crosses APIs** — a trace ID, an
   authenticated principal — under an unexported key type, read through a typed accessor. Never a
   dependency, never an optional parameter.
+
+```go
+// WRONG — a string key any package can collide with, and every reader writes its own assertion
+ctx = context.WithValue(ctx, "principal", principal)
+
+// CORRECT — an unexported key type no other package can construct, behind two typed functions
+type principalKey struct{}
+
+func WithPrincipal(ctx context.Context, principal Principal) context.Context {
+	return context.WithValue(ctx, principalKey{}, principal)
+}
+
+func PrincipalFrom(ctx context.Context) (Principal, bool) {
+	principal, ok := ctx.Value(principalKey{}).(Principal)
+	return principal, ok
+}
+```
 
 ## Generics or Interfaces
 
@@ -129,12 +207,6 @@ data; when they differ only in a name, it is an enum.
 - **Constraints say what the body needs**, no more: `[T any]` when it only moves values,
   `[T comparable]` for map keys and `==`, `[T cmp.Ordered]` for `<`, `[S ~[]E, E any]` to accept
   and return the caller's named slice type rather than a bare `[]E`.
-- **Generic methods exist since Go 1.27 — on concrete types only.** An interface method cannot
-  declare type parameters, and a generic method never satisfies an interface method. Write one
-  where the receiver's state is needed — `(*Rand).N[Int intType]` is the standard library's —
-  and a generic function otherwise.
-- **Do not make a type generic to avoid writing two small functions.** A type parameter on a
-  struct infects every signature that mentions it.
 
 ```go
 // WRONG — []T discards the caller's named slice type, and a string key makes every caller format one
@@ -156,6 +228,38 @@ func Deduplicate[S ~[]E, E any, K comparable](items S, key func(E) K) S {
 }
 ```
 
+- **Generic methods exist since Go 1.27 — on concrete types only.** An interface method cannot
+  declare type parameters, and a generic method never satisfies an interface method. Write one
+  where the receiver's state is needed — `(*Rand).N[Int intType]` is the standard library's —
+  and a generic function otherwise.
+
+```go
+// WRONG — does not compile: "interface method must have no type parameters"
+type BlobStore interface {
+	Load[T any](ctx context.Context, key string) (T, error)
+}
+
+// CORRECT — the interface stays plain, and the type parameter lives on a function over it
+type BlobStore interface {
+	Load(ctx context.Context, key string) ([]byte, error)
+}
+
+func LoadJSON[T any](ctx context.Context, store BlobStore, key string) (T, error) {
+	var value T
+	data, err := store.Load(ctx, key)
+	if err != nil {
+		return value, fmt.Errorf("load %s: %w", key, err)
+	}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return value, fmt.Errorf("decode %s: %w", key, err)
+	}
+	return value, nil
+}
+```
+
+- **Do not make a type generic to avoid writing two small functions.** A type parameter on a
+  struct infects every signature that mentions it.
+
 ## Iterators
 
 A function returning `iter.Seq[V]` or `iter.Seq2[K, V]` is ranged over directly, and the caller's
@@ -168,6 +272,32 @@ A function returning `iter.Seq[V]` or `iter.Seq2[K, V]` is ranged over directly,
   method read after the loop, as `bufio.Scanner` does. Pick one shape per codebase.
 - **The yield result is obeyed**: when `yield` returns `false`, the producer returns at once —
   ignoring it panics at run time.
+
+```go
+// WRONG — yield's result is ignored: after the caller's break, the next yield panics with
+// "range function continued iteration after function for loop body returned false"
+func (b *Batch) Pending() iter.Seq[Order] {
+	return func(yield func(Order) bool) {
+		for _, order := range b.orders {
+			if order.Status == OrderStatusPending {
+				yield(order)
+			}
+		}
+	}
+}
+
+// CORRECT — a false from yield ends the producer at once
+func (b *Batch) Pending() iter.Seq[Order] {
+	return func(yield func(Order) bool) {
+		for _, order := range b.orders {
+			if order.Status == OrderStatusPending && !yield(order) {
+				return
+			}
+		}
+	}
+}
+```
+
 - **Iterator names follow the standard library's** — the family in `naming.md`.
 
 ```go

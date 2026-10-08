@@ -34,11 +34,40 @@ func main() {
 - **A `flag.FlagSet` built inside `run`**, never the package-level `flag.Parse()`: the global set is
   shared by every test in the binary, and a second parse in the same process panics on the
   redefined flags.
+- **`ContinueOnError`, so parsing fails with a code**: `flag.ErrHelp` is exit 0 after the usage
+  text, any other parse error exit 2 — the convention every Unix tool follows.
+
+```go
+// WRONG — the global set: it parses os.Args rather than args, a bad flag exits from inside
+// flag.Parse, and the second test that calls run panics on "flag redefined: timeout"
+timeout := flag.Duration("timeout", 30*time.Second, "how long to wait for the server, e.g. 30s")
+flag.Parse()
+
+// CORRECT — run owns its flags, and a parse error becomes an exit code
+flags := flag.NewFlagSet("report", flag.ContinueOnError)
+flags.SetOutput(stderr)
+timeout := flags.Duration("timeout", 30*time.Second, "how long to wait for the server, e.g. 30s")
+if err := flags.Parse(args); err != nil {
+	if errors.Is(err, flag.ErrHelp) {
+		return exitOK
+	}
+	return exitUsage
+}
+```
+
 - **Flags bind to typed values**: `flags.Duration`, `flags.Int64`, `flags.TextVar` for any type implementing
   `encoding.TextUnmarshaler` — an enum, an address, a log level. The flag package then validates
   and prints the error; `run` receives values, not strings.
-- **`ContinueOnError`, so parsing fails with a code**: `flag.ErrHelp` is exit 0 after the usage
-  text, any other parse error exit 2 — the convention every Unix tool follows.
+
+```go
+// WRONG — any string is accepted here, and checked far from the flag, if at all
+format := flags.String("format", "text", "output format: text or json")
+
+// CORRECT — parsed into the type: "yaml" is a usage error, printed with the help text
+var format Format
+flags.TextVar(&format, "format", FormatText, "output format: text or json")
+```
+
 - **Every flag has a usage string that says the unit and the default's meaning**: `"how long to
   wait for the server, e.g. 30s"`.
 - **Subcommands are a map from name to function** — `commandsByName[args[0]]` — each with its own
@@ -58,6 +87,15 @@ func main() {
 Name them as constants in `main`, document any code beyond these in the usage text, and never
 reuse one for two meanings — a script branching on the code cannot tell them apart.
 
+```go
+const (
+	exitOK          = 0
+	exitFailure     = 1
+	exitUsage       = 2
+	exitInterrupted = 130 // 128 + SIGINT
+)
+```
+
 ## Two Streams
 
 - **stdout is the product** — the data a pipe or a redirect captures. **stderr is the
@@ -67,14 +105,72 @@ reuse one for two meanings — a script branching on the code cannot tell them a
   line, and its shape is versioned like any API. The human format may change freely.
 - **Errors print once, at the top**: `run` writes `program: what failed: why` to stderr and returns
   the code. Every layer below returns the error; none prints it.
+
+```go
+// WRONG — fmt.Println writes the error to stdout, into the file a script redirected it to
+if err := generate(ctx, settings, stdout); err != nil {
+	fmt.Println("error:", err)
+	return exitFailure
+}
+
+// CORRECT — one line on stderr, prefixed with the program's name
+if err := generate(ctx, settings, stdout); err != nil {
+	_, _ = fmt.Fprintf(stderr, "report: %v\n", err) // nowhere is left to report a failed write
+	return exitFailure
+}
+```
+
 - **No colour, no spinner when stderr is not a terminal**, and none when `NO_COLOR` is set.
 
 ## Behaviour Flags
 
 - **`-dry-run` for anything destructive**, and it goes through the same code path as the real run
   up to the point of the side effect — a separate dry-run branch tests nothing.
+
+```go
+// WRONG — a branch of its own: the dry run never runs the query it claims to preview
+if isDryRun {
+	if _, err := fmt.Fprintf(stdout, "would purge orders placed before %s\n", cutoff); err != nil {
+		return fmt.Errorf("write purge preview: %w", err)
+	}
+	return nil
+}
+expired, err := orders.Expired(ctx, cutoff)
+if err != nil {
+	return fmt.Errorf("list expired orders: %w", err)
+}
+
+// CORRECT — the same path up to the side effect, so the preview is what would be deleted
+expired, err := orders.Expired(ctx, cutoff)
+if err != nil {
+	return fmt.Errorf("list expired orders: %w", err)
+}
+if isDryRun {
+	if _, err := fmt.Fprintf(stdout, "would purge %d orders\n", len(expired)); err != nil {
+		return fmt.Errorf("write purge preview: %w", err)
+	}
+	return nil
+}
+```
+
 - **`-v` raises the log level of the `slog` handler** built in `run`; it does not add `if verbose`
   checks around log calls.
+
+```go
+// WRONG — verbosity as a branch around every call that should depend on it
+logger := slog.New(slog.NewJSONHandler(stderr, nil))
+if *isVerbose {
+	logger.DebugContext(ctx, "order skipped", "order_id", order.ID)
+}
+
+// CORRECT — the flag sets the handler's level once, and every call site stays plain
+level := slog.LevelInfo
+if *isVerbose {
+	level = slog.LevelDebug
+}
+logger := slog.New(slog.NewJSONHandler(stderr, &slog.HandlerOptions{Level: level}))
+logger.DebugContext(ctx, "order skipped", "order_id", order.ID)
+```
 - **Configuration precedence is fixed**: flags over environment over config file over defaults,
   resolved once in `run` into one settings struct. Every source is named in the usage text.
 - **A prompt is skipped when stdin is not a terminal**, and a `-yes` flag answers it for scripts;

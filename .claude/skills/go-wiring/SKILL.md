@@ -1,16 +1,16 @@
 ---
 name: go-wiring
 description: >-
-  Go composition root, configuration and layering: main as a thin shell over run, all construction
-  in one place, dependencies as struct fields set by a constructor, resource lifetime owned by the
-  root and closed in reverse, typed configuration loaded and validated once and passed as fields,
-  constants versus configuration, functional options versus an options struct, and layer
-  boundaries enforced by depguard. Use when writing func main, a constructor, an application
-  struct, a config field, removing a package-level global or init, or arguing about which layer
-  code belongs to.
+  Go composition root and configuration: main as a thin shell over run, all construction in one
+  place, dependencies as struct fields set by a constructor, resource lifetime owned by the root and
+  closed in reverse, typed configuration loaded and validated once and passed as fields, constants
+  versus configuration, functional options versus an options struct. Use when writing func main, a
+  constructor, an application struct, a config field, or removing a package-level global or init.
 ---
 
-# Wiring: Composition Root, Configuration, Layers
+# Wiring: Composition Root, Configuration
+
+Which package may import which is `go-layers`.
 
 ## Composition Root
 
@@ -38,12 +38,12 @@ func NewOrderService() *OrderService {
 }
 
 // CORRECT — the root opens, passes, and closes
-func serve(ctx context.Context, settings serverSettings) error {
+func serve(ctx context.Context, settings serverSettings) (err error) {
 	db, err := sql.Open("pgx", settings.databaseURL)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	orders := NewOrderService(postgres.NewOrderRepository(db), time.Now)
 	return listenAndServe(ctx, settings.listenAddress, NewOrderHandler(orders))
@@ -57,13 +57,68 @@ The root acquires, so the root releases; everything below borrows.
 - **`defer` the release on the line after acquisition succeeds**, in the function that owns it.
   Defers run in reverse, so resources close in the reverse of the order they were opened — the
   server stops before the pool it uses is closed.
+
+  ```go
+  // WRONG — a failed dial returns with the pool still open, and so does any panic
+  func run(ctx context.Context, settings appSettings) error {
+  	db, err := sql.Open("pgx", settings.databaseURL)
+  	if err != nil {
+  		return fmt.Errorf("open database: %w", err)
+  	}
+  	queue, err := dialQueue(ctx, settings.queueAddress)
+  	if err != nil {
+  		return fmt.Errorf("dial queue: %w", err)
+  	}
+
+  	err = consumeOrders(ctx, queue, db)
+  	return errors.Join(err, queue.Close(), db.Close())
+  }
+
+  // CORRECT — each release deferred on the line after its acquisition; defers run in reverse
+  func run(ctx context.Context, settings appSettings) (err error) {
+  	db, err := sql.Open("pgx", settings.databaseURL)
+  	if err != nil {
+  		return fmt.Errorf("open database: %w", err)
+  	}
+  	defer func() { err = errors.Join(err, db.Close()) }()
+
+  	queue, err := dialQueue(ctx, settings.queueAddress)
+  	if err != nil {
+  		return fmt.Errorf("dial queue: %w", err)
+  	}
+  	defer func() { err = errors.Join(err, queue.Close()) }()
+
+  	return consumeOrders(ctx, queue, db)
+  }
+  ```
 - **A constructor that acquires returns a `Close` with it**, or a type with a `Close` method. A
   value that owns a goroutine owns its shutdown too: `Close` stops it and waits.
 - **The error from closing a writer is returned, not deferred away.** For a file being written, a
   transaction, a buffered writer, close is where the data is committed:
 
   ```go
-  defer func() { err = errors.Join(err, f.Close()) }()
+  // WRONG — Close writes the buffered data and the gzip footer; when that write fails, the
+  // deferred call discards the error and the caller gets a truncated archive and nil
+  func compressReport(w io.Writer, report []byte) error {
+  	zw := gzip.NewWriter(w)
+  	defer zw.Close()
+
+  	if _, err := zw.Write(report); err != nil {
+  		return fmt.Errorf("compress report: %w", err)
+  	}
+  	return nil
+  }
+
+  // CORRECT — the named result collects the error from Close
+  func compressReport(w io.Writer, report []byte) (err error) {
+  	zw := gzip.NewWriter(w)
+  	defer func() { err = errors.Join(err, zw.Close()) }()
+
+  	if _, err := zw.Write(report); err != nil {
+  		return fmt.Errorf("compress report: %w", err)
+  	}
+  	return nil
+  }
   ```
 - **Shutdown is ordered and bounded**: stop accepting work, drain with a deadline
   (`server.Shutdown(ctx)` with `context.WithTimeout`), then close stores. `go-concurrency` has
@@ -82,6 +137,15 @@ The root acquires, so the root releases; everything below borrows.
   a namespace of unrelated groups: the signature stops being a dependency list, and a test has to
   build everything to construct one thing. Unpacking happens once, in the root, where the
   verbosity is the point.
+
+  ```go
+  // WRONG — the whole configuration for one client: the signature hides what it reads, and a
+  // test must fill every section to build it
+  func NewPaymentClient(settings *Settings) *PaymentClient
+
+  // CORRECT — exactly what it uses; the root unpacks settings.Payments once
+  func NewPaymentClient(baseURL string, timeout time.Duration) *PaymentClient
+  ```
 - **A cohesive group of parameters is one struct, and that is encouraged.** `RetryPolicy{Attempts,
   BaseDelay, MaxDelay}` — the callee uses all of it, and its name is a concept, not an origin. Three
   questions tell it from a config root in disguise: does the callee use essentially every field;
@@ -91,27 +155,45 @@ The root acquires, so the root releases; everything below borrows.
   `NewServer(addr, WithTLS(cert), WithLogger(l))` — where adding an option must not break callers.
   Inside an application an options struct is simpler, shows every setting in one place, and its
   zero value documents the defaults.
+
+  ```go
+  // WRONG — inside an application: a type and a closure per setting, and the defaults are
+  // nowhere in sight
+  type WorkerOption func(*Worker)
+
+  func WithBatchSize(size int) WorkerOption {
+  	return func(w *Worker) { w.batchSize = size }
+  }
+
+  func WithPollInterval(interval time.Duration) WorkerOption {
+  	return func(w *Worker) { w.pollInterval = interval }
+  }
+
+  func NewWorker(queue Queue, options ...WorkerOption) *Worker
+
+  // CORRECT — one struct shows every setting, and its zero value is the default
+  type WorkerOptions struct {
+  	BatchSize    int           // zero means defaultBatchSize
+  	PollInterval time.Duration // zero means defaultPollInterval
+  }
+
+  func NewWorker(queue Queue, options WorkerOptions) *Worker
+  ```
 - **Secrets never appear in code or defaults** — not even a placeholder — and a settings type with
-  a secret field redacts itself in logs (`errors.md`).
+  a secret field redacts itself in logs (`logging.md`).
 - **Regular expressions are compiled once, at package level**, with a name saying what they match:
   `var semverPattern = regexp.MustCompile(…)`.
 
-## Enforced Layer Boundaries
+  ```go
+  // WRONG — the pattern is compiled again on every call
+  func isSemver(version string) bool {
+  	return regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(version)
+  }
 
-**Dependency direction is enforced by a linter, not by review vigilance.** Go already refuses import
-cycles; what it does not refuse is the domain importing the database driver, or one notifier
-importing another.
+  // CORRECT — compiled once, and named for what it matches
+  var semverPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 
-- **`depguard` lists, per set of files, the imports that are denied** — the domain packages may not
-  import `database/sql`, `net/http` or any driver; an implementation package may not import its
-  siblings. Every allowed exception carries its reason in the configuration.
-- **`internal/` is the boundary Go enforces by itself**: nothing outside the parent directory can
-  import it. Use the nesting — `orders/internal/pricing` is invisible even to `payments`.
-- **The domain imports the standard library and other domain packages only.** Frameworks, drivers
-  and clients enter through adapters that implement interfaces the domain declares.
-- **A boundary violation is fixed by moving code or inverting the dependency** — an interface plus
-  an adapter — never by adding the import to an allowlist without a reason on the line.
-
-How directories are named and nested is a project decision: it follows the domain, the team and
-the deployment. A layout copied from a template is a layout nobody owns. What is fixed is which
-way dependencies point, where construction happens, and that `main` stays thin.
+  func isSemver(version string) bool {
+  	return semverPattern.MatchString(version)
+  }
+  ```

@@ -13,9 +13,11 @@ in test files. Everything else is a skill, invoked by its description or by name
 | `go-types` | choosing between a string, a defined type, an `iota` enum and a struct; a generic function or type; a closed set of variants; writing an iterator |
 | `go-interfaces` | a second implementation, a test fake, where implementations live, embedding, a compile-time assertion |
 | `go-boundaries` | HTTP, queues, caches, serialization, timeouts, retries, time, money, identifiers |
-| `go-wiring` | `main`, where an object is built, a config field, a layer argument, closing what was opened |
+| `go-wiring` | `main`, where an object is built, a config field, closing what was opened |
+| `go-layers` | which package may import which, a `depguard` rule |
 | `go-concurrency` | a `go` statement, channels, `sync`, `errgroup`, cancellation, graceful shutdown |
-| `go-persistence` | `database/sql`, a transaction boundary, a repository, a migration |
+| `go-persistence` | `database/sql`, a transaction boundary, a repository |
+| `go-migrations` | a schema change, a backfill, the migration tool |
 | `go-http` | a `net/http` server, handler, middleware or client |
 | `go-json` | `encoding/json` or `encoding/json/v2`, struct tags, a custom marshaler, unknown fields |
 | `go-packaging` | a module other code imports: exported surface, `internal/`, semver, `/v2`, deprecation |
@@ -26,19 +28,17 @@ in test files. Everything else is a skill, invoked by its description or by name
 | `go-rules-authoring` | editing these rules or skills |
 | `go-<library>` | the code imports that library — `testify`, `pgx`, `gin` |
 
-Formatting, vet checks and mechanical complexity belong to `gofmt`, `go vet` and the linters.
-**Nothing here restates what a tool decides**; a tool that disagrees wins, and this file gets a PR.
-Three things about living with those tools do belong here:
+**Nothing here restates what `gofmt`, `go vet` or a linter decides**; a tool that disagrees wins,
+and this file gets a PR. Three things about living with them do belong here:
 
 - **A suppression names its linter and its reason on its line** — `//nolint:gosec // the path is
   from the embedded FS` — never a bare `//nolint`. The count only ever ratchets down.
 - **A limit is named, not raised.** One forty-line function must not buy every other package the
   right to forty lines: the limit stays and the file is excluded by name, with a reason. When three
   files need the same escape, the rule is describing something real.
-- **Write for the `go` directive in `go.mod`, not for the Go you remember.** Every idiom the
-  declared version offers is the default — `min`/`max`, `for i := range n`, `slices`, `maps`,
-  `errors.AsType`, `wg.Go`, `t.Context()`, `new(expr)` — and nothing newer, which `stdversion`
-  rejects. `go fix ./...` rewrites the old idioms; its modernizers are the list of what changed.
+- **Write for the `go` directive in `go.mod`, not the Go you remember.** Its idioms are the default
+  — `min`/`max`, `for i := range n`, `slices`, `maps`, `errors.AsType`, `wg.Go`, `t.Context()`,
+  `new(expr)` — nothing newer (`stdversion`); `go fix` rewrites the old ones.
 
 ## When Rules Conflict
 
@@ -100,14 +100,14 @@ And three properties of the system as a whole:
 - **Build what today's requirement needs.** A generalisation built for one case is a guess about
   the second, and a wrong abstraction outlives the duplication it prevented. An option nobody sets
   and an interface with one implementation and no fake are branches never known to work.
-- **The simplest construction that fully solves the problem**, which is not the shortest one.
-  Prefer the boring mechanism: a function over a type with methods, a `map` over a registry, a
-  `switch` over a strategy. Simplicity is measured at the point of *use*.
-- **DRY is about knowledge, not text.** Two fragments that look identical but answer to different
-  actors are not duplication — merged, the next change arrives as a parameter, then a flag, then a
-  branch. Two fragments that must change together are duplication even when they look nothing
-  alike: a limit enforced in a validator and repeated in a migration. **Wait for the third
-  occurrence**; a little copying is better than a little dependency.
+- **The simplest construction that fully solves the problem**, not the shortest: a function over a
+  type with methods, a `map` over a registry, a `switch` over a strategy — judged at the point of
+  *use*.
+- **DRY is about knowledge, not text.** Identical fragments answering to different actors are not
+  duplication — merged, the next change arrives as a parameter, then a flag, then a branch.
+  Fragments that must change together are duplication however different they look — a limit in a
+  validator and in a migration. **Wait for the third occurrence**; a little copying beats a little
+  dependency.
 
 ## Definition of Done
 

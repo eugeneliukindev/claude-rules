@@ -25,6 +25,25 @@ testify replaces the `if got != want { t.Errorf(…) }` lines and nothing else.
   from another goroutine (`go-require`). A goroutine sends its error back on a channel, and the
   test checks it after waiting.
 
+  ```go
+  // WRONG — t.FailNow must run on the test's goroutine; from here it ends only this one
+  done := make(chan struct{})
+  go func() {
+  	defer close(done)
+  	require.NoError(t, worker.Run(ctx))
+  }()
+  cancel()
+  <-done
+
+  // CORRECT — the goroutine sends its error back, and the test checks it after waiting
+  done := make(chan error, 1)
+  go func() {
+  	done <- worker.Run(ctx)
+  }()
+  cancel()
+  require.NoError(t, <-done)
+  ```
+
 ## Arguments
 
 - **Expected first, actual second** — `require.Equal(t, want, got)`. The failure message labels
@@ -33,10 +52,26 @@ testify replaces the `if got != want { t.Errorf(…) }` lines and nothing else.
   an `int64` or a `Cents`, printing `expected: int(5), actual: int64(5)`. Write the expected value
   in the actual's type — `Cents(500)` — rather than reaching for `EqualValues`, which also hides
   a conversion the code under test got wrong.
+
+  ```go
+  // WRONG — total is a Cents, so this fails on equal amounts: int(500) is not Cents(500)
+  assert.Equal(t, 500, total)
+
+  // CORRECT — the expected value in the actual's type
+  assert.Equal(t, Cents(500), total)
+  ```
 - **Two `time.Time` for the same instant can fail `Equal` with identical output** — one carries a
   monotonic clock reading or a different location and the other does not. Compare instants with
   `assert.WithinDuration(t, want, got, 0)` or `assert.True(t, want.Equal(got), …)`; better still,
   the injected clock returns a fixed value and the test compares to that.
+
+  ```go
+  // WRONG — createdAt holds a monotonic reading the stored value lost: the same instant fails
+  assert.Equal(t, createdAt, order.CreatedAt)
+
+  // CORRECT — compares the instants, whatever the location or clock reading
+  assert.WithinDuration(t, createdAt, order.CreatedAt, 0)
+  ```
 - **Floats with `InDelta` or `InEpsilon`**, never `Equal` (`float-compare`).
 - **Collections with their own assertions**: `Len`, `Empty`, `ElementsMatch` for order-insensitive
   equality, `Subset`, `Contains`. `assert.Equal(t, 3, len(items))` prints two numbers; `assert.Len`
@@ -83,6 +118,22 @@ require.ErrorIs(t, err, ErrEmptyCart)
   `*assert.CollectT` and asserts against it — `assert.Len(c, sent, 1)` — and only the last tick's
   failures are reported.
 
+  ```go
+  // WRONG — require with the test's t, called on the condition's goroutine
+  assert.Eventually(t, func() bool {
+  	sent := notifier.Sent()
+  	require.Len(t, sent, 1)
+  	return sent[0].Recipient == "ann@example.com"
+  }, time.Second, 10*time.Millisecond)
+
+  // CORRECT — the assertions go to c, and a failed require ends only this tick
+  assert.EventuallyWithT(t, func(c *assert.CollectT) {
+  	sent := notifier.Sent()
+  	require.Len(c, sent, 1)
+  	assert.Equal(c, "ann@example.com", sent[0].Recipient)
+  }, time.Second, 10*time.Millisecond)
+  ```
+
 ## Suites
 
 **`suite` does not support parallel tests**, by its own documentation, and its `SetupTest` state
@@ -102,3 +153,11 @@ already has `mockery` mocks:
 - **Arguments are matched exactly**, not with `mock.Anything` in every slot — an argument nobody
   checks is one the code can get wrong.
 - **`.Once()` where a second call would be a bug** — a duplicate charge, a second email.
+
+```go
+// WRONG — any amount, any number of times: a double charge of the wrong amount passes
+gateway.On("Charge", mock.Anything, mock.Anything).Return(nil)
+
+// CORRECT — the exact amount, exactly once; the context is the one slot left open
+gateway.On("Charge", mock.Anything, Cents(1999)).Return(nil).Once()
+```
