@@ -1,1 +1,7 @@
 .idea/
+
+# tool caches left by running the scripts and checking the examples
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
