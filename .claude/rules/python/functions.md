@@ -54,12 +54,16 @@ logger.info("import finished", extra={"imported": imported, "requests": requests
 **Guards → work → result.** Guard clauses first, with an immediate `return` or `raise`; the happy
 path at indentation level 1 — if it is nested inside an `if`, invert the condition and return
 early; one blank line between logical steps, none inside a step; a step below its siblings' level
-is extracted (reason 4), and length alone never is; the result computed into a well-named local and
-returned last.
+is extracted (reason 4), and length alone never is; the result returned last.
 
 - **A boolean parameter that gets past the linter is still two functions.** Made keyword-only it
-  stops being a boolean trap and stays a design fault: `export(orders, *, as_csv=True)` does two
-  things under one name. Take a `Literal` or `Enum` format instead, or write both functions.
+  stops being a boolean trap and stays a design fault. Take a `Literal` or `Enum`, or write both.
+  ```python
+  # WRONG — keyword-only, and still two functions behind one name
+  def export(orders: Sequence[Order], *, as_csv: bool) -> bytes: ...
+  # CORRECT — the format is a closed set the caller names
+  def export(orders: Sequence[Order], export_format: ExportFormat) -> bytes: ...
+  ```
 - **The branch does not pick the return type.** `str` on one path and `list[str]` on another
   forces every caller to re-discover which it got. A union is fine when it is a **named closed
   type** — `type PaymentOutcome = Captured | Declined`, matched exhaustively — never an accident of
@@ -68,6 +72,14 @@ returned last.
   dependencies come first — they are the function's environment.
 - **Do not reach outside.** A function uses only its parameters and module-level constants: no
   global mutable state, no `settings` import, no clock or randomness buried inside.
+  ```python
+  # WRONG — the clock and the lifetime come from outside, and no test can fix either
+  def is_expired(token: Token) -> bool:
+      return datetime.now(UTC) > token.issued_at + settings.token_lifetime
+  # CORRECT — both arrive as parameters
+  def is_expired(token: Token, *, now: datetime, lifetime: timedelta) -> bool:
+      return now > token.issued_at + lifetime
+  ```
 - **Compute or do, not both.** A function returning a value has no side effects; a function with
   side effects returns `None` or a small object describing what happened.
 - **One level of abstraction per function.** An orchestrator contains only calls at its own level.

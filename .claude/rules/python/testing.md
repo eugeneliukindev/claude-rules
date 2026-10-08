@@ -10,7 +10,8 @@ paths:
 # Testing
 
 Supplement to the other Python rules, for writing and reviewing tests. `pytest` is the framework;
-its mechanics — async tests, property tests, HTTP and container fixtures — are in `python-pytest`.
+its mechanics — async tests, property tests, HTTP and container fixtures, coverage — are in
+`python-pytest`.
 
 ## Levels
 
@@ -27,9 +28,9 @@ suite fast enough to run on every change. A test belongs to one level; how the l
 ## Fakes, Not Mocks
 
 - **Every contract (`UserRepository`, `Notifier`) has an in-memory fake in the tests** —
-  `tests/fakes.py`, inheriting the contract like any implementation — injected in unit tests. A
-  fake exercises the contract; a `MagicMock` records calls and happily accepts methods that do not
-  exist.
+  `tests/fakes.py`, inheriting the contract like any implementation — injected in unit tests, and
+  held to the same contract suite as the real ones (`python-contracts`). A fake exercises the
+  contract; a `MagicMock` records calls and happily accepts methods that do not exist.
 - **Mock only at a process boundary you do not own** — the network, the broker; never the clock,
   which is injected and replaced by a fixed one. Then use the `mocker` fixture (or
   `unittest.mock.patch` as a context manager) and always `spec=` the real class, so a nonexistent
@@ -63,7 +64,7 @@ def test_register_user_sends_welcome_to_new_user() -> None:
   merged — the reader finds the action under test without reading the setup.
 - **Several input/output combinations are one `@pytest.mark.parametrize`** with a `pytest.param`
   per case, each with an `id` describing the scenario in plain words — the id is what a failing
-  run prints.
+  run prints. A table of scalars alone may leave the ids to pytest, which prints the values.
 
 ```python
 @pytest.mark.parametrize(
@@ -103,10 +104,16 @@ def test_total_includes_tax(
   `pytest.raises(ValueError)` passes on the wrong `ValueError`. The carried data is asserted too:
   `with pytest.raises(OrderNotFoundError, match="order 42") as excinfo: ...` then
   `assert excinfo.value.order_id == OrderId(42)`.
-- **Fixtures are factories, not constants**: a typed `make_order(*, status: OrderStatus =
-  OrderStatus.NEW, ...) -> Order` returning a valid default the test overrides in one place — not a
-  shared `order` fixture a dozen tests silently depend on. Shared fixtures live in the nearest
-  `conftest.py`; a fixture one module uses lives in that module.
+- **Fixtures are factories, not constants**: a valid default the test overrides in one place, not a
+  shared object a dozen tests silently depend on. Shared fixtures live in the nearest `conftest.py`;
+  a fixture one module uses lives in that module.
+  ```python
+  # WRONG — one shared order: the test that needs it paid changes it for every other test
+  @pytest.fixture
+  def order() -> Order: ...
+  # CORRECT — each test builds the order it needs and states only what matters to it
+  def make_order(*, status: OrderStatus = OrderStatus.NEW) -> Order: ...
+  ```
 - **Test data says only what matters**: values relevant to the behaviour are explicit in the test,
   everything else comes from the factory defaults. A magic value outside a parametrize table gets
   the same named-constant treatment as production code.
@@ -118,11 +125,3 @@ def test_total_includes_tax(
 - **Warnings are errors in the suite** (`filterwarnings = ["error"]`): a deprecation fails the day
   it appears. A test that expects one asserts it — `pytest.warns(DeprecationWarning, match=...)` —
   and tests of a deprecated path sit together, so removing the path deletes them in one place.
-
-## Coverage
-
-- **Branch coverage, no single magic number.** Line coverage hides untested `else` arms. Domain
-  and services aim at ~100%, adapters mainly through integration tests; generated code and
-  migrations are excluded in configuration. The floor (`--cov-fail-under`) only ratchets up.
-- **Coverage detects untested code; it is never a target.** A test that exists to colour lines green
-  converts an honest unknown into false confidence, which is worse than the gap it hides.

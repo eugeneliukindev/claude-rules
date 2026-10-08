@@ -40,7 +40,9 @@ _CHECKOUT_DURATION.record(elapsed_seconds, {"payment_method": order.payment_meth
 
 - **Attributes have bounded cardinality.** Every distinct combination of attribute values is a
   separate time series, held in memory and billed: a status class, a route *template*, a payment
-  method — never a user id, an order id, a raw URL path or an error message.
+  method — never a user id, an order id, a raw URL path or an error message. A request metric
+  labelled by raw path turned every id in a URL into a new series until the route template became
+  the default label.
 
 ```python
 # WRONG — the message carries ids, so every failure starts a time series of its own
@@ -159,6 +161,11 @@ def capture_payment(order: Order) -> None:
 
 - **The id travels on outbound calls** as a header, so the next service logs the same one. With
   OpenTelemetry, the trace id is that id and its propagator sends it; do not mint a second one.
+
+- **Recording a signal never fails the work it observes.** A log line, a metric or a span that
+  raises — a body that will not serialise, an exporter that is down — is caught and dropped inside
+  the instrumentation, the way `logging.Handler.handleError` does. A logging middleware that let a
+  malformed request body escape turned it into a 500 for a request that was otherwise served.
 
 ## Configuring Output
 

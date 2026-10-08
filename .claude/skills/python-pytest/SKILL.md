@@ -6,7 +6,8 @@ description: >-
   hypothesis for round trips and invariants; testing an HTTP adapter against a real local server
   with pytest-httpserver, or respx for httpx; integration tests on testcontainers; conftest.py
   layering and markers. Use when Python test code imports pytest, pytest_asyncio, hypothesis,
-  pytest_httpserver, respx or testcontainers, writes an async test or fixture, or edits conftest.py.
+  pytest_httpserver, respx or testcontainers, writes an async test or fixture, edits conftest.py,
+  or sets up or judges coverage.
 ---
 
 # pytest
@@ -63,6 +64,8 @@ async def test_order_is_saved_and_read_back(engine: AsyncEngine) -> None: ...
 
 - **Several tests sharing a loop** take `pytestmark = pytest.mark.asyncio(loop_scope="module")` at
   the top of the module, rather than the marker on each.
+- **An ASGI app in an async test goes through an async client**, never the sync `TestClient`, which
+  runs the app on a loop of its own — the client and the lifespan wiring are in `python-fastapi`.
 
 ## Property-Based Tests With `hypothesis`
 
@@ -191,3 +194,11 @@ from tests.factories import make_order
 ```
 
 - **`pytest_plugins` only in the root `conftest.py`**; anywhere deeper, pytest refuses to start.
+
+## Coverage
+
+- **Branch coverage, no single magic number.** Line coverage hides untested `else` arms. Domain
+  and services aim at ~100%, adapters mainly through integration tests; generated code and
+  migrations are excluded in configuration. The floor (`--cov-fail-under`) only ratchets up.
+- **Coverage detects untested code; it is never a target.** A test that exists to colour lines green
+  converts an honest unknown into false confidence, which is worse than the gap it hides.

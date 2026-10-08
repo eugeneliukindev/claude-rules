@@ -83,6 +83,16 @@ against production data:
 - annotated signatures — the cheapest part of a later promotion, and `mypy` still finds the
   `None` passed where a value was required.
 
+```python
+# WRONG — urlopen has no default timeout: a server that stops answering holds the script forever
+with urllib.request.urlopen(export_url) as response:
+    rows = response.read()
+
+# CORRECT — even a one-off waits for a stated time, then fails and says so
+with urllib.request.urlopen(export_url, timeout=TIMEOUT_SECONDS) as response:
+    rows = response.read()
+```
+
 ## A Script That Changes Data
 
 The batching, bounding and idempotence of a backfill are in `python-migrations`. What a script

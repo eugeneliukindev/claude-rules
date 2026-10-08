@@ -24,16 +24,8 @@ shadowing, single letters, length and the filler-word blacklist are the linters'
 
 Two existing names of the same shape for the same kind of job make that shape a rule: the third
 must match it, and any outlier gets renamed. Checkable mechanically — group by signature and return
-kind, then see whether the names share a shape. The shapes worth copying:
-
-- **Namespace prefix** — `model_validate`, `model_dump`, `model_copy`, `model_json_schema`: every
-  method of `BaseModel` is prefixed so a user's own field named `dump` can never collide.
-- **Scope pair** — `field_validator` / `model_validator`: same job, two scopes, one suffix apart.
-- **Derive a copy** — `with_only_columns`, `with_for_update`, `Path.with_suffix`: `with_` returns a
-  copy with X set or replaced.
-- **Plurality** — `scalar` / `scalars`: singular returns one, plural returns many.
-- **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `get_label_style` /
-  `set_label_style`, `correlate` / `correlate_except`: one part differs, the rest reads the same.
+kind, then see whether the names share a shape; the shapes worth copying are in
+`python-packaging`.
 
 A codebase with twelve `duration_in(text)`-shaped names and three `find_duration`-shaped ones has
 one concept and two vocabularies. Rename the three now: a library that waited renamed thirteen —
@@ -106,7 +98,9 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
   `file_size_bytes`, `price_usd`, and equally `MAX_UPLOAD_BYTES`, `CACHE_TTL_SECONDS`,
   `def wait(duration_seconds: float)`. Never a bare `timeout`, `size` or `limit` when the unit is
   ambiguous. The reader of a call site has the name and nothing else, and a wrong unit is the one
-  mistake that produces a plausible result.
+  mistake that produces a plausible result. A `timedelta` carries its unit in the type and needs
+  none in the name; so does a name that repeats a standard's — `timeout` in float seconds as the
+  stdlib uses it, a cookie's `max_age`.
 - **Intermediate results are named after what they are, not their stage**: `discounted_price`, not
   `result2`. **Optional values say so in the type, not the name**: `user: User | None`, never
   `maybe_user`. **Constants describe the meaning, not the number**: `MAX_LOGIN_ATTEMPTS: Final = 5`.
@@ -127,25 +121,8 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
 - **A family shares the noun and varies the qualifier.** The stdlib's `ipaddress` is the model:
   `IPv4Address`, `IPv6Address`, `IPv4Network`, `IPv6Network` — the noun names the concept, the
   qualifier the one axis that varies.
-- **A contract is named after the capability, without a prefix.** A contract base class — or, at a
-  foreign boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more:
-  `Notifier`, `UserRepository`, `Comparable`. Never a mechanism suffix (`…Protocol`, `…Interface`,
-  `…ABC`). The implementations carry the qualifier: `EmailNotifier`, `PostgresUserRepository`.
-  Stdlib ABCs keep their stdlib names, and are never wrapped just to rename them.
-  **The carve-out is a published extension point**: a shape a third party implements in their own
-  code — `PydanticPluginProtocol` — where the name is read in someone else's codebase, without the
-  class line beside it. Inside your own tree the class line shows the mechanism, and the suffix is
-  noise.
-- **`Base` means "inherit me", never "implement me".** The prefix is earned by a class that carries
-  shared *implementation* down to its subclasses: fields, defaults, ready methods — that is what it
-  means everywhere in the ecosystem, from `pydantic.BaseModel` to `BaseHTTPRequestHandler`. A
-  contract has nothing to hand down, so it has no `Base` to earn. The test is mechanical: delete
-  the base and see what the subclasses lose. Lose fields or working methods — it is a `Base`. Lose
-  only a promise the checker was already making — it is a contract, named for the capability.
-- **A shared base that only its own module inherits is private**: `_BaseCookie`, `_BaseAuth`.
-- **Where a contract and its single implementation would collide**, the implementation names what
-  makes it concrete — its driver, its transport, its storage — never `Default` or `Impl`. If
-  nothing distinguishes it, there was no contract worth writing.
+- **Contracts, `Base` classes and their implementations are named as `python-contracts` says**:
+  the contract for the capability, an implementation for what makes it concrete.
 - **Subclasses extend the parent's name with the distinguishing feature**, reading as "adjective +
   parent": `Cache` → `LruCache`; `ValueError` → `InvalidCurrencyError`.
 - **Dataclasses and models are named after the thing they describe**, not the fact that they hold
@@ -168,22 +145,12 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
 - **Type parameters and `TypeVar`s** are named in `python-types`: `T`, and `_T` below 3.12.
 
 ```python
-# WRONG — Base on a contract, the mechanism as the name, a suffix that names nothing, plural enum
-class BaseUserDirectory(ABC): ...           # nothing to inherit: it hands down no implementation
-class UserDirectoryProtocol(Protocol): ...  # the mechanism is not the name
+# WRONG — a suffix that names nothing, a plural enum
 class DataManager(ABC): ...
 class OrderStatuses(Enum): ...
 
-# CORRECT — the contract names the capability, an implementation names what makes it concrete
-class UserDirectory(ABC):
-    @abstractmethod
-    def find(self, email: str) -> User | None: ...
-
-@final
-class LdapUserDirectory(UserDirectory):
-    @override
-    def find(self, email: str) -> User | None: ...
-
+# CORRECT — the noun names the responsibility; an enum is the singular kind
+class OrderArchive(ABC): ...
 class OrderStatus(Enum): ...
 ```
 

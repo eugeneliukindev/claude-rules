@@ -60,7 +60,8 @@ is_authentic = hmac.compare_digest(provided_signature, expected_signature)
 
 - **Secrets come from the environment or a secret manager**, wrapped in a type that does not render
   them — `pydantic.SecretStr`, or `field(repr=False)` on a dataclass — never committed, and never
-  present in URLs, logs or error messages.
+  present in URLs, logs or error messages. An error response echoes only what the client sent and
+  may see again: validation errors that quoted the full request URL published internal addresses.
 
 ```python
 # WRONG — the generated repr prints the key into every log line and traceback that shows it
@@ -221,7 +222,9 @@ if len(document) > _MAX_DOCUMENT_BYTES:
 ```
 
 - **Fail closed**: authorization lives in the service layer, not only at the transport edge; it
-  denies by default, and an error inside the check denies rather than allows.
+  denies by default, and an error inside the check denies rather than allows. At the edge the same
+  holds for authentication: declared once on everything, with the public routes an explicit,
+  reviewed list — never added route by route (`python-fastapi`).
 
 ```python
 # WRONG — denies the roles it lists, so a role added next year may refund anything

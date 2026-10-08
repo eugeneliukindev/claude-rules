@@ -241,6 +241,20 @@ them:
 - **Do not invent tiers you do not need.** An application has one surface and needs none of this;
   a library usually needs `_internal/` and nothing more until the first thing it regrets shipping.
 
+## A Family of Names
+
+Two names of the same shape for the same kind of job make that shape the rule for the third
+(`naming.md`). The shapes worth copying, from the libraries whose surface is used most:
+
+- **Namespace prefix** — `model_validate`, `model_dump`, `model_copy`, `model_json_schema`: every
+  method of `BaseModel` is prefixed so a user's own field named `dump` can never collide.
+- **Scope pair** — `field_validator` / `model_validator`: same job, two scopes, one suffix apart.
+- **Derive a copy** — `with_only_columns`, `with_for_update`, `Path.with_suffix`: `with_` returns a
+  copy with X set or replaced.
+- **Plurality** — `scalar` / `scalars`: singular returns one, plural returns many.
+- **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `get_label_style` /
+  `set_label_style`, `correlate` / `correlate_except`: one part differs, the rest reads the same.
+
 ## Compatibility and Deprecation
 
 `__all__` is the contract: anything not in it may change freely, anything in it follows the rules
@@ -258,9 +272,11 @@ below. Keep the surface as small as viable — every exported name is a promise.
 - **The mechanics:** `@deprecated(message)` (PEP 702, `warnings` from 3.13, `typing_extensions`
   before) so the checker flags every use; the warning is the package's own `DeprecationWarning`
   subclass, so callers can filter it apart from everyone else's; and it is attributed to the
-  caller's line — `stacklevel=2`, or `skip_file_prefixes=` (3.12+) when the call passes through
-  several frames of the package — because Python shows a `DeprecationWarning` by default only when
-  it points into `__main__`.
+  caller's line, because Python shows a `DeprecationWarning` by default only when it points into
+  `__main__`. `stacklevel` counts every frame between the caller and `warn`: 2 from the deprecated
+  function or a decorator's wrapper, one more for each helper in between — a library whose wrapper
+  called a warning helper with `stacklevel=2` pointed every warning at its own code, where nobody
+  saw it. `skip_file_prefixes=` (3.12+) skips the package's frames however many there are.
 - **A removed module leaves a tombstone**: a stub that raises `ImportError` naming the replacement,
   instead of the bare `ModuleNotFoundError` that tells the caller nothing.
 - **Design for extension without breakage**: keyword-only parameters can be added freely — another
@@ -290,7 +306,10 @@ the factory, the package `__init__.py`, or anything above the implementation.
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import
   contract bans the library from the whole package and lists every permitted edge — see
   the `python-layers` skill.
-- **Tests for an implementation are skipped, not failed, when its library is absent.**
+- **Tests for an implementation are skipped, not failed, when its library is absent.** The error a
+  user sees without the extra is tested by making the import fail on purpose —
+  `monkeypatch.setitem(sys.modules, "boto3", None)` turns `import boto3` into an `ImportError` —
+  and asserting the message names the extra to install.
 - **The same rule applies to implementation-specific settings**: they belong to that
   implementation, not to the shared settings root.
 

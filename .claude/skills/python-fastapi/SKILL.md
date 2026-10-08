@@ -1,14 +1,16 @@
 ---
 name: python-fastapi
 description: >-
-  FastAPI practice reconciled with the composition-root rules: an application factory and a
-  lifespan that build and close every shared resource, Depends as a thin accessor to what the
-  lifespan built rather than a service locator or a per-request constructor, settings passed to the
-  factory instead of an lru_cache getter, Annotated dependency aliases, routers that translate HTTP
-  and nothing more, domain errors mapped by one exception handler, explicit response models, sync
-  def versus async def routes, BackgroundTasks limits, and testing through TestClient with the
-  lifespan running. Use when Python code imports fastapi or starlette, defines a route, a router, a
-  dependency, a lifespan or an exception handler, or tests an ASGI app.
+  FastAPI practice reconciled with the composition-root rules: an application factory and a lifespan
+  that build and close every shared resource, Depends as a thin accessor to what the lifespan built
+  rather than a service locator or a per-request constructor, settings passed to the factory instead
+  of an lru_cache getter, Annotated dependency aliases, routers that translate HTTP and nothing
+  more, authentication declared once on the protected router, only classified domain errors answered
+  as 4xx and everything else as a bare 500, explicit response models, sync def versus async def
+  routes, BackgroundTasks limits, and testing with the lifespan running — through TestClient, or an
+  async client and LifespanManager in async tests. Use when Python code imports fastapi or
+  starlette, defines a route, a router, a dependency, a lifespan or an exception handler, or tests
+  an ASGI app.
 ---
 
 # FastAPI
@@ -28,7 +30,10 @@ used, in most tutorials, as a service locator.
   item per resource — the engine, the HTTP client — the services built from them inside, and a
   mapping of what requests need yielded; Starlette puts it on `request.state`. The items close in
   reverse order on shutdown.
-  `@app.on_event("startup")` is the deprecated shape of the same thing.
+  `@app.on_event("startup")` is the deprecated shape of the same thing, and a startup and shutdown
+  hook pair is the fragile one: the release sits apart from the acquire and runs in registration
+  order, not in reverse. A plugin that put its engine into app state at construction and deleted it
+  at shutdown failed the second test that ran the same app's lifespan, with a `KeyError`.
 - **Settings are built once, by whoever calls the factory, and passed in.** The documentation's
   `@lru_cache def get_settings()` behind `Depends` is a module-level singleton with extra steps: the
   test that needs another value has to clear a cache.
@@ -41,8 +46,13 @@ used, in most tutorials, as a service locator.
 - **It reads, it does not build what outlives the request.** A dependency returns what the lifespan
   built, or builds a request-scoped object — a unit of work — from those parts. An engine, a pool or
   a client constructed inside a dependency is constructed per request.
+- **A dependency with `yield` wraps the `yield` in `try`/`finally`**, so the release runs when the
+  route raises too; and a dependency cached for the life of the app is a lazy singleton — it belongs
+  in the lifespan.
 - **It holds no business logic and reads no settings.** It is the seam between FastAPI and the
   service, three lines at most.
+- **An accessor is `async def`.** A plain `def` dependency runs in the thread pool on every request,
+  and an accessor that only reads `request.state` pays a thread hop for an attribute lookup.
 - **It is named once, as an `Annotated` alias**, so every route states the type it receives and the
   checker sees a real class rather than the result of a call.
 
@@ -75,7 +85,7 @@ def create_app(settings: Settings) -> FastAPI:
     return app
 
 
-def get_order_service(request: Request) -> OrderService:
+async def get_order_service(request: Request) -> OrderService:
     service: OrderService = request.state.order_service
     return service
 
@@ -84,6 +94,11 @@ type OrderServiceDep = Annotated[OrderService, Depends(get_order_service)]
 ```
 
 ## Routers Translate, Services Decide
+
+- **Authentication is declared once, on the router that holds the protected routes** —
+  `APIRouter(dependencies=[Depends(require_user)])` — and the public routes live on a router of
+  their own, which is the allowlist a review reads. A dependency added route by route is forgotten
+  on the one route that mattered.
 
 - **A route parses, calls one service method, and builds the response.** Anything else in its body
   is a service method that has not been written yet. The domain and the services never import
@@ -158,15 +173,38 @@ class OrderService:
         return order
 ```
 
+- **Only an error classified as the client's gets a 4xx and its message.** Everything else —
+  an upstream that failed, a bug — is a 500 with a fixed body, and its detail goes to the log, never
+  to the client: an unclassified message carries hostnames, ids and internals.
+
 ```python
+# WRONG — every unclassified failure becomes a 409 that tells the client what broke inside
 async def _shop_error_response(request: Request, error: Exception) -> JSONResponse:
     is_missing = isinstance(error, LookupError)
-    status_code = status.HTTP_404_NOT_FOUND if is_missing else status.HTTP_409_CONFLICT
+    status_code = HTTPStatus.NOT_FOUND if is_missing else HTTPStatus.CONFLICT
     return JSONResponse({"detail": str(error)}, status_code=status_code)
+
+
+# CORRECT — the classified errors map to a status; the rest re-raise and the server answers 500
+_CLIENT_STATUS_BY_ERROR: Final[Mapping[type[ShopError], HTTPStatus]] = MappingProxyType(
+    {
+        OrderNotFoundError: HTTPStatus.NOT_FOUND,
+        OrderAlreadyShippedError: HTTPStatus.CONFLICT,
+    }
+)
+
+
+async def _shop_error_response(request: Request, error: Exception) -> JSONResponse:
+    for error_type in type(error).__mro__:
+        status_code = _CLIENT_STATUS_BY_ERROR.get(error_type)
+        if status_code is not None:
+            return JSONResponse({"detail": str(error)}, status_code=status_code)
+    raise error
 ```
 
-The handler takes `Exception` because Starlette's signature does; it is registered for the root
-error only, and the stdlib base each domain error inherits (`errors.md`) is what picks the status.
+The handler takes `Exception` because Starlette's signature does, and walks the error's MRO so a
+subclass of a mapped error is mapped too. A handler that recognised its own errors by a
+`status_code` attribute once put any third-party exception's message into the response.
 
 ## `def` and `async def` Routes
 
@@ -217,8 +255,25 @@ def test_get_order_returns_404_for_unknown_order(app: FastAPI) -> None:
     assert response.status_code == HTTPStatus.NOT_FOUND
 ```
 
+- **An async test uses an async client.** The sync `TestClient` runs the app on an event loop of
+  its own, and a connection an async fixture opened on the test's loop fails there. Run the
+  lifespan with `asgi-lifespan`'s `LifespanManager` and send requests through `manager.app`, which
+  carries the lifespan state; `ASGITransport` alone runs no lifespan.
+
+```python
+async def test_get_order_returns_404_for_unknown_order() -> None:
+    app = create_app(_TEST_SETTINGS)
+    async with (
+        LifespanManager(app) as manager,
+        AsyncClient(transport=ASGITransport(app=manager.app), base_url="http://test") as client,
+    ):
+        response = await client.get("/orders/42")
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+```
+
 - **The test root is the factory or `app.dependency_overrides`.** Override the accessor with one
-  returning a service built on in-memory fakes — `app.dependency_overrides[order_service] =
+  returning a service built on in-memory fakes — `app.dependency_overrides[get_order_service] =
   lambda: OrderService(InMemoryOrderRepository())` — never patch a module. When the overrides
   multiply, let `create_app` take the lifespan's builder as a parameter, and pass the fakes'
   builder from the tests.

@@ -30,6 +30,13 @@ means the module holds two things — so **split it** rather than renumber the l
 - **No executable statements at import time** beyond constants, the logger and its kin — tracer,
   meter, a context variable (`python-observability`) — no network, file reads or settings, which
   make imports slow and order-dependent. **`main()` is a function.**
+  ```python
+  # WRONG — importing the module reads the environment, and a test cannot import it without one
+  _settings = Settings()
+  # CORRECT — the entry point builds settings and hands their fields down
+  def main() -> None:
+      run(timeout_seconds=Settings().timeout_seconds)
+  ```
 
 ## Every Top-Level Name Not Used Outside Takes an Underscore
 
@@ -61,7 +68,8 @@ and an ORM. The decision table: `python-packaging`.
   genuine circular import, loading a heavy or optional implementation on demand, and a facade that
   exports implementations whose libraries are separate extras. Each carries the reason on the line.
   Generic "lazy loading" is not one of them — restructure instead.
-- **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`.**
+- **Annotations that would create a cycle or pull a heavy dependency go under `TYPE_CHECKING`** —
+  never one a framework reads at runtime: a pydantic field, a FastAPI parameter (`python-project`).
 - **Never depend transitively on something you import**; every direct dependency is declared, with
   a lower bound. **Never feature-detect with `try: import x`** in application code.
 - **Anything acquired is released by a context manager** — files, locks, sessions, clients; who

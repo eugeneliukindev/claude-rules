@@ -88,17 +88,17 @@ And three properties of the system as a whole:
           continue
       store.update_price(sku, price)
   ```
-- **Cost grows slower than the work.** Nothing unbounded: every external collection has a limit,
-  every fan-out a semaphore, every run a deadline. Stream what can be streamed. "It has always been
-  small" is not a bound.
+- **Cost grows slower than the work.** Every external collection has a limit, every fan-out a
+  semaphore, every run a deadline, every cache an expiry — one without grew per request, never read.
+  "It has always been small" is not a bound.
 - **The next person is you, without the context.** One actor per module; a new case is data or a
   new file, never a new branch in something that already works. Deleting must be as easy as adding.
 
 ## YAGNI, KISS, DRY
 
-- **Build what today's requirement needs.** A speculative feature costs everything that must keep
-  it working; a generalisation built for one case is a guess about the second, and outlives the
-  duplication it prevented. An option nobody sets is a branch never known to work.
+- **Build what today's requirement needs.** A speculative feature costs everything that must keep it
+  working; a generalisation built for one case is a guess about the second. An option nobody sets is
+  a branch never known to work: a test client's flag did nothing for two majors.
 - **The simplest construction that fully solves the problem**, not the shortest: the boring
   mechanism — a function over a class, a dict over a registry — judged at the point of *use*.
 - **DRY is about knowledge, not text.** Identical fragments answering to different actors are not

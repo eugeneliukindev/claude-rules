@@ -28,6 +28,32 @@ the constructor or the function signature.
   alone, and the parameter is a seam for a test or a second root. A default that needs settings
   makes them parameters wasted whenever the collaborator is passed — inject it, built by the root.
   `is None` rather than `or` when a valid value can be falsy — an empty mapping, `0`.
+- **A class closes only what it built.** A resource it created for itself as the default — a
+  client, a worker pool — it closes; one passed in belongs to whoever passed it, and closing it
+  breaks every other user of it. A store that built its own client and never closed it leaked a
+  connection per instance.
+
+```python
+# WRONG — close() also shuts down a pool the caller passed in, and every other user of it
+@final
+class ThumbnailRenderer:
+    def __init__(self, executor: Executor | None = None) -> None:
+        self._executor = executor or ThreadPoolExecutor(max_workers=_MAX_RENDER_WORKERS)
+
+    def close(self) -> None:
+        self._executor.shutdown()
+
+# CORRECT — remembers whether it built the pool, and shuts down only its own
+@final
+class ThumbnailRenderer:
+    def __init__(self, executor: Executor | None = None) -> None:
+        self._owns_executor = executor is None
+        self._executor = executor or ThreadPoolExecutor(max_workers=_MAX_RENDER_WORKERS)
+
+    def close(self) -> None:
+        if self._owns_executor:
+            self._executor.shutdown()
+```
 
 ```python
 # WRONG — the default needs a host, so smtp_host is wasted whenever a notifier is passed
@@ -177,7 +203,9 @@ def managed_lock(locks: LockService, name: str) -> Iterator[Lock]:
   settings object, constructed once at the composition root and **passed in** — never read from the
   environment scattered through the code, never a module-level settings instance imported
   everywhere.
-- **Pass fields, never the configuration root.** A function takes `timeout_seconds: float`, not the
+- **Pass fields, never the configuration root.** Middleware that kept the configuration object it
+  was given changed behaviour when someone edited that object after startup; fields copied at
+  construction cannot. A function takes `timeout_seconds: float`, not the
   object carrying everything the process was configured with. That object is a namespace of
   unrelated groups: the signature stops being a dependency list, the reader has to open the body to
   learn what is actually read, and a test has to build the whole configuration tree to make one

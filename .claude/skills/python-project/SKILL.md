@@ -44,7 +44,8 @@ the defaults that make every rule in these files checkable from the first commit
 - **Every direct dependency is declared with a lower bound and no upper bound** — the version whose
   API the code uses: `pydantic>=2.11`. An upper bound in a library makes it uninstallable beside
   any package that needs the next major, long before anything has broken; an application gets its
-  exact versions from the lock, not from caps.
+  exact versions from the lock, not from caps. A cap below the next minor once silently disabled
+  a feature that existed only from that minor on, for as long as the cap stood.
 
 ```toml
 # WRONG — the cap refuses pydantic 3 before anything breaks; the pin refuses every other release
@@ -136,8 +137,20 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
+  "D",        # a test's name is its specification; a docstring would repeat it
   "INP001",   # tests are collected by pytest, not imported as a package
   "S101",     # assert is how pytest checks
+]
+
+[tool.ruff.lint.flake8-type-checking]
+# pydantic and FastAPI read these annotations at runtime: their imports stay real
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
+runtime-evaluated-decorators = [
+  "fastapi.APIRouter.get",
+  "fastapi.APIRouter.post",
+  "fastapi.APIRouter.put",
+  "fastapi.APIRouter.patch",
+  "fastapi.APIRouter.delete",
 ]
 
 [tool.pytest]
@@ -148,6 +161,15 @@ filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["shop"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "@overload",
+  "assert_never\\(",
+  "raise NotImplementedError",
+]
 ```
 
 Kept the build backend `uv init` wrote above it, the file is complete. What each piece is for:
@@ -159,9 +181,19 @@ Kept the build backend `uv init` wrote above it, the file is complete. What each
   `xfail` and strict parametrization ids together. `filterwarnings = ["error"]` makes a
   deprecation warning fail the run the day it appears, not the day the API is removed.
 - **The mypy codes are the ones `strict` does not enable**; three of them enforce rules
-  `python-types` otherwise only asks for.
+  `python-types` otherwise only asks for. **One type checker**, not mypy and pyright side by side:
+  each wants different suppressions, and a codebase checked by both ends up switching off the
+  check that reports a suppression nobody needs.
+- **`runtime-evaluated-*` keeps ruff's `TC` rules from moving an import under `TYPE_CHECKING`**
+  when pydantic or FastAPI reads the annotation at runtime; without it, the suggested fix breaks
+  the model or the route on import. Add a decorator there for every router method the project
+  uses, and a base class for every model base it defines.
 - **Coverage measures branches** (`testing.md`); the floor (`--cov-fail-under`) is added when there
-  is a suite to hold it, and only ratchets up.
+  is a suite to hold it, and only ratchets up. `exclude_also` drops the lines no test can or should
+  reach — type-checking blocks, overloads, exhaustiveness guards — so the number measures code.
+- **CI installs with `uv sync --locked`**, which fails when `uv.lock` no longer matches
+  `pyproject.toml` instead of quietly re-resolving — the lock the developers tested is the one CI
+  runs.
 - **The import-linter contracts** join this file when the package has a second layer
   (`python-layers`).
 
