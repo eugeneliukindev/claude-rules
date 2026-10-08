@@ -43,7 +43,7 @@ and this file gets a PR. Two things do belong here:
 
 1. An explicit instruction from the person you are working with, for this task.
 2. A rule these files state without qualification.
-3. What `pydantic` or `sqlalchemy` does in the same situation — they have paid for their choices.
+3. How `pydantic` or `sqlalchemy` shape the same thing in their public API — not their internals.
 4. Consistency with the surrounding code of the same package — for a *prefer*, never against (2).
 5. The default (*prefer*) in these files.
 6. Your own judgement — and say so, rather than letting it read as a rule.

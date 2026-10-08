@@ -14,10 +14,9 @@ its mechanics — async tests, property tests, HTTP and container fixtures — a
 
 ## Levels
 
-Most tests are unit tests, fewer are integration tests, and only critical user flows have e2e
-tests — the pyramid keeps the suite fast enough to run on every change. Three levels, and a test
-belongs to exactly one. Where they are kept and how that is signalled — by directory, by marker, by
-naming — is a project decision; that the three exist and stay separated is not.
+Most tests are unit, fewer integration, and only critical user flows e2e — the pyramid keeps the
+suite fast enough to run on every change. A test belongs to one level; how the levels are kept apart
+— directory, marker, naming — is a project decision, that they are is not.
 
 - **Unit** — one function or class in isolation, collaborators replaced by in-memory fakes. Fast
   enough that nobody thinks about running them. Every new function and class gets them.
@@ -99,9 +98,9 @@ def test_total_includes_tax(
   that only repeats the function name.
 - **One behaviour per test.** Several asserts are fine when they verify facets of the same outcome;
   two unrelated behaviours are two tests.
-- **`pytest.raises` always takes `match=`**, a distinctive fragment of the message, and the data
-  the exception carries is asserted too — a bare `pytest.raises(ValueError)` passes on the wrong
-  `ValueError`:
+- **`pytest.raises` takes `match=`**, a distinctive fragment of the message, **or the test compares
+  the whole structured payload** the error carries (`excinfo.value.errors() == [...]`); a bare
+  `pytest.raises(ValueError)` passes on the wrong `ValueError`. The carried data is asserted too:
   `with pytest.raises(OrderNotFoundError, match="order 42") as excinfo: ...` then
   `assert excinfo.value.order_id == OrderId(42)`.
 - **Fixtures are factories, not constants**: a typed `make_order(*, status: OrderStatus =
@@ -116,12 +115,14 @@ def test_total_includes_tax(
   ordering dependencies, and waiting polls with a timeout instead of `sleep()`.
 - Unit tests may use pytest's sandboxes such as `tmp_path`; they never touch the network, real
   time, or global state.
+- **Warnings are errors in the suite** (`filterwarnings = ["error"]`): a deprecation fails the day
+  it appears. A test that expects one asserts it — `pytest.warns(DeprecationWarning, match=...)` —
+  and tests of a deprecated path sit together, so removing the path deletes them in one place.
 
 ## Coverage
 
-- **Branch coverage on** (`--cov-branch`); line coverage alone hides untested `else` arms.
-- **No single magic number.** Domain and services aim at ~100%, adapters mainly through integration
-  tests; generated code, migrations and `__main__` are excluded in configuration, not silently. The
-  floor is enforced (`--cov-fail-under`) and only ever ratchets up.
+- **Branch coverage, no single magic number.** Line coverage hides untested `else` arms. Domain
+  and services aim at ~100%, adapters mainly through integration tests; generated code and
+  migrations are excluded in configuration. The floor (`--cov-fail-under`) only ratchets up.
 - **Coverage detects untested code; it is never a target.** A test that exists to colour lines green
   converts an honest unknown into false confidence, which is worse than the gap it hides.

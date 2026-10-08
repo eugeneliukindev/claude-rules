@@ -280,10 +280,14 @@ def load_settings(path: Path) -> Settings:
   `typing` names that arrived with it: `typing_extensions.override` until 3.12,
   `typing_extensions.TypeIs` until 3.13. A project states its floor once, in `requires-python`, and
   every one of these choices follows from it rather than being argued per file.
+- **PEP 695 type parameters are single capital letters** — `T`, `K`/`V`, `P`/`R` for
+  `ParamSpec`/return. The bound carries the meaning (`[T: BaseModel]`); the letter does not need
+  to, and only a generic with three or more parameters spells them out.
 - **A `TypeVar` is a module-level name, so it is private and suffixed** — `_T`, `_KT`, `_VT`, `_P`,
   `_R`. Where one module declares several and the letters stop telling them apart, the role goes in
-  front of the suffix, never instead of it: `_BackendT`, `_ModelT`. A variance marker goes after
-  it — `_ModelTCo` for the covariant twin — so the two sort together and read as a pair.
+  front of the suffix, never instead of it: `_BackendT`, `_ModelT`. Variance is the PEP 484 suffix
+  after it — `_ModelT_co`, `_ModelT_contra` — which is what ruff's `PLC0105` checks, and the twins
+  sort together.
 - **Bound the parameter when it has requirements.** An unbounded parameter whose body calls methods
   on it is a lie.
 - **Parameters take `Sequence`/`Mapping`, returns are concrete** — that handles variance without

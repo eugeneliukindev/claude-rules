@@ -112,6 +112,10 @@ def find(self, order_id: OrderId) -> Order | None:
 - **Every relationship is loaded explicitly.** Lazy loading is switched off so an N+1 is an error
   at the first test, not a page that quietly runs a hundred queries in production. The query
   states what it loads; design as if an unloaded access always raises.
+- **An integration test pins the number of statements per use case.** Switching lazy loading off
+  does not catch an explicit query inside a loop — a repository call per order is an N+1 the ORM
+  never sees. A count asserted in the test fails the day it grows; how to count is in
+  `python-sqlalchemy`.
 - **Bulk operations are bulk**: one statement per batch, not one per row. Looping single-row
   writes over thousands of rows is a bug, not a style choice.
 - **Pages are keyset, not offset.** `OFFSET 100000` reads and throws away a hundred thousand rows

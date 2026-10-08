@@ -13,11 +13,14 @@ need, a `try` around only those lines, a driver's error translated with `raise �
   {status}"`, not `"Invalid order"`.
 - **Every package defines one root exception, named for the package** — `BillingError(Exception)`
   — and all its own exceptions inherit from it, so callers catch "anything from billing" with one
-  clause. The leaves name the failure without the prefix (`naming.md`), and inherit the closest
-  stdlib type too when the meaning matches: `InvoiceNotFoundError(BillingError, LookupError)`.
-  Exceptions **carry data as attributes**, not only text.
-- **`None` is for `find_…`-style lookups where absent is normal**; a function whose name promises a
-  value raises instead of returning `None`, `False`, `-1` or an empty collection.
+  clause.
+- **A leaf class is earned by a caller who catches it on its own**; until then raise the nearest
+  category with the identifying values. A leaf names the failure without the prefix (`naming.md`)
+  and inherits the closest stdlib type too — `InvoiceNotFoundError(BillingError, LookupError)` —
+  so stdlib code catches it: a missing key from a `Mapping`'s `__getitem__` must be a `KeyError`,
+  or `in` and `.get()` break. Exceptions **carry data as attributes**, not only text.
+- **`None` is for lookups where absence is normal**, and `-> User | None` says so; a signature that
+  promises a value raises instead of returning `None`, `False`, `-1` or an empty list.
 - **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
   the missing case is common.** Never both.
 - **Catch at the level that can handle it** — retry, fall back, convert, report. A layer that can

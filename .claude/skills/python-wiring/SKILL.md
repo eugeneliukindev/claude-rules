@@ -136,7 +136,9 @@ def main() -> None:
 ```
 
 - **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
-  fail, catch and log its failure separately.
+  fail, catch and log its failure separately. A failed two-phase commit once tried to roll back, a
+  state guard refused the rollback, and the guard's error was all the caller ever saw — the
+  database's reason was gone.
 
 ```python
 # WRONG — a failed release replaces the block's own error, and the caller's except misses it

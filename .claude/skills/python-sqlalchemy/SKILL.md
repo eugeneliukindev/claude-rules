@@ -161,6 +161,35 @@ orders = session.scalars(
 
 - Async sessions refuse implicit lazy loads anyway — design as if they always do, and the sync path
   stays correct for free.
+- **Count statements with a `before_cursor_execute` listener** in a fixture, and assert the count
+  per use case (`python-persistence`): `lazy="raise"` stops the implicit N+1, the count stops the
+  explicit one.
+
+```python
+@pytest.fixture
+def statements(engine: Engine) -> Iterator[list[str]]:
+    executed: list[str] = []
+
+    def record(
+        connection: Connection,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        executed.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    yield executed
+    event.remove(engine, "before_cursor_execute", record)
+
+
+def test_order_page_runs_one_statement(orders: OrderRepository, statements: list[str]) -> None:
+    orders.list_page(after_order_id=None)
+
+    assert len(statements) == _ORDER_PAGE_STATEMENTS
+```
 
 ## Engine and Sessions
 
@@ -236,10 +265,9 @@ def add(self, order: Order) -> OrderId:
 ## Writing
 
 - **Bulk insert is `session.execute(insert(Order), rows)`** with a list of dicts. A loop of
-  `session.add()` pays an ORM object, an identity-map entry and change tracking per row, and
-  whether its INSERTs are batched depends on the driver — PostgreSQL drivers batch them, SQLite
-  sends one per row. **A set-based change is one `update(Order).where(...).values(...)`**, never a
-  loop over loaded rows, which reads every row first and then writes each one back.
+  `session.add()` pays an ORM object, an identity-map entry and change tracking per row, and may
+  send one INSERT per row. **A set-based change is one `update(Order).where(...).values(...)`**,
+  never a loop over loaded rows, which reads every row first and then writes each one back.
 
 ```python
 # WRONG — loads every expired order to change one column, then writes each row back

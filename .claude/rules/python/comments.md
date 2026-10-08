@@ -20,22 +20,23 @@ _IDLE_TIMEOUT_SECONDS: Final = 30  # the gateway drops idle connections at 35
 ```
 
 A caption ends in a colon and indexes the lines below. A reason says why *this* value, never what
-the line does. A `TODO` names the condition that removes it, never an owner. A `NOTE` marks a
-coupling code cannot express — make it real first with one shared constant, type or call, and keep
-the prefix for what crosses languages, where it makes the debt greppable. A paragraph is earned only
-by enumerated cases a reader cannot recover from the code, or by a recorded limitation that ends
-honestly: "not supported for now".
+the line does; it may take the lines it needs when it names the failure the code prevents, and a
+ticket link stands beside a reason, never instead of it. A `TODO` names the condition that removes
+it, never an owner. A `NOTE` marks a coupling code cannot express — make it real first with one
+shared constant, type or call, and keep the prefix for what crosses languages, where it makes the
+debt greppable. A paragraph is earned only by enumerated cases a reader cannot recover from the
+code, or by a recorded limitation that ends honestly: "not supported for now".
 
 A legal header is exempt; where a suppression's reason goes is in `core.md`.
 
 Forbidden: commented-out code, restating the code, section banners, author or date stamps, change
-logs, and comments that describe a name instead of fixing it.
+logs — a published docstring's version note is not one — and a name explained instead of fixed.
 
 **A docstring's length follows publication, not complexity.** Where a generator renders it for
-outside readers it is full — summary, parameters, return value, the errors this function's own
-logic raises. Everywhere else it is one line and often absent: one reference library leaves nearly
-half its public names undocumented. It states the contract and stops — `"""Return the shortest
-route between two stops."""`, never `"""Run Dijkstra over the adjacency map."""`
+outside readers it is full — summary, parameters, return value, the errors this function's own logic
+raises. Everywhere else it is one line and often absent: one reference library documents 97% of its
+exported names and 17% of its private functions. It states the contract and stops — `"""Return the
+shortest route between two stops."""`, never `"""Run Dijkstra over the adjacency map."""`
 
 ## Comments and Docstrings Are Local
 

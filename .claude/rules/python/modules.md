@@ -12,7 +12,7 @@ Every module has the same order, so a reader always knows where to look:
 1. Module docstring — one line, always.
 2. `from __future__ import annotations`, when the target version needs it.
 3. Imports.
-4. `__all__` — in `__init__.py` only, and there it is the whole file.
+4. `__all__` — the whole of `__init__.py`; in a package others import, every public module too.
 5. **Module-level constants.**
 6. Type aliases, `NewType`s, type parameters.
 7. Module logger.
@@ -36,7 +36,8 @@ means the module holds two things — so **split it** rather than renumber the l
 Classes, functions, constants and type aliases alike — a settings section only the root holds, a row
 shape only its repository builds, a limit only its function reads: `_RetrySettings`, `_OrderRow`,
 `_MAX_BATCH_ROWS`. Without the prefix the name reads as surface, and the first outside import makes
-it surface for good. A one-off script nobody imports is the exception (`python-scripts`).
+it surface for good — a library still serves an internal builder its facade once exposed, with a
+warning, years later. A one-off script nobody imports is the exception (`python-scripts`).
 **Constants and aliases are the ones missed**: read quietly from a second module, they get two owners.
 
 The test is mechanical — `find_unprefixed_names.py ROOT`, in `python-packaging` — and runs
@@ -45,13 +46,12 @@ route, a command, a fixture) has a caller the search cannot see; the script list
 
 ## Facade, Public Module, Internal Module
 
-Who imports a module decides its name. The **facade** `package/__init__.py` — imports and `__all__`
-only — carries the vocabulary nearly every importer needs, and stays light: `import package` pulls no
-heavy or optional library. A **public module** `package/topic.py`, or a sub-package with its own
-facade, holds what only some importers need, what pulls a heavy library, or what would bloat the
-facade. An **internal module** `package/_topic.py` is for its siblings only; needed outside, it is
-renamed public, never reached into. One public path per name. A facade that re-exported everything
-made a job needing one enum load a browser driver and an ORM. The decision table: `python-packaging`.
+Who imports a module decides its name. The **facade** `__init__.py` — imports and `__all__` only,
+and light: no heavy or optional library — carries the vocabulary nearly every importer needs. A
+**public module** `package/topic.py` holds what only some need or what pulls a heavy library; an
+**internal module** `_topic.py` is for its siblings, renamed public when needed outside, never
+reached into. A facade that re-exported everything made a job needing one enum load a browser driver
+and an ORM. The decision table: `python-packaging`.
 
 ## Imports
 

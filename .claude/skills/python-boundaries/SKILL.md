@@ -70,7 +70,9 @@ with smtplib.SMTP(smtp_host, smtp_port, timeout=_SMTP_TIMEOUT_SECONDS) as smtp:
   broker disconnects. **Never retry** business rejections, validation errors or auth failures —
   retrying a conflict is a loop, not resilience.
 - **The adapter translates upstream errors into a transient and a permanent error type first**;
-  the retry policy then keys on the type, not on status-code checks scattered around.
+  the retry policy then keys on the type, not on status-code checks scattered around. A pool that
+  let the event loop's own timeout escape untranslated broke every caller that caught the
+  library's timeout error — the one it documented.
 
 ```python
 # WRONG — one error type for every status, so the retry policy retries a 409 like a 503
@@ -190,6 +192,11 @@ def to_payload(event: OrderPlaced) -> dict[str, object]:
 
 A file is a boundary too: another process reads it, possibly while it is being written, possibly
 on a machine with another locale.
+
+- **`pathlib` by default; `os` where `pathlib` has no answer**, and only there: permission probing
+  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors, `os.replace`
+  below. There is no `Path.can_write()`, and the linter that rewrites `os.path` into `Path` says
+  nothing about these.
 
 - **A file someone else reads is replaced, never rewritten in place.** Write a temporary file in
   the same directory, flush it to disk, and `os.replace` it over the target: a reader sees the old

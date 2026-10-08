@@ -29,18 +29,15 @@ kind, then see whether the names share a shape. The shapes worth copying:
 - **Namespace prefix** — `model_validate`, `model_dump`, `model_copy`, `model_json_schema`: every
   method of `BaseModel` is prefixed so a user's own field named `dump` can never collide.
 - **Scope pair** — `field_validator` / `model_validator`: same job, two scopes, one suffix apart.
-- **Input kind** — `validate_python`, `validate_json`, `validate_strings`: one verb, the suffix
-  names what is accepted.
-- **Position** — `BeforeValidator`, `AfterValidator`, `WrapValidator`: the adjective is the only
-  variable.
-- **Derive a copy** — `with_only_columns`, `with_hint`, `with_for_update`: `with_` returns a new
-  object that also carries X.
+- **Derive a copy** — `with_only_columns`, `with_for_update`, `Path.with_suffix`: `with_` returns a
+  copy with X set or replaced.
 - **Plurality** — `scalar` / `scalars`: singular returns one, plural returns many.
 - **Opposites are symmetrical** — `open`/`close`, `add`/`remove`, `get_label_style` /
   `set_label_style`, `correlate` / `correlate_except`: one part differs, the rest reads the same.
 
 A codebase with twelve `duration_in(text)`-shaped names and three `find_duration`-shaped ones has
-one concept and two vocabularies. Rename the three.
+one concept and two vocabularies. Rename the three now: a library that waited renamed thirteen —
+`isnot` to `is_not`, `notin_` to `not_in` — and still carries every old name as an alias.
 
 ## Functions and Methods
 
@@ -48,8 +45,8 @@ one concept and two vocabularies. Rename the three.
   function does two things — split it.
 - **Commands are verbs; pure queries may be nouns; participles are banned.** A function that *does*
   something starts with a verb: `normalize_profile`, `send_invoice`. A side-effect-free query may
-  be named after **what it returns** — `pydantic`'s `version_short()`, `sqlalchemy`'s
-  `selected_columns`; a noun promises purity as reliably as a verb promises action. **Never a past
+  be named after **what it returns** — `sqlalchemy`'s `Select.subquery()`, the stdlib's
+  `math.hypot()`; a noun promises no side effect the way a verb promises one. **Never a past
   participle**: `matched(posting)`, `collapsed(text)`, `grouped(rows)` — the reader cannot tell a
   predicate from a builder. Write the one you mean: `is_matched` or `match_posting`. This is about
   **callables only**: a type alias or a variable may be a participle, because neither can be
@@ -57,9 +54,11 @@ one concept and two vocabularies. Rename the three.
 - **The verb names the outcome, not the machinery.** `find_shortest_route`, not `run_dijkstra`.
   Implementation changes, intent does not.
 - **A generic verb is a design signal, not a naming problem.** `process`, `handle`, `manage`, `do`
-  say nothing because the unit does not know what it is for. Neither library has a public
-  `process_*`, `handle_*` or `manage_*`. When the only honest verb is generic, fix the
-  responsibility and the name follows.
+  say nothing because the unit does not know what it is for. When the only honest verb is generic,
+  fix the responsibility and the name follows.
+- **A hook is named for the event it receives** — a listener, a callback, anything the framework
+  calls rather than you: `before_request`, `after_response`, `on_startup`. An override keeps the
+  framework's name, generic verb or not: a transport's `handle_request`.
 - **Shortest name that stays unambiguous in context.** Drop what the module, class or parameters
   already convey: `Order.total`, not `Order.order_total`; `Session.commit()`, not
   `commit_session()`. **The signature completes the sentence**: `find_user(email)`, not
@@ -70,9 +69,10 @@ one concept and two vocabularies. Rename the three.
 - **Distinguish query from command.** `get_`/`find_`/`compute_`/`is_` are side-effect free;
   `save_`, `update_`, `delete_`, `send_`, `publish_` announce a side effect. Never hide a write
   behind a `get_`.
-- **Encode cost and failure mode.** `fetch_`/`load_` imply I/O; `get_` a cheap local lookup;
-  `compute_` CPU work. `find_x` returns `None` when missing, `get_x` raises — used consistently
-  across the whole codebase.
+- **The verb encodes cost, the return type the failure mode.** `fetch_`/`load_` imply I/O; `get_`
+  a cheap local lookup; `compute_` CPU work. Absence that is normal is `-> User | None`, which the
+  checker makes every caller handle; absence that is a bug raises behind `-> User`. A prefix scheme
+  repeating what the annotation already states is a second source of truth, and drifts.
 - **Conversions read as `to_` / `from_` / `as_`**; classmethod constructors are `from_…`.
 - **Async functions are not renamed** — `async def` is visible and the checker enforces `await`.
 - **Private helpers are still full names**: `_normalize_header`, not `_helper` / `_impl`.
@@ -124,20 +124,21 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
 - **Name the responsibility.** A suffix earns its place when it names a real role —
   `AliasGenerator`, `Session`, `Connection`, `MetaData`. A suffix that names nothing does not help:
   `UserManager` says less than `UserRegistration`, `UserDirectory` or `SessionStore`.
-- **A family shares the noun and varies the qualifier.** `pydantic`'s URL types are the model:
-  `AnyUrl`, `HttpUrl`, `FileUrl`, `FtpUrl` — one noun, one axis of variation.
+- **A family shares the noun and varies the qualifier.** The stdlib's `ipaddress` is the model:
+  `IPv4Address`, `IPv6Address`, `IPv4Network`, `IPv6Network` — the noun names the concept, the
+  qualifier the one axis that varies.
 - **A contract is named after the capability, without a prefix.** A contract base class — or, at a
   foreign boundary, a `Protocol` — is an agent noun or an "-able" adjective and nothing more:
   `Notifier`, `UserRepository`, `Comparable`. Never a mechanism suffix (`…Protocol`, `…Interface`,
   `…ABC`). The implementations carry the qualifier: `EmailNotifier`, `PostgresUserRepository`.
   Stdlib ABCs keep their stdlib names, and are never wrapped just to rename them.
   **The carve-out is a published extension point**: a shape a third party implements in their own
-  code — `PydanticPluginProtocol` — where the mechanism is part of what the outsider must know,
-  because it says "satisfy this, do not inherit it". Inside your own tree that distinction is
-  already visible in the class line, and the suffix is noise.
+  code — `PydanticPluginProtocol` — where the name is read in someone else's codebase, without the
+  class line beside it. Inside your own tree the class line shows the mechanism, and the suffix is
+  noise.
 - **`Base` means "inherit me", never "implement me".** The prefix is earned by a class that carries
   shared *implementation* down to its subclasses: fields, defaults, ready methods — that is what it
-  means everywhere in the ecosystem, from `pydantic.BaseModel` to `sqlalchemy.DeclarativeBase`. A
+  means everywhere in the ecosystem, from `pydantic.BaseModel` to `BaseHTTPRequestHandler`. A
   contract has nothing to hand down, so it has no `Base` to earn. The test is mechanical: delete
   the base and see what the subclasses lose. Lose fields or working methods — it is a `Base`. Lose
   only a promise the checker was already making — it is a contract, named for the capability.
@@ -160,13 +161,11 @@ def match_order(order: Order) -> MatchedFields: ...     # a verb, not a particip
 - **Methods drop the class name**: `Order.total()`. **Properties are nouns, methods are verbs** — a
   property that does I/O or heavy computation is a bug; make it a `fetch_…` / `compute_…` method.
 - **Type aliases name the domain meaning**: `type Headers = dict[str, str]`. A structural type
-  describing someone else's shape takes `-Like`: `PathLike`, `_TypeVarLike`. A kind suffix carries
-  the distinction between related aliases — `Color` is the class, `ColorTuple` the shape,
-  `ColorType` the set of accepted inputs. Prefer `NewType` over a bare alias when two values share
+  describing someone else's shape takes `-Like`: `os.PathLike`. A kind suffix carries the
+  distinction between related aliases — `Color` is the class, `ColorTuple` the shape, `ColorInput`
+  the set of accepted inputs. Prefer `NewType` over a bare alias when two values share
   a runtime type but must not be confused.
-- **Type parameters are single capital letters** — `T`, `K`/`V`, `P`/`R` for `ParamSpec`/return;
-  the bound carries the meaning (`[T: BaseModel]`), and only a generic with three or more spells
-  them out. Below 3.12 a `TypeVar` is private and suffixed — `_T`, `_BackendT` (`python-types`).
+- **Type parameters and `TypeVar`s** are named in `python-types`: `T`, and `_T` below 3.12.
 
 ```python
 # WRONG — Base on a contract, the mechanism as the name, a suffix that names nothing, plural enum

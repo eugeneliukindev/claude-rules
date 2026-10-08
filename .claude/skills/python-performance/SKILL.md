@@ -47,8 +47,11 @@ everything here does.
 
 - **`slots=True` is the `types.md` default**, and a hand-written class with fixed attributes gets
   `__slots__` for the same reasons: less memory per instance and faster attribute access. Skip it
-  only for classes needing dynamic attributes, multiple inheritance from slotted bases, framework
-  classes that require `__dict__`, and `cached_property` users.
+  only for classes needing dynamic attributes, framework classes that require `__dict__`, and
+  `cached_property` users. Multiple inheritance works when at most one base has non-empty slots —
+  a mixin declares `__slots__ = ()` — and **every** base must declare them: one utility base
+  without `__slots__` once gave every class below it a `__dict__` back, silently. `slotscheck` in
+  the lint step finds both.
 - **Caching is a contract, not a sprinkle.** Memoize only **pure** functions of hashable arguments,
   with an explicit bound — an unbounded cache is a leak. **Never on methods**: the cache keeps the
   instance alive and grows per instance; cache a module-level function, or use a cached property
@@ -85,4 +88,21 @@ everything here does.
 - **Concurrency follows the workload**, and is measured before assuming parallelism helps — pool
   and pickling overhead is real.
 - **Performance-sensitive paths are marked and tested** with a stated budget, so a regression fails
-  a check instead of arriving as an incident.
+  a check instead of arriving as an incident. **The budget is in a unit that does not vary** —
+  statements per request, calls to the expensive operation, allocations — never wall time, which
+  is noise on a shared runner and blind to a regression smaller than the noise.
+
+```python
+# WRONG — flaky on a shared runner, and a page that doubles its queries still passes
+def test_order_page_is_fast(client: TestClient) -> None:
+    started_seconds = time.perf_counter()
+    client.get("/orders")
+
+    assert time.perf_counter() - started_seconds < _ORDER_PAGE_BUDGET_SECONDS
+
+# CORRECT — the same budget in statements, counted by a fixture (python-sqlalchemy)
+def test_order_page_is_fast(client: TestClient, statements: list[str]) -> None:
+    client.get("/orders")
+
+    assert len(statements) <= _ORDER_PAGE_STATEMENTS
+```

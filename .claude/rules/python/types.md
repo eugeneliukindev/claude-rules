@@ -20,7 +20,8 @@ The decisions behind these are in the `python-types` skill; these apply everywhe
   `Transfer(recipient_id, sender_id, amount)` type-checks and moves the money backwards. Positional
   construction survives only where the order is the concept — `Point(x, y)`, `Range(low, high)`.
   Drop `frozen` only for a genuine aggregate root that must change over time, and say so in its
-  name — `Cart`, `Session`; derive copies with `dataclasses.replace()`.
+  name — `Cart`, `Session`; derive copies with `dataclasses.replace()`. A mutable connection URL let
+  callers leak changes into each other's connections; making it immutable broke every one of them.
 - **`@override` on every overriding method**; `@final` on classes not designed for subclassing;
   `-> Never` on functions that always raise. **`Final` on module- and class-level constants** —
   worth the annotation because the checker then rejects reassignment and infers the literal type;
@@ -28,9 +29,7 @@ The decisions behind these are in the `python-types` skill; these apply everywhe
 - **`tuple` over `list` for fixed sequences**, `frozenset` over `set`, `MappingProxyType` to expose
   a dict read-only. **Never mutate arguments** — a function that does is named for it and annotated
   `MutableSequence`; everything else copies and returns. **Never return internal mutable state**
-  from a getter.
+  from a getter: field descriptors handed out that way were mutated and reused by callers, and the
+  library had to keep supporting it.
 - **A string that is user-facing or used twice is a constant** or an `Enum` member. The linter
   catches the magic *number*; a repeated literal string it will not.
-- **`os` is correct where `pathlib` has no answer**, and only there: permission probing
-  (`os.access`), process state (`os.getcwd`, `os.environ`), raw file descriptors — there is no
-  `Path.can_write()`, and the linter that rewrites `os.path` into `Path` says nothing about these.

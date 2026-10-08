@@ -63,7 +63,7 @@ returned last.
 - **The branch does not pick the return type.** `str` on one path and `list[str]` on another
   forces every caller to re-discover which it got. A union is fine when it is a **named closed
   type** — `type PaymentOutcome = Captured | Declined`, matched exhaustively — never an accident of
-  which branch ran. `None` is legitimate only for `find_…`-style lookups and procedures.
+  which branch ran. `None` is legitimate only for lookups where absence is normal, and procedures.
 - **Parameters are ordered subject, required inputs, optional configuration**; injected
   dependencies come first — they are the function's environment.
 - **Do not reach outside.** A function uses only its parameters and module-level constants: no

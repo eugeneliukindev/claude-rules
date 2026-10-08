@@ -40,7 +40,8 @@ without opening the facade; a contract is how a tool enforces it.
 | internal module `package/_topic.py` | only by modules inside `package` | it is an implementation detail; nothing outside `package` imports it |
 
 - **One public path per name.** A name is in the facade or in a public module, never both: two
-  spellings of one import drift apart, and grepping for users finds half of them.
+  spellings of one import drift apart, and grepping for users finds half of them. The one
+  exception is the two-path shape under The Flat Public Facade, and it holds only with its test.
 - **A sub-package replaces a module when the topic grows its own internals.** Its `__init__.py` is
   a facade by the same three rules, recursively.
 - **An internal module is never imported from outside.** When outside code needs it, it becomes a
@@ -108,7 +109,7 @@ whose uses should not count, such as tests when the question is what production 
 
 ## The Flat Public Facade
 
-How the standard library, `pydantic` and `attrs` are built:
+How `httpx` and `attrs` are built:
 
 - Implementation lives in private modules: `_client.py`, `_models.py`, `_transport.py`.
 - `__init__.py` imports the public names from them and lists exactly those in `__all__`.
@@ -116,6 +117,11 @@ How the standard library, `pydantic` and `attrs` are built:
   Deep paths are unsupported by construction.
 - Internal code imports from the private modules directly — never through the package's own
   `__init__`, which would create a cycle and make module load order significant.
+
+The other shape is `pydantic`'s and `sqlalchemy`'s: implementation in **public** modules, each with
+its own `__all__`, and a facade re-exporting them — two paths to each name, on purpose. It holds
+only with a test that every module's `__all__` is contained in the facade's, so the two cannot
+drift. Pick one shape per package.
 
 ```python
 # acme_core/__init__.py — the whole public surface, and nothing else
@@ -134,8 +140,10 @@ __all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
 - **Sort it, or group it — and the choice follows the length.** Up to a screenful, alphabetical:
   a reader checks membership by scanning. Past that, sorting scatters related names across a
   hundred lines, and grouping under topic comments (`# validators`, `# serializers`) is what a
-  reader actually navigates. `pydantic` exports 151 names grouped under 21 comments, and keeps its
-  lazy-import table in the same order so the two can be diffed by eye.
+  reader actually navigates. `pydantic` exports 151 names grouped under 21 comments.
+- **`from ._models import Order as Order` is the other way to declare a re-export** — PEP 484's
+  explicit form, which the type checker honours without an `__all__`. One form per package, so a
+  reader knows where the surface is written.
 - **A name is either in `__all__` or private.** There is no third state: a public-looking name that
   is not exported is a promise nobody made and everybody will rely on.
 - **A private name is never imported across a package boundary.** If another package needs it, it is
@@ -145,6 +153,8 @@ __all__ = ["Order", "OrderId", "User", "UserId", "UserRepository"]
   of the public surface, not an accident.
 - **`py.typed` ships with every typed package**, or consumers get `Any` for the whole API.
 - **A test asserts that `__all__` matches the intended surface**, so an accidental export fails.
+  A second imports the facade in a fresh subprocess and asserts the heavy modules are absent from
+  `sys.modules` — the checkable form of "the facade stays light", which prose alone did not keep.
 
 ### What May Live in `__init__.py`
 
@@ -188,13 +198,20 @@ def __getattr__(name: str) -> object:
         module_name = _LAZY[name]
     except KeyError:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
-    return getattr(import_module(module_name, __name__), name)
+    value = getattr(import_module(module_name, __name__), name)
+    globals()[name] = value  # the next access is a plain attribute, not this function
+    return value
+
+
+def __dir__() -> list[str]:
+    return list(__all__)
 ```
 
 The checker reads the `TYPE_CHECKING` block and sees full signatures; the interpreter reads the
-table and imports nothing until asked. **Every list must name the same names**, so keep them in
-the same order and in the same groups — the only real cost of the pattern is that they can drift,
-and side-by-side ordering is what makes the drift visible in a diff. An unknown name raises
+table and imports nothing until asked. **Every list must name the same names**, and a test
+asserts it — the only real cost of the pattern is that they drift, and in the library this shape
+comes from the three lists already disagree in order and by four names. `__dir__` returning
+`__all__` keeps completion and `dir()` honest. An unknown name raises
 `AttributeError`, never the table's `KeyError`: `hasattr`, `getattr` with a default and
 `from yourpackage import submodule` all expect the former, and crash on the latter.
 
@@ -232,10 +249,20 @@ below. Keep the surface as small as viable — every exported name is a promise.
 - **Semantic versioning semantics**: breaking change → major; new capability → minor; fix → patch.
   "Breaking" includes removing or renaming an exported name, tightening accepted types, loosening
   returned types, changing defaults, reordering positional parameters, and raising a new exception
-  type from an existing flow.
+  type from an existing flow. A library that began deep-copying fields by default reverted it in
+  the next patch; another downgraded a new error to a deprecation warning in a patch release.
 - **Deprecate, then remove — never surprise.** Emit a deprecation warning *and* mark the name so
-  type checkers and IDEs surface it; state the replacement and the removal version in the message;
-  keep the old path working for at least one minor release; remove only in a major.
+  type checkers and IDEs surface it; state the replacement, the version it was deprecated in, and
+  the removal version once one is scheduled; keep the old path working for at least one minor
+  release; remove only in a major.
+- **The mechanics:** `@deprecated(message)` (PEP 702, `warnings` from 3.13, `typing_extensions`
+  before) so the checker flags every use; the warning is the package's own `DeprecationWarning`
+  subclass, so callers can filter it apart from everyone else's; and it is attributed to the
+  caller's line — `stacklevel=2`, or `skip_file_prefixes=` (3.12+) when the call passes through
+  several frames of the package — because Python shows a `DeprecationWarning` by default only when
+  it points into `__main__`.
+- **A removed module leaves a tombstone**: a stub that raises `ImportError` naming the replacement,
+  instead of the bare `ModuleNotFoundError` that tells the caller nothing.
 - **Design for extension without breakage**: keyword-only parameters can be added freely — another
   reason for `*` in signatures. Returned objects grow fields, so callers must not destructure
   exhaustively.
