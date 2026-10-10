@@ -6,13 +6,17 @@ description: >-
   objects at the repository boundary, N+1 treated as an error, keyset pagination instead of offset,
   optimistic locking with a version column. Use when deciding where a transaction begins and ends,
   designing a repository, paginating a query or guarding against lost updates, whatever the ORM;
-  the SQLAlchemy API is in python-sqlalchemy, schema changes in python-migrations.
+  the SQLAlchemy API is in python-sqlalchemy, the asyncpg API in python-asyncpg, schema changes in
+  python-migrations.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Persistence
 
 These rules hold for any ORM or query builder. How to spell them in SQLAlchemy is in
-`python-sqlalchemy`; schema changes are `python-migrations`.
+`python-sqlalchemy`, in raw asyncpg in `python-asyncpg`; schema changes are `python-migrations`.
 
 ## Transactions and Unit of Work
 
@@ -43,7 +47,8 @@ def place_order(self, command: PlaceOrder) -> OrderId:
 - **Nothing slow or irreversible inside a transaction**: no HTTP calls, no message publishing, no
   mail while holding it. A slow call holds row locks for its whole duration, and a rollback cannot
   unsend an email. Side effects run after commit; if they must be atomic with the data, write an
-  outbox row in the same transaction and publish separately.
+  outbox row in the same transaction and publish separately; the consuming side is
+  `python-workers`.
 
 ```python
 # WRONG — the mail server's latency holds row locks, and a rollback cannot unsend the email
@@ -115,7 +120,8 @@ def find(self, order_id: OrderId) -> Order | None:
 - **An integration test pins the number of statements per use case.** Switching lazy loading off
   does not catch an explicit query inside a loop — a repository call per order is an N+1 the ORM
   never sees. A count asserted in the test fails the day it grows; how to count is in
-  `python-sqlalchemy`.
+  `python-sqlalchemy`. In GraphQL the client chooses the nesting, so every field that loads by key
+  goes through a DataLoader built per request (`python-strawberry`).
 - **Bulk operations are bulk**: one statement per batch, not one per row. Looping single-row
   writes over thousands of rows is a bug, not a style choice.
 - **Pages are keyset, not offset.** `OFFSET 100000` reads and throws away a hundred thousand rows

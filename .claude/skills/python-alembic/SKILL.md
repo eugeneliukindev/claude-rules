@@ -7,13 +7,18 @@ description: >-
   check for drift in CI, and exercising the chain up and back down. Use when Python code imports
   alembic, writes a revision under migrations/versions, or runs alembic revision --autogenerate;
   what a migration may contain is in python-migrations.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
+  - "**/alembic.ini"
 ---
 
 # alembic
 
-What a migration may and may not do — one change per revision, a working downgrade, no backfill in a
-schema revision, expand before contract — is in `python-migrations`; this file is how alembic spells
-it. The models it diffs against are `python-sqlalchemy`.
+Make one change per revision, with a working downgrade, no backfill in a schema revision, expand
+before contract, and run `alembic upgrade` once per deploy as a step of its own, never at application
+start (why and how: `python-migrations`); this file is how alembic spells it. The models it diffs
+against are `python-sqlalchemy`.
 
 - **Autogenerate misses** table and column renames (it emits a drop plus an add), anonymously
   named constraints, and server-default changes unless `compare_server_default=True`. Give the

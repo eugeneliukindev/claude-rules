@@ -7,6 +7,9 @@ description: >-
   parameter types; and the mypy error codes that enforce them. Use when choosing a representation
   for a Python value, designing a generic class or function, narrowing an unknown value, replacing
   a dict[str, Any], picking a collections.abc type, or deciding what to put in an annotation.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Types — Reference
@@ -108,7 +111,9 @@ def apply_discount(price: Money, rate: DiscountRate) -> Money:
 every domain class that is not a dataclass: unambiguous, identifying fields, no secrets. `__eq__`
 and `__hash__` come together or not at all — value objects get both from `@dataclass(frozen=True)`;
 entities compare by identity and say so. A container protocol is implemented by subclassing the
-matching `collections.abc` ABC, not by hand-writing every dunder.
+matching `collections.abc` ABC, not by hand-writing every dunder. The class-creation hooks —
+`__init_subclass__`, `__set_name__`, `__class_getitem__`, a metaclass — and typing them with
+`ClassVar` and `dataclass_transform` are in `python-metaclasses`.
 
 ## `TypedDict`
 
@@ -322,7 +327,7 @@ def render(notification: Notification) -> str:
     elif isinstance(notification, SmsNotification): ...
     raise NotImplementedError(type(notification).__name__)
 
-# CORRECT — each kind registers its own renderer, next to wherever that kind is defined
+# CORRECT — each kind gets its own renderer, registered beside the generic function
 @singledispatch
 def render(notification: Notification) -> str:
     raise NotImplementedError(type(notification).__name__)

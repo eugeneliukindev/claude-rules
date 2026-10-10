@@ -6,6 +6,9 @@ description: >-
   as a config object, constants versus configuration, cohesive parameter objects. Use when writing a
   Python entry point or application factory, deciding where an object is built, adding a settings
   field or a module constant, or removing a global singleton.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Wiring: Composition Root, Configuration
@@ -83,7 +86,11 @@ class InvoiceService:
   container is hidden global state: import-time side effects, un-fakeable tests, ordering bugs. The
   only module-level objects are constants and the logger — and its kin, the tracer, the meter
   with its instruments and a context variable, which record nothing until the entry point
-  configures them (`python-observability`).
+  configures them (`python-observability`). The Celery or taskiq app object that tasks are
+  decorated with is a declaration too, and stays module-level while it opens nothing; its pools
+  and clients are built in the worker's startup hook (`python-workers`). So is a decorator
+  library's cache object, such as a cashews `Cache`, which connects only when the root calls
+  `setup()` (`python-cashews`).
 - **Scopes are explicit**: application-scoped objects built once in the root; request-scoped
   objects built per request by an explicitly passed factory.
 - **Tests get their own root**: a helper that builds the object graph with in-memory fakes and a

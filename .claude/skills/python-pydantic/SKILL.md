@@ -7,6 +7,9 @@ description: >-
   stay pure, serialization and exclude_unset as contract decisions, TypeAdapter built once,
   discriminated unions, and BaseSettings validated at startup. Use when Python code imports
   pydantic, defines a BaseModel or BaseSettings, or validates an external payload.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # pydantic
@@ -20,8 +23,10 @@ Assumes v2.11 or later; everything below is checked against the 2.13 source.
 - **Not in the domain.** Domain entities are frozen dataclasses; domain code never imports pydantic.
   A model that has stopped validating anything and is only carrying fields around should have been a
   dataclass — it is paying validation cost on every construction for nothing.
-- Validating once at the edge, strictness, and the explicit mapping into domain objects are
-  `python-boundaries` rules; what follows is how pydantic spells them.
+- Validate once, strictly, at the edge, and map into a frozen domain object through an explicit
+  `to_domain()` / `from_domain()` (why: `python-boundaries`); what follows is how pydantic spells it.
+- strawberry's experimental pydantic integration — a boundary model reused as a GraphQL input — is
+  `python-strawberry`.
 
 ## The v2 API — the v1 Names Are Deprecated
 
@@ -47,6 +52,9 @@ collide with a field name is a bug waiting for the field to be added.
 - **`model_config = ConfigDict(...)`**, not the v1 inner `class Config`.
 - **Strict boundary models**: `strict=True` stops `"1"` becoming `1`; `extra="forbid"` stops
   unknown fields being dropped in silence; `frozen=True` makes the parsed object safe to pass on.
+  Two kinds of model take `extra="ignore"` instead: a stored or queued payload, read by code older
+  or newer than its writer (`python-boundaries`), and the claims of a token, whose set the identity
+  provider owns (`python-auth`).
 
 ```python
 # WRONG — lax defaults: "3" becomes 3, and an unknown field is dropped in silence
@@ -74,6 +82,29 @@ class OrderLine(BoundaryModel):
 event = Event.model_validate(json.loads(body))
 # CORRECT — JSON mode: strict, and the wire formats of datetime and UUID still parse
 event = Event.model_validate_json(body)
+```
+
+- **A framework that validates the dict it decoded itself is in Python mode too**, and strict
+  answers every valid ISO-8601 or UUID string with a validation error — measured on FastAPI 0.143,
+  a request body model with `strict=True` turned a correct payload into a 422. Where the raw bytes
+  are at hand, validate them — FastStream's message body (`python-faststream`). Where they are not
+  — a FastAPI body, which also feeds the OpenAPI schema — relax exactly the fields whose wire form
+  is a string, once, and keep the model strict:
+
+```python
+# WRONG — a FastAPI body on the strict base: every valid deliver_after is a 422
+@final
+class PlaceOrderRequest(BoundaryModel):
+    deliver_after: datetime
+    quantity: int
+
+# CORRECT — the string wire forms are lax by name; quantity="3" is still refused
+type WireDatetime = Annotated[datetime, Field(strict=False)]
+
+@final
+class PlaceOrderRequest(BoundaryModel):
+    deliver_after: WireDatetime
+    quantity: int
 ```
 
 - **`validate_by_name=True`** when an alias generator is in play, so both wire and Python names

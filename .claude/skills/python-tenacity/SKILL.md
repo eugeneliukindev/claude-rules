@@ -6,12 +6,16 @@ description: >-
   the backoff instead of the one-second default, before_sleep_log for visibility, and testing a
   policy through retry_with(wait=wait_none()). Use when Python code imports tenacity or applies the
   @retry decorator.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # tenacity
 
-Checked against tenacity 9.2. Where retries belong, what may be retried and how budgets nest is
-in `python-boundaries`; this skill is how to write the policy once that is decided.
+Checked against tenacity 9.2. Retry only transient failures, at one level — the adapter — within
+a total deadline the outermost boundary owns (why and how: `python-boundaries`); this skill is how
+to write the policy once that is decided.
 
 ## The Shape of a Retry Policy
 
@@ -64,8 +68,13 @@ policy nobody can reason about during an incident.
 
 ## What Not to Retry
 
-Business rejections, non-idempotent writes without a key, and a second level of retries — the rules
-and their carve-out are in `python-boundaries`.
+Never retry a business rejection, a non-idempotent write without a key, or a call a lower level
+already retries; the one carve-out is a deadlock or serialization failure, which retries the whole
+unit of work (why: `python-boundaries`). Inside a worker, tenacity and the broker's redelivery never
+both retry one failure: a backoff that fits inside the handler's deadline is tenacity's, a longer
+wait is the broker's (why: `python-workers`). A gRPC call whose
+channel retries it through a service-config `retryPolicy` gets no tenacity around it
+(`python-grpc`).
 
 ## Observability
 

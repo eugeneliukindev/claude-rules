@@ -8,6 +8,9 @@ description: >-
   layering and markers. Use when Python test code imports pytest, pytest_asyncio, hypothesis,
   pytest_httpserver, respx or testcontainers, writes an async test or fixture, edits conftest.py,
   or sets up or judges coverage.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # pytest
@@ -65,7 +68,10 @@ async def test_order_is_saved_and_read_back(engine: AsyncEngine) -> None: ...
 - **Several tests sharing a loop** take `pytestmark = pytest.mark.asyncio(loop_scope="module")` at
   the top of the module, rather than the marker on each.
 - **An ASGI app in an async test goes through an async client**, never the sync `TestClient`, which
-  runs the app on a loop of its own — the client and the lifespan wiring are in `python-fastapi`.
+  runs the app on a loop of its own; run the lifespan with `LifespanManager` and send through
+  `ASGITransport(app=manager.app)`, since `ASGITransport` alone runs none (how: `python-fastapi`).
+  Both collect the whole body before returning, so a streaming endpoint is tested with a stream
+  that ends (`python-streaming`).
 
 ## Property-Based Tests With `hypothesis`
 
@@ -152,7 +158,12 @@ def test_fetch_order_translates_missing_order(httpserver: HTTPServer) -> None:
 
 - **`testcontainers` starts the real database for the integration level**, from the image
   production runs: `from testcontainers.community.postgres import PostgresContainer` in 4.x — the
-  top-level `testcontainers.postgres` is deprecated.
+  top-level `testcontainers.postgres` is deprecated. The same holds for a broker:
+  `testcontainers.community.rabbitmq.RabbitMqContainer`, not `testcontainers.rabbitmq`
+  (`python-faststream`).
+- **`get_connection_url()` returns a `postgresql+psycopg2://` URL** unless told otherwise:
+  `driver=None` for a plain URL that asyncpg accepts (`python-asyncpg`), `driver="asyncpg"` for
+  SQLAlchemy's async engine.
 - **One container per session, one transaction or one schema reset per test.** Starting a
   container costs seconds; a test that leaves rows behind makes the next one order-dependent, which
   `pytest-randomly` will find.

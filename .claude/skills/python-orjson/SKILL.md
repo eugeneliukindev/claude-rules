@@ -5,6 +5,9 @@ description: >-
   non-string keys and sorted output, the default= escape hatch that must raise TypeError on
   anything it does not know, and the boundary rules serialization still follows. Use when Python
   code imports orjson or serializes a payload with it.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # orjson

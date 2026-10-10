@@ -7,6 +7,9 @@ description: >-
   handling of time, money and identifiers. Use when Python code talks to HTTP, a queue, a cache, a
   database or a file, writes a file another process reads, or works with datetimes, Decimal money,
   UUIDs or any value crossing the process boundary.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Boundaries
@@ -68,7 +71,8 @@ with smtplib.SMTP(smtp_host, smtp_port, timeout=_SMTP_TIMEOUT_SECONDS) as smtp:
 
 - **Retry only transient failures**: connect and read timeouts, rate limits, server errors,
   broker disconnects. **Never retry** business rejections, validation errors or auth failures —
-  retrying a conflict is a loop, not resilience.
+  retrying a conflict is a loop, not resilience. A cache read is not retried even when the failure
+  is transient: the source is its fallback (`python-caching`).
 - **The adapter translates upstream errors into a transient and a permanent error type first**;
   the retry policy then keys on the type, not on status-code checks scattered around. A pool that
   let the event loop's own timeout escape untranslated broke every caller that caught the
@@ -117,7 +121,8 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
 ```
 
 - **Consumers are idempotent**: at-least-once delivery means every handler must tolerate the same
-  message twice.
+  message twice. The id that makes it so is the event's own, carried in the payload — never the
+  broker's; how a consumer achieves it is in `python-workers`.
 
 ```python
 # WRONG — a redelivered message credits the account a second time
@@ -125,19 +130,20 @@ def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
     with unit_of_work:
         unit_of_work.accounts.credit(message.account_id, message.amount)
 
-# CORRECT — the message id is recorded in the same transaction, and a repeat is skipped
+# CORRECT — the event id is recorded in the same transaction, and a repeat is skipped
 def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
     with unit_of_work:
-        if unit_of_work.processed_messages.contains(message.message_id):
+        if unit_of_work.processed_events.contains(message.event_id):
             return
         unit_of_work.accounts.credit(message.account_id, message.amount)
-        unit_of_work.processed_messages.add(message.message_id)
+        unit_of_work.processed_events.add(message.event_id)
 ```
 
 - **Retry at one level: the adapter.** Services see one call that either succeeded or raised a
   final error, and never contain retry loops. Budgets nest multiplicatively — four attempts inside
   a caller that also makes four is sixteen, and a five-second budget becomes eighty — so the
-  outermost boundary owns the total deadline.
+  outermost boundary owns the total deadline. A gRPC channel's service-config `retryPolicy` is
+  that one layer for its calls (`python-grpc`).
 - **The one retry above the adapter: a deadlock or serialization failure retries the whole unit of
   work** — why, in `python-persistence`. So the repository never retries these; it raises them as
   their own transient type, and only the code that opens the unit of work catches it.
@@ -169,7 +175,9 @@ def to_payload(user: User) -> dict[str, object]:
   used as a database.
 - **Versioned payloads**: any shape that crosses a queue or is stored carries an explicit version
   field, and consumers tolerate unknown *added* fields. That tolerance is for stored and queued
-  data, achieved by explicit migration on read — requests still reject extras.
+  data, achieved by explicit migration on read — requests still reject extras. A cache entry is
+  the exception: its version is in its key, and an old entry is fetched again from the source,
+  never migrated (`python-caching`).
 
 ```python
 # WRONG — once the shape changes, a consumer cannot tell an old message from a new one
@@ -186,7 +194,8 @@ def to_payload(event: OrderPlaced) -> dict[str, object]:
 ```
 
 - **Binary formats follow the same rules**: explicit schema, explicit version, adapters at the
-  edge, never in domain code.
+  edge, never in domain code. The protobuf and gRPC mechanics — a gRPC call has no deadline
+  until one is passed — are `python-grpc`.
 
 ## Files
 
@@ -254,6 +263,8 @@ def _system_clock() -> datetime:
 ```
 
 - Naive datetimes are rejected at the boundary: a schema accepting a datetime requires an offset.
+  A driver may not reject one: asyncpg writes a naive `datetime` into `timestamptz` as the client
+  machine's local time (`python-asyncpg`).
 
 ```python
 # WRONG — accepts "2026-03-01T09:00:00", an instant in no zone at all
@@ -312,7 +323,8 @@ price = Decimal("19.99")
 
 - **`uuid.uuid4()` for opaque ids**; `uuid.uuid7()` (stdlib since 3.14) when ids must sort by
   creation time for index locality. **Never** auto-increment integers exposed publicly, which
-  invites enumeration, and never `random`-derived ids. Wrap ids in `NewType`.
+  invites enumeration, and never `random`-derived ids. Wrap ids in `NewType`. An opaque id makes
+  guessing harder; it does not replace the check that the caller owns the resource (`python-auth`).
 
 ```python
 # WRONG — sequential and public: whoever holds invoice 1042 can ask for 1041

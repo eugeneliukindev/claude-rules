@@ -6,6 +6,9 @@ description: >-
   rather than assuming success, transport and status errors translated at the adapter, deliberate
   redirect handling, TLS verification left on, and where retries belong. Use when Python code
   imports niquests or httpx, builds a session, or makes an outbound HTTP request.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # niquests
@@ -37,8 +40,8 @@ response = await session.get(f"/orders/{order_id}")
 
 ## Timeouts
 
-Why every call needs a deadline, and where it is configured, is in `python-boundaries`. The niquests
-mechanics:
+Every request has an explicit timeout, set once on the session and overridden per call only with a
+named constant (why: `python-boundaries`). The niquests mechanics:
 
 - **The library default was chosen for nobody; set yours.** Without a `timeout=` a request gets
   30 seconds to read, or 120 for a write method — numbers that fit no particular dependency.
@@ -117,8 +120,9 @@ session = niquests.Session(verify=ca_bundle_path)
 ## Retries
 
 - **Leave the session's `retries=` at its default of `0`.** A retry is a policy decision and belongs
-  beside the call, where it can see the translated error type — `python-tenacity` for the policy,
-  `python-boundaries` for what may be retried. Transport retries underneath it multiply the budget.
+  beside the call, where it can see the translated error type, and it retries only transient
+  failures and a write only when it is idempotent (why: `python-boundaries`; the policy:
+  `python-tenacity`). Transport retries underneath it multiply the budget.
 
 ```python
 # WRONG — retries inside the session, under a policy that already retries each call

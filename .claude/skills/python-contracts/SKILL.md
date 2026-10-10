@@ -7,6 +7,9 @@ description: >-
   implementation lives, and where a test fake lives. Use when writing an abstract base class, a
   Protocol or a second implementation of something, adding a fake for a test, or deciding where
   the implementations of one capability go.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Contracts and Implementations
@@ -39,6 +42,9 @@ metaclass, with mypyc compilation, and with any other library that wants that sl
 - **Drop to a plain base class with `@abstractmethod`** when a metaclass is already spoken for, or
   the code is compiled. Neither guarantee the checker gives is lost.
 - **Decide once per project and say which**, rather than mixing both shapes in one tree.
+
+Hooking the creation of subclasses itself — keywords in the class statement, a subclass registry,
+a metaclass of your own — is `python-metaclasses`.
 
 **`@override` on every implementation of an abstract method**, whichever base you chose: a method
 renamed on the contract then becomes an error in every implementation instead of a silent orphan.

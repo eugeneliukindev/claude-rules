@@ -11,14 +11,19 @@ description: >-
   async client and LifespanManager in async tests. Use when Python code imports fastapi or
   starlette, defines a route, a router, a dependency, a lifespan or an exception handler, or tests
   an ASGI app.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # FastAPI
 
-Checked against FastAPI 0.142 and Starlette 1.7. Construction, lifetime and layering are in
-`python-wiring`; request and response models are `python-pydantic`. This file is where FastAPI's
-own mechanisms meet those rules — chiefly `Depends`, which looks like dependency injection and is
-used, in most tutorials, as a service locator.
+Checked against FastAPI 0.143 and Starlette 1.7. Construction, lifetime and layering are in
+`python-wiring`; request and response models are `python-pydantic` — and a strict body model
+relaxes its `datetime`, `UUID` and `Decimal` fields by name, or every valid payload is a 422 (why
+and how: `python-pydantic`). This file is where FastAPI's own mechanisms meet those rules —
+chiefly `Depends`, which looks like dependency injection and is used, in most tutorials, as a
+service locator.
 
 ## The Factory Is the Composition Root, the Lifespan Owns Lifetime
 
@@ -34,6 +39,9 @@ used, in most tutorials, as a service locator.
   hook pair is the fragile one: the release sits apart from the acquire and runs in registration
   order, not in reverse. A plugin that put its engine into app state at construction and deleted it
   at shutdown failed the second test that ran the same app's lifespan, with a `KeyError`.
+- **A gRPC server beside the app is started and drained in the same lifespan**, and the app then
+  runs one worker: every worker runs the lifespan, so a second server fails to bind — or, with
+  grpc's reuse-port default, silently shares the port (`python-grpc`).
 - **Settings are built once, by whoever calls the factory, and passed in.** The documentation's
   `@lru_cache def get_settings()` behind `Depends` is a module-level singleton with extra steps: the
   test that needs another value has to clear a cache.
@@ -52,7 +60,9 @@ used, in most tutorials, as a service locator.
 - **It holds no business logic and reads no settings.** It is the seam between FastAPI and the
   service, three lines at most.
 - **An accessor is `async def`.** A plain `def` dependency runs in the thread pool on every request,
-  and an accessor that only reads `request.state` pays a thread hop for an attribute lookup.
+  and an accessor that only reads `request.state` pays a thread hop for an attribute lookup. A
+  dependency that blocks is not an accessor and stays a plain `def` — a token verifier whose key
+  set fetch is blocking `urllib` is the usual one (`python-pyjwt`).
 - **It is named once, as an `Annotated` alias**, so every route states the type it receives and the
   checker sees a real class rather than the result of a call.
 
@@ -97,8 +107,10 @@ type OrderServiceDep = Annotated[OrderService, Depends(get_order_service)]
 
 - **Authentication is declared once, on the router that holds the protected routes** —
   `APIRouter(dependencies=[Depends(require_user)])` — and the public routes live on a router of
-  their own, which is the allowlist a review reads. A dependency added route by route is forgotten
-  on the one route that mattered.
+  their own, which is the allowlist a review reads — the health probes among them, whose liveness
+  and readiness questions are in `python-container`. A dependency added route by route is forgotten
+  on the one route that mattered. That dependency answers every rejected token 401 with one fixed
+  body, and an unreachable key set 503, never 401 (why and how: `python-auth`).
 
 - **A route parses, calls one service method, and builds the response.** Anything else in its body
   is a service method that has not been written yet. The domain and the services never import
@@ -142,6 +154,10 @@ async def get_order(order_id: OrderId, orders: OrderServiceDep) -> OrderResponse
     return OrderResponse.from_domain(await orders.get_order(order_id))
 ```
 
+- **A route that streams** — a generator under `EventSourceResponse`, a `StreamingResponse`, a
+  WebSocket — lives for minutes instead of milliseconds: it releases what it holds in `finally` and
+  never holds a database session while it waits (why and how: `python-streaming`).
+- **A GraphQL endpoint** — strawberry's `GraphQLRouter` — is `python-strawberry`.
 - **Domain errors are mapped to status codes in one exception handler**, registered by the factory
   on the package's root error. `HTTPException` is raised by routes only, for failures that exist
   only in HTTP; a service that raises it has learned about the transport.
@@ -227,10 +243,11 @@ def get_report(report_id: ReportId, reports: ReportServiceDep) -> ReportResponse
 
 - **A plain `def` route or dependency runs in a thread pool**, which is correct for blocking code
   and bounded: under load, requests queue for a thread. Pick per route by what it calls, not by
-  habit.
+  habit. A strawberry `def` resolver gets no thread pool: it runs on the event loop
+  (`python-strawberry`).
 - **`BackgroundTasks` run in the same process after the response is sent.** A restart loses them
   and nothing retries them, so they suit work whose loss nobody notices. Anything that must happen
-  goes through an outbox or a queue (`python-persistence`).
+  goes through an outbox or a queue (`python-persistence`, `python-workers`).
 
 ## Testing
 
@@ -255,6 +272,9 @@ def test_get_order_returns_404_for_unknown_order(app: FastAPI) -> None:
     assert response.status_code == HTTPStatus.NOT_FOUND
 ```
 
+- **`TestClient` is built on `httpx2`, which goes in the test dependencies.** Starlette 1.7 still
+  falls back to `httpx`, with a `StarletteDeprecationWarning` that `filterwarnings = ["error"]`
+  turns into a collection error; `httpx2` also has the `AsyncClient` and `ASGITransport` below.
 - **An async test uses an async client.** The sync `TestClient` runs the app on an event loop of
   its own, and a connection an async fixture opened on the test's loop fails there. Run the
   lifespan with `asgi-lifespan`'s `LifespanManager` and send requests through `manager.app`, which

@@ -8,6 +8,9 @@ description: >-
   dependency inside the one implementation module that uses it. Use when building a Python package
   other code imports — a library, an SDK, a shared kernel — or when working with __init__.py,
   optional extras, a facade or a deprecation, or deciding whether to import from a.b or name it a._b.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Packaging and Public Surface
@@ -300,7 +303,8 @@ the factory, the package `__init__.py`, or anything above the implementation.
   for every other one's import and must have its library installed. The dispatch mapping holds
   *local builders*, and each builder imports its own driver inside itself. For an open set of
   implementations, invert it: a registry each implementation module registers itself with, or
-  entry points.
+  entry points. Either way the loading is one explicit call in the composition root;
+  `python-metaclasses` has why a registry that an `__init_subclass__` hook fills on import fails.
 - **Optional libraries are optional extras**, and the implementation module is the only place that
   fails when the extra is missing. Convert the import failure into the package's own error, naming
   the extra to install. **This is checkable, and prose is not enough**: a `forbidden` import

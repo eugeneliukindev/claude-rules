@@ -7,6 +7,9 @@ description: >-
   a location, the rule and the fix — and violations in untouched code listed apart. Use when asked
   to review Python code, a diff, a branch or a pull request, or to check that Python work is done,
   or when invoked as /python-review.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Reviewing Python Changes

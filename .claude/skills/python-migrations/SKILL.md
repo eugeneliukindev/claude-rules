@@ -7,6 +7,10 @@ description: >-
   table definitions instead of application models, the whole chain exercised, long locks planned.
   Use when planning or reviewing a schema migration, a backfill or a column change, whatever the
   tool; the alembic mechanics are in python-alembic.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
+  - "**/alembic.ini"
 ---
 
 # Migrations
@@ -51,5 +55,7 @@ ALTER TABLE users DROP COLUMN name;
   the tables it touches, so a migration written today still runs after the model changes tomorrow.
 - **The whole chain is exercised** against an empty database, up and back down, and drift between
   models and migrations fails the check.
+- **Migrations run once per deploy, as a step of their own, never at application or container
+  start** — how, from the release's image, is in `python-container`.
 - **Long locks are planned**: indexes built concurrently, backfills batched, a type changed by
   adding a new column rather than rewriting the old one in place.

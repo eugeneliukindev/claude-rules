@@ -7,12 +7,16 @@ description: >-
   inserts, dialect upserts, optimistic locking with version_id_col, text() with bound parameters.
   Use when Python code imports sqlalchemy; transaction and repository design is in
   python-persistence, migrations in python-migrations and python-alembic.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # SQLAlchemy
 
-Assumes 2.0 style. Where a transaction begins and what a repository returns are in
-`python-persistence`, revisions in `python-alembic`; this one is how to spell those rules here.
+Assumes 2.0 style. One use case is one transaction, opened by the service and never committed by a
+repository, and a repository returns frozen domain objects, never ORM rows (why and how:
+`python-persistence`); revisions are in `python-alembic`. This file is how to spell those rules here.
 
 ## The 2.0 API — `Query` Is Legacy
 
@@ -197,6 +201,9 @@ def test_order_page_runs_one_statement(orders: OrderRepository, statements: list
   so a connection dropped by a database restart is replaced at checkout instead of failing the
   request, and a statement timeout passed through the driver's `connect_args` — SQLAlchemy has no
   portable one.
+- **`postgresql+asyncpg` uses asyncpg as the dialect's driver**: the engine owns the pool and the
+  rules here apply, not `python-asyncpg`'s. asyncpg takes no `options`, so the timeout goes in
+  `connect_args={"server_settings": {"statement_timeout": str(statement_timeout_ms)}}`.
 
 ```python
 # WRONG — default pool size, dead connections handed out after a restart, no statement limit

@@ -7,6 +7,9 @@ description: >-
   loops, and pinning a budget with a test so a regression fails a check. Use when Python code is
   slow or must be sped up, when asked to optimize, profile or benchmark it, when reaching for
   functools.cache or lru_cache, or when reviewing a proposed optimization.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Performance
@@ -56,7 +59,8 @@ everything here does.
   with an explicit bound — an unbounded cache is a leak. **Never on methods**: the cache keeps the
   instance alive and grows per instance; cache a module-level function, or use a cached property
   for a one-per-instance lazy value. Any cross-process cache states its invalidation rule in the
-  design, or it is a stale-data bug scheduled for later. Bare `@lru_cache` is bounded at 128
+  design, or it is a stale-data bug scheduled for later — cache design and cachetools are in
+  `python-caching`, redis in `python-redis`. Bare `@lru_cache` is bounded at 128
   entries, `@cache` is not bounded at all; ruff `B019` flags either one on a method.
 
   ```python

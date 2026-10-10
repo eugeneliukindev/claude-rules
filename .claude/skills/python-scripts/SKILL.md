@@ -8,6 +8,9 @@ description: >-
   default for a data fix; and the point where a script stops being one. Use when writing a
   standalone .py script, a notebook, a backfill or one-off data migration, a file with a
   "# /// script" block, or anything run by hand with uv run or python script.py.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Scripts
@@ -80,6 +83,9 @@ against production data:
 - the failure boundary from `core.md`: one row, one file, one request — recorded, counted, and the
   count reported at the end, with a non-zero exit code when it is not zero;
 - subprocess argument lists and parameterized SQL (`python-security`);
+- a token the script acts on is verified, never decoded unverified — with PyJWT, algorithms
+  pinned and audience and issuer passed (`python-pyjwt`);
+- a key written to a shared cache carries a TTL and never holds a pickle (`python-caching`);
 - annotated signatures — the cheapest part of a later promotion, and `mypy` still finds the
   `None` passed where a value was required.
 
@@ -103,6 +109,8 @@ adds:
 - **Report before and after**: how many rows match, how many were changed, how many failed — and
   the identifiers of the changed ones, in a file, so the run can be audited or undone.
 - **Re-runnable**: a second run after a crash changes nothing that the first one already changed.
+- **A replay of dead-lettered messages republishes each under its original event id**, so the
+  consumers' idempotency recognises what already went through (`python-workers`).
 
 ```python
 # /// script

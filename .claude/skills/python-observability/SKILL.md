@@ -8,6 +8,9 @@ description: >-
   with the SDK configured only in the entry point; logs written as JSON. Use when Python code adds
   a metric, a counter, a histogram, a span, a request id or correlation id, imports opentelemetry or
   prometheus_client, or configures logging.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Observability
@@ -116,6 +119,8 @@ def main() -> None:
 
 - **Instrument frameworks and clients with their instrumentation packages** before writing spans by
   hand; a manual span earns its place around a unit of work no library sees — a batch, a use case.
+  The OpenTelemetry gRPC instrumentation records traces only; gRPC's metrics come from
+  `grpcio-observability` (`python-grpc`).
 - **Span attributes follow the metric rule** — bounded, and no PII.
 
 ## Correlation Ids

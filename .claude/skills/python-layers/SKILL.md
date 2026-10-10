@@ -7,6 +7,9 @@ description: >-
   linter, and fixing a violation by moving code rather than allowlisting it. Use when adding an
   import-linter contract, arguing about which layer code belongs to, or when a domain module imports
   a framework, a driver or a sibling implementation.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Layers

@@ -7,6 +7,9 @@ description: >-
   extras for users, py.typed, and a starting pyproject.toml with the strict mypy block, ruff,
   pytest and coverage. Use when creating a new Python project, package, library or service, writing
   or reviewing pyproject.toml, choosing a Python version floor, or adding a dev tool or dependency.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Starting a Project
@@ -202,3 +205,4 @@ Kept the build backend `uv init` wrote above it, the file is complete. What each
 What `uv init` writes, plus every tool cache the configuration above creates: `.venv/`,
 `__pycache__/`, `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`, `.coverage`, `htmlcov/`, and
 `.hypothesis/` once property tests exist. A cache committed once is a merge conflict forever.
+A `.dockerignore` is the opposite shape — an allowlist — and is in `python-container`.

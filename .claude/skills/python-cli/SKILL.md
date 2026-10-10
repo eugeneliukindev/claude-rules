@@ -7,6 +7,9 @@ description: >-
   verbosity flags, fixed configuration precedence, graceful interrupts, and testing through run().
   Use when writing or reviewing a Python entry point, an argparse, click or typer command, a
   subcommand, a __main__ block, or a sys.exit call and its exit codes.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Command-Line Interfaces

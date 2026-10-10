@@ -6,6 +6,9 @@ description: >-
   goal, realistic reserved data such as example.com, deterministic output, one example per error
   scenario, and versioned with the API. Use when writing or reviewing a Python example, docstring
   sample or README snippet that will be published.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Shipped Examples

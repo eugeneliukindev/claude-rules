@@ -7,6 +7,9 @@ description: >-
   bounded fan-out, contextvars, graceful shutdown, and choosing between async, threads and
   processes. Use when writing async def, awaiting external I/O, using create_task, a semaphore or
   anyio, or moving Python work to threads or a process pool.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Asyncio and Concurrency
@@ -59,7 +62,8 @@ async def render_report(pool: Executor, report_id: ReportId) -> bytes:
 
 - **Every `await` on external I/O runs under a deadline** — the client's configured timeout or an
   explicit `asyncio.timeout(...)` scope. An unbounded `await` is the async equivalent of an
-  infinite loop.
+  infinite loop. In an async generator the scope wraps the `await` and closes before the `yield`:
+  one left open across it cancels whichever task is iterating (`python-streaming`).
 
 ```python
 # WRONG — a peer that stops sending leaves this await, and its task, waiting forever
@@ -157,7 +161,10 @@ async def fetch_prices(catalog: CatalogClient, skus: Sequence[Sku]) -> list[Pric
   in async code. Do not smuggle business parameters through it.
 - **Graceful shutdown is designed, not hoped for**: handle `SIGTERM`/`SIGINT`, stop accepting work,
   drain or cancel with a deadline, then close resources in reverse order. Consumers acknowledge
-  only after processing.
+  only after processing — the mechanics, and the drain inside the grace period, are in
+  `python-workers`. In a container the process is PID 1, which ignores a signal it has no handler
+  for, and only an exec-form start command lets the signal reach Python at all
+  (`python-container`).
 
 ```python
 # WRONG — SIGTERM's default action ends the process at once: no finally runs, nothing is closed

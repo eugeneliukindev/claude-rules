@@ -8,6 +8,9 @@ description: >-
   tarfile extraction filters, SSRF allowlists revalidated across redirects, bounded input sizes,
   secret handling, and failing closed. Use when Python code handles a request body, a filename, a
   URL, a subprocess argument, a credential, a token, an archive, an upload or any untrusted payload.
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
 ---
 
 # Security
@@ -62,6 +65,8 @@ is_authentic = hmac.compare_digest(provided_signature, expected_signature)
   them — `pydantic.SecretStr`, or `field(repr=False)` on a dataclass — never committed, and never
   present in URLs, logs or error messages. An error response echoes only what the client sent and
   may see again: validation errors that quoted the full request URL published internal addresses.
+  An exception escaping a gRPC handler reaches the client as `UNKNOWN` with its full message
+  (`python-grpc`).
 
 ```python
 # WRONG — the generated repr prints the key into every log line and traceback that shows it
@@ -93,13 +98,15 @@ context = ssl.create_default_context(cafile=ca_bundle_path)
 ```
 
 - **Dependencies are scanned for known vulnerabilities** — `pip-audit` or the platform's
-  equivalent — and a finding blocks the upgrade path it came in on.
+  equivalent — and a finding blocks the upgrade path it came in on. A container image is scanned
+  as well, for the operating system packages `pip-audit` does not see (`python-container`).
 
 ## Injection
 
 - **SQL is always parameterized** — including order-by clauses and table names, which are chosen
   from an allowlist of constants, never interpolated. A `LiteralString` annotation checks this only
-  under pyright (`python-types`); under mypy the rule rests on review.
+  under pyright (`python-types`); under mypy the rule rests on review. A list of values is one
+  parameter too — `= ANY($1)` in asyncpg (`python-asyncpg`) — never a joined string.
 
 ```python
 # WRONG — the sort column arrives from the query string, so the query string writes SQL
@@ -224,7 +231,12 @@ if len(document) > _MAX_DOCUMENT_BYTES:
 - **Fail closed**: authorization lives in the service layer, not only at the transport edge; it
   denies by default, and an error inside the check denies rather than allows. At the edge the same
   holds for authentication: declared once on everything, with the public routes an explicit,
-  reviewed list — never added route by route (`python-fastapi`).
+  reviewed list — never added route by route (`python-fastapi`). Object-level checks against
+  IDOR, 401 versus 403, and verifying a bearer token are in `python-auth`; PyJWT's own
+  mechanics are in `python-pyjwt`.
+- **A WebSocket authenticated by a cookie checks `Origin` against an allowlist**: CORS does not
+  cover it, and without the check any page the user visits connects in their name — cross-site
+  WebSocket hijacking (`python-streaming`).
 
 ```python
 # WRONG — denies the roles it lists, so a role added next year may refund anything
