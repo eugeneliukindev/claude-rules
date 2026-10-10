@@ -1,12 +1,14 @@
 ---
 name: python-contracts
 description: >-
-  Python contracts and their implementations: an ABC with @abstractmethod versus a Protocol,
-  ABC versus a plain base class when a metaclass is taken, @override on every implementation,
-  one directory per capability with the contract in base.py, where a helper used by one
-  implementation lives, and where a test fake lives. Use when writing an abstract base class, a
-  Protocol or a second implementation of something, adding a fake for a test, or deciding where
-  the implementations of one capability go.
+  Python contracts and their implementations: an ABC with @abstractmethod versus a Protocol, a
+  contract as small as its consumer, inheritance for "is a" and composition for reuse, no reaching
+  through a collaborator, ABC versus a plain base class when a metaclass is taken, @override on
+  every implementation, one directory per capability with the contract in base.py, where a helper
+  used by one implementation lives, and where a test fake lives. Use when writing an abstract base
+  class, a Protocol, a base class or a mixin, or a second implementation of something, adding a
+  fake for a test, deciding what a consumer should depend on, or deciding where the
+  implementations of one capability go.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -126,6 +128,34 @@ class Notifier(ABC):
     def send(self, recipient: UserId, message: Message) -> None: ...
 ```
 
+## A Contract Is as Small as Its Consumer
+
+**A contract holds the methods its consumer calls, and nothing it does not** — interface
+segregation. A report that takes the whole repository depends on `save` it never calls: its fake
+must implement writes, and a change to how orders are saved reaches code that only reads them.
+The carve-out is the same as for any contract: split when a consumer that needs a different set
+exists, not in advance — a repository every caller uses whole stays one contract. One class may
+implement several contracts; the split is in what the consumer is given, not in the storage.
+
+```python
+# WRONG — the report receives writes it never makes, and its fake must implement them
+def build_shipping_report(orders: OrderRepository, day: date) -> ShippingReport:
+    return ShippingReport(shipped_count=len(orders.list_shipped(day)))
+
+# CORRECT — the report depends on the one capability it uses
+class ShippedOrders(ABC):
+    @abstractmethod
+    def list_shipped(self, day: date) -> list[Order]: ...
+
+
+def build_shipping_report(orders: ShippedOrders, day: date) -> ShippingReport:
+    return ShippingReport(shipped_count=len(orders.list_shipped(day)))
+```
+
+The implementation inherits both — `class PostgresOrders(OrderRepository, ShippedOrders)` — and
+the composition root passes the same object to the service that writes and to the report that
+reads.
+
 ## Naming Contracts and Implementations
 
 - **A contract is named after the capability, without a prefix.** A contract base class — or, at a
@@ -140,6 +170,32 @@ class Notifier(ABC):
   the base and see what the subclasses lose. Lose fields or working methods — it is a `Base`. Lose
   only a promise the checker was already making — it is a contract, named for the capability.
 - **A shared base that only its own module inherits is private**: `_BaseCookie`, `_BaseAuth`.
+- **Inheritance is for "is a"; reuse without it is composition.** A class inherits a contract,
+  or a `Base` whose fields and methods it *is* — a `BaseModel` subclass is a model. Behaviour wanted
+  only for its methods — an HTTP call, a retry, a formatter — arrives as a collaborator through the
+  constructor: a base class collecting helpers ties every subclass to all of them and to each
+  other's changes, and its fake cannot be swapped in a test. A mixin adds behaviour over the class's
+  own contract, holds no state and declares `__slots__ = ()`.
+
+```python
+# WRONG — inherited for a helper: every notifier is now an HTTP client, and no test can swap it
+@final
+class SlackNotifier(Notifier, _HttpHelpers):
+    @override
+    def send(self, recipient: UserId, message: Message) -> None:
+        self._post_json("/chat.postMessage", {"channel": recipient, "text": message})
+
+# CORRECT — the client is a collaborator the notifier holds, not something it is
+@final
+class SlackNotifier(Notifier):
+    def __init__(self, *, client: JsonClient) -> None:
+        self._client = client
+
+    @override
+    def send(self, recipient: UserId, message: Message) -> None:
+        self._client.post_json("/chat.postMessage", {"channel": recipient, "text": message})
+```
+
 - **Where a contract and its single implementation would collide**, the implementation names what
   makes it concrete — its driver, its transport, its storage — never `Default` or `Impl`. If
   nothing distinguishes it, there was no contract worth writing.
@@ -158,6 +214,26 @@ class UserDirectory(ABC):
 class LdapUserDirectory(UserDirectory):
     @override
     def find(self, email: str) -> User | None: ...
+```
+
+## Talk to the Collaborator, Not Through It
+
+**Code uses what the collaborator's contract declares, and never reaches past it** to the session,
+client or pool inside — the Law of Demeter, applied to collaborators. A service that calls
+`orders.session.execute(...)` depends on the driver its repository hides, cannot run against the
+fake, and breaks when the storage changes. The parameter typed as the contract is what enforces
+it: mypy answers the reach with `[attr-defined]`, so the leak always starts with an annotation
+naming the implementation. **Data is the carve-out**: `order.customer.address.city` reads a
+frozen structure, couples to nothing that behaves, and stays as it is.
+
+```python
+# WRONG — typed as the implementation, so the service can reach the session behind the repository
+def cancel_order(orders: PostgresOrderRepository, order_id: OrderId) -> None:
+    orders.session.execute(_CANCEL_ORDER, {"order_id": order_id})
+
+# CORRECT — typed as the contract: the call it declares is the only one there is
+def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+    orders.cancel(order_id)
 ```
 
 ## A Contract and Its Implementations Are One Directory

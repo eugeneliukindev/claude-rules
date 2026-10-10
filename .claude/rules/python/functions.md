@@ -12,7 +12,7 @@ paths:
 ## Extraction Must Pay for Itself
 
 A helper's name, signature and docstring are an **interface**; it pays only by hiding more than it
-exposes.
+exposes. **What every caller would repeat lives inside**; a parameter is for values callers vary.
 
 **Extract when at least one is true:**
 

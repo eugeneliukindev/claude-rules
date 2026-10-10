@@ -2,11 +2,12 @@
 name: python-boundaries
 description: >-
   Python process boundaries: validating models at the edge versus frozen domain objects inside,
-  mandatory timeouts, what may and may not be retried, idempotency keys, nested retry budgets,
-  explicit serialization and payload versioning, atomic file writes and explicit encodings, and the
-  handling of time, money and identifiers. Use when Python code talks to HTTP, a queue, a cache, a
-  database or a file, writes a file another process reads, or works with datetimes, Decimal money,
-  UUIDs or any value crossing the process boundary.
+  mandatory timeouts, what may and may not be retried, idempotency keys, operations that promise a
+  state so a repeat succeeds, nested retry budgets, explicit serialization and payload versioning,
+  atomic file writes and explicit encodings, and the handling of time, money and identifiers. Use
+  when Python code talks to HTTP, a queue, a cache, a database or a file, writes a file another
+  process reads, or works with datetimes, Decimal money, UUIDs or any value crossing the process
+  boundary.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -137,6 +138,33 @@ def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
             return
         unit_of_work.accounts.credit(message.account_id, message.amount)
         unit_of_work.processed_events.add(message.event_id)
+```
+
+- **An operation promises a state, so a repeat of it succeeds** — "define errors out of
+  existence". A retry, a redelivery or a double click calls `cancel` on an order the first call
+  already cancelled; an error there turns a success into a failure the caller must special-case. A
+  state the call cannot reach is still an error: a shipped order is not cancelled. And never a
+  guess in place of an error — a clipped index or an empty result for "not found" is a wrong answer
+  that looks right.
+
+```python
+# WRONG — a retried cancel fails on the order the first attempt already cancelled
+def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+    order = orders.get(order_id)
+    if order.status is OrderStatus.CANCELLED:
+        raise OrderAlreadyCancelledError(order_id)
+    if order.status is OrderStatus.SHIPPED:
+        raise OrderAlreadyShippedError(order_id)
+    orders.save(replace(order, status=OrderStatus.CANCELLED))
+
+# CORRECT — "cancelled afterwards" holds after a repeat too; only the unreachable state raises
+def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+    order = orders.get(order_id)
+    if order.status is OrderStatus.CANCELLED:
+        return
+    if order.status is OrderStatus.SHIPPED:
+        raise OrderAlreadyShippedError(order_id)
+    orders.save(replace(order, status=OrderStatus.CANCELLED))
 ```
 
 - **Retry at one level: the adapter.** Services see one call that either succeeded or raised a

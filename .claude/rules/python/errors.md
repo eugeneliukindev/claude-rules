@@ -5,15 +5,12 @@ paths:
 
 # Python — Errors
 
-The example below carries the four broken most often: the narrowest `except` the guarded lines
-need, a `try` around only those lines, a driver's error translated with `raise … from`, and never
-`None` as an error.
+The example below carries the four broken most often: the narrowest `except`, a `try` around only
+the guarded lines, a driver's error translated with `raise … from`, and never `None` as an error.
 
-- **Messages include the identifying values**: `f"Order {order_id} cannot be shipped: status is
-  {status}"`, not `"Invalid order"`.
+- **Messages carry the identifying values**: `f"Order {order_id} is {status}"`, not `"Bad order"`.
 - **Every package defines one root exception, named for the package** — `BillingError(Exception)`
-  — and all its own exceptions inherit from it, so callers catch "anything from billing" with one
-  clause.
+  — and all its own exceptions inherit it, so one clause catches "anything from billing".
 - **A leaf class is earned by a caller who catches it on its own**; until then raise the nearest
   category with the identifying values. A leaf names the failure without the prefix (`naming.md`)
   and inherits the closest stdlib type too — `InvoiceNotFoundError(BillingError, LookupError)` —
@@ -21,6 +18,9 @@ need, a `try` around only those lines, a driver's error translated with `raise �
   or `in` and `.get()` break. Exceptions **carry data as attributes**, not only text.
 - **`None` is for lookups where absence is normal**, and `-> User | None` says so; a signature that
   promises a value raises instead of returning `None`, `False`, `-1` or an empty list.
+- **An outcome the caller would treat as success is not an error**: `cancel` on a cancelled order
+  and `delete` of a missing key promise a state, and they succeed. Never a guess in place of an
+  error — a clipped index, an empty list for "not found" (`python-boundaries`).
 - **EAFP when the failure is rare and checking would race; LBYL when the check is cheap, atomic and
   the missing case is common.** Never both.
 - **Catch at the level that can handle it** — retry, fall back, convert, report. A layer that can

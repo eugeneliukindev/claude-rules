@@ -114,6 +114,10 @@ def find(self, order_id: OrderId) -> Order | None:
 
 - **Repositories accept and return domain objects** and contain query construction only — no
   business rules, no commits.
+- **A rule computable from loaded data is a pure function over domain objects**; the service
+  loads, calls it and saves what it returns. The rule is then tested with plain values and no fake,
+  and the fakes are left to the few tests of the service that wires it — the useful half of
+  "functional core, imperative shell", without a second architecture beside the contracts.
 - **Every relationship is loaded explicitly.** Lazy loading is switched off so an N+1 is an error
   at the first test, not a page that quietly runs a hundred queries in production. The query
   states what it loads; design as if an unloaded access always raises.
