@@ -5,8 +5,7 @@ paths:
 
 # Python — Core
 
-What applies to every Python edit is in this directory, one topic per file, loaded together;
-`testing.md` loads in test files. Everything else is a skill, reached by its description or by name:
+Every Python edit loads this directory, tests also `testing.md`; everything else is a skill:
 
 | Skill | When |
 |---|---|
@@ -14,20 +13,21 @@ What applies to every Python edit is in this directory, one topic per file, load
 | `python-boundaries` | HTTP, queues, caches, files, serialization, timeouts, retries, time, money, identifiers |
 | `python-wiring` | an entry point, where an object is built, a resource's lifetime, a settings field |
 | `python-layers` | which layer may import which, an import-linter contract |
-| `python-contracts` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live |
-| `python-async` | `async def`, threads, processes |
+| `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
+| `python-async`, `python-streaming` | `async def`, threads, processes; an SSE or WebSocket endpoint, a streamed response |
 | `python-persistence` | a transaction boundary, a repository |
 | `python-migrations` | a schema change, a backfill |
+| `python-workers`, `python-caching` | a queue consumer or a background job; a cache in front of a database or an API |
 | `python-packaging` | a package other code imports: `__all__`, facade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
-| `python-project` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration |
+| `python-project`, `python-container` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration; a Dockerfile, an image |
 | `python-scripts` | a one-off script, a notebook, a backfill — what relaxes there and what never does |
 | `python-cli` | an entry point with an argument parser |
-| `python-security` | input from outside: a body, a filename, a URL, a subprocess argument, a credential |
+| `python-security`, `python-auth` | input from outside: a body, a filename, a URL, a subprocess argument, a credential; a bearer token, a JWT, a session cookie, a permission or ownership check |
 | `python-observability` | metrics, tracing, correlation ids, where logging is configured |
 | `python-performance` | a path already measured and found slow |
 | `python-examples` | an example that ships — docstring, README, `examples/` |
 | `python-rules-authoring` | editing these rules or skills |
-| `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `alembic`, `fastapi`, `tenacity`, `niquests`, `orjson`, `pytest` |
+| `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `alembic`, `fastapi`, `strawberry`, `grpc`, `tenacity`, `niquests`, `orjson`, `pytest`, `asyncpg`, `redis`, `cashews`, `faststream`, `pyjwt` |
 
 Style, layout and complexity belong to the formatter, the linters and the type checker, which the
 project picks; **nothing here restates what a tool decides**, and where they disagree the tool wins
