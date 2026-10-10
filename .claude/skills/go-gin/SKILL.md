@@ -8,6 +8,9 @@ description: >-
   bounded bodies and unknown fields, error responses in one place, c.Copy for goroutines, and
   testing through engine.ServeHTTP. Use when Go code imports github.com/gin-gonic/gin, writes a
   gin handler, middleware, route group or binding.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # gin

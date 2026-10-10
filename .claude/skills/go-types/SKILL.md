@@ -7,6 +7,9 @@ description: >-
   iterators with iter.Seq and range-over-func; and the checks that enforce them. Use when choosing
   a representation for a Go value, writing a generic function or type, replacing a map[string]any,
   modelling "one of several kinds", or writing a function that yields a sequence.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Types — Reference

@@ -7,6 +7,9 @@ description: >-
   at the repository, PgError codes via pgerrcode, ANY($1) with a slice instead of N+1, Batch and
   CopyFrom for bulk work, PgBouncer and the query exec mode, and the stdlib adapter for libraries
   that need *sql.DB. Use when Go code imports github.com/jackc/pgx/v5, pgxpool, pgconn or pgtype.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # pgx

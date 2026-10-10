@@ -6,6 +6,9 @@ description: >-
   closed in reverse, typed configuration loaded and validated once and passed as fields, constants
   versus configuration, functional options versus an options struct. Use when writing func main, a
   constructor, an application struct, a config field, or removing a package-level global or init.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Wiring: Composition Root, Configuration

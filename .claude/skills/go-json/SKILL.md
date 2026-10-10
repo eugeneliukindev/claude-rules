@@ -7,6 +7,9 @@ description: >-
   custom MarshalText and MarshalJSON methods, streaming with jsontext, and bounded input. Use when
   Go code imports encoding/json, encoding/json/v2 or encoding/json/jsontext, writes json struct
   tags, implements a marshaler, or decodes a request or response body.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # JSON

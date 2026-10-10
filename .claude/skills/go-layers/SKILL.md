@@ -6,6 +6,9 @@ description: >-
   set of files, and fixing a violation by moving code or inverting the dependency rather than
   allowlisting it. Use when adding a depguard rule, arguing about which layer code belongs to, or
   when a domain package imports a framework, a driver or a sibling implementation.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Layers

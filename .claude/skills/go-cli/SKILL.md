@@ -7,6 +7,9 @@ description: >-
   flags, configuration precedence, interrupts through signal.NotifyContext, and testing a command
   through run with buffers. Use when writing or reviewing a Go main package, a flag or a FlagSet,
   a subcommand, an os.Exit call, or a cobra or urfave/cli command.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Command-Line Programs

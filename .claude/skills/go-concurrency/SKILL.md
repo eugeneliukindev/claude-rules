@@ -8,6 +8,9 @@ description: >-
   goroutine leaks, and testing concurrent code with testing/synctest. Use when Go code has a go
   statement, a channel, a select, a sync or sync/atomic type, errgroup, a worker pool, a ticker,
   or a server that must shut down cleanly.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Concurrency

@@ -7,6 +7,9 @@ description: >-
   fake lives. Use when writing a second implementation of something, adding a fake for a test,
   embedding a type, declaring an interface a producer will satisfy, or deciding where the
   implementations of one capability go.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Interfaces and Implementations

@@ -7,6 +7,9 @@ description: >-
   example.com, deterministic output, one example per error case, and versioned with the API. Use
   when writing or reviewing a Go Example function, a README code block, or a runnable example
   program that will be published.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Shipped Examples

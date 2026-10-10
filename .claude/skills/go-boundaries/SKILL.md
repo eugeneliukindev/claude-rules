@@ -7,6 +7,9 @@ description: >-
   with time.Time, integer minor units and the uuid package. Use when Go code talks to HTTP, gRPC,
   a queue, a cache, a database or a file someone else wrote, or when working with time.Time,
   durations, money, UUIDs or any value crossing the process boundary.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Boundaries

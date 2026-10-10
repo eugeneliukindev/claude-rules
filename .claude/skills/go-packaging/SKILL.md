@@ -8,6 +8,9 @@ description: >-
   optional dependency in its own package or module, and checking compatibility with apidiff and
   gorelease. Use when building a Go module other code imports — a library, an SDK, a shared
   package — or when working with go.mod, a release tag, a major version or a deprecation.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Packaging and Public Surface

@@ -7,6 +7,9 @@ description: >-
   EventuallyWithT without require inside, suites that cannot run in parallel, testify/mock kept
   away from your own interfaces, and the testifylint checks. Use when Go test code imports
   github.com/stretchr/testify — assert, require, suite or mock.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # testify

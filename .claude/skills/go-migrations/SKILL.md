@@ -6,6 +6,9 @@ description: >-
   planned, the migration tool pinned as a tool directive in go.mod and run as a deploy step rather
   than at application startup. Use when planning or reviewing a schema migration, a backfill, a
   column rename, or wiring a migration tool into a Go project.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Migrations

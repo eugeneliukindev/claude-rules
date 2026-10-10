@@ -7,6 +7,9 @@ description: >-
   as an error, nullable columns, pool settings. Use when Go code imports database/sql or a SQL
   driver, opens a transaction, writes a repository or scans rows; schema changes are in
   go-migrations.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Persistence

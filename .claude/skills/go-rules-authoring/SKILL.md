@@ -7,6 +7,9 @@ description: >-
   declared Go version, verifying API claims with go doc instead of memory, and porting a rule from
   another language only when Go's own idiom agrees. Use when editing, adding to, splitting,
   auditing or evaluating the Go rule files or go-* skills.
+paths:
+  - "**/rules/go/**"
+  - "**/skills/go-*/**"
 ---
 
 # Writing the Go Rules
@@ -27,7 +30,7 @@ only what is different for Go.
 | `rules/go/core.md`, `naming.md`, `functions.md`, `control-flow.md`, `types.md`, `methods.md`, `interfaces.md`, `packages.md`, `errors.md`, `logging.md`, `comments.md` | together, on the first read of any `**/*.go` |
 | `rules/go/testing.md` | on a read of `**/*_test.go`, `**/testdata/**` or `**/*test/*.go` |
 | `rules/go/new-files.md` | every session — six lines, for the module written into an empty directory |
-| `skills/go-*/SKILL.md` | when the description matches the work, or by `/name` |
+| `skills/go-*/SKILL.md` | listed once a file matching its `paths` is read or written — `**/*.go` and `**/go.mod` by default, the rule and skill files for `go-rules-authoring`; loaded when the description matches the work, or by `/name` |
 
 The budget, counted without front matter:
 

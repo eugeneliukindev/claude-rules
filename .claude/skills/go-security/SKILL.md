@@ -8,6 +8,9 @@ description: >-
   SSRF checks in the dialer, bounded bodies and server timeouts, CSRF protection, secrets kept out
   of logs, govulncheck, and failing closed. Use when Go code handles a request body, a filename,
   a URL to fetch, an exec.Command argument, a password, a token, an upload or a template.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Security

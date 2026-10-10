@@ -8,6 +8,9 @@ description: >-
   GOMEMLIMIT in containers, and pinning a budget with a test. Use when Go code is slow or must be
   sped up, when asked to optimize, profile or benchmark it, when writing a Benchmark function, or
   when reviewing a proposed optimization.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # Performance

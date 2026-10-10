@@ -7,6 +7,9 @@ description: >-
   built with a context, response bodies always closed and drained, status codes checked, and
   testing with httptest. Use when Go code imports net/http, writes a handler, a middleware, an
   http.Server or an http.Client, or calls an HTTP API.
+paths:
+  - "**/*.go"
+  - "**/go.mod"
 ---
 
 # net/http
