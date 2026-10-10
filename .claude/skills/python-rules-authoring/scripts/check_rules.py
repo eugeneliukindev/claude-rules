@@ -10,7 +10,7 @@ clone of the rules repository. Five checks, each reported as `path:line: message
   `case` clauses is parsed inside a `match`;
 - every `python-*` skill and every `*.md` file a document names in backticks or links exists;
 - every `python-*` skill is named in `core.md` — a row in its map, or `/name` in its text;
-- every `SKILL.md` has a `name` equal to its directory and a `description`.
+- every `SKILL.md` has a `name` equal to its directory, a `description` and `paths`.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -266,6 +266,8 @@ def _front_matter_findings(document: _Document) -> Iterator[_Finding]:
         )
     if "description" not in fields:
         yield _Finding(path=document.path, line=1, message="front matter has no description")
+    if "paths" not in fields:
+        yield _Finding(path=document.path, line=1, message="front matter has no paths")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,9 @@ description: >-
   project, one home per rule, rationed emphasis, skill descriptions as triggers, what loads when,
   the line budget for the always-loaded rules, and testing that a rule changes behaviour.
   Use when editing, adding to, splitting, auditing or evaluating these rule files and skills.
+paths:
+  - "**/rules/python/**"
+  - "**/skills/python-*/**"
 ---
 
 # Writing These Rules
@@ -93,8 +96,8 @@ Two mechanisms, and which one a file lives in is the decision:
 | | rule, `paths:` in front matter | rule, no front matter | skill |
 |---|---|---|---|
 | lives in | `~/.claude/rules/` | `~/.claude/rules/` | `~/.claude/skills/<name>/SKILL.md` |
-| enters context | when a matching file is read | at launch, every session, every language | when its `description` matches the work, or by `/name` |
-| always costs | nothing | its whole length | its `description`, ~40 tokens |
+| enters context | when a matching file is read | at launch, every session, every language | listed once a file matching its `paths` is read or written; loaded when its `description` matches the work, or by `/name` |
+| always costs | nothing | its whole length | its `description`, ~40 tokens, and only after `paths` match |
 
 **A rule with no front matter is the expensive one, and it is the easy mistake**: it is the
 documented instruction to load the file into every session in every language. That once happened to
@@ -116,6 +119,17 @@ question, not the answer. Always-loaded rule files load together whatever their 
 split only to give a rule its own address — `logging.md` for what other files point at.
 Everything reached by a task rather than by a file — every topic, every library — is a skill, and
 `core.md` names every one of them.
+
+**Every skill carries `paths`, so a session lists only the skills of its language.** Without it
+every description sits in every session's listing — the Go skills in a Python repository — and a
+larger listing costs twice: a description matching better than the right one displaces it, and
+past the listing's budget descriptions are dropped. Measured on Claude Code 2.1.118: a skill with
+`paths: "**/*.py"` is absent from the listing, and `Unknown skill` when called, until a `.py` file
+is read *or written*; the first write in an empty directory therefore happens without it, which is
+what `new-files.md` covers. The default is `**/*.py` and `**/pyproject.toml`; a skill whose work
+lives in other files adds them — `python-container` the Dockerfile and compose files,
+`python-grpc` `**/*.proto`, `python-migrations` and `python-alembic` `**/alembic.ini` — and
+`python-rules-authoring` lists only these rule and skill files. `/name` works whatever `paths` says.
 
 **The one file with no front matter is `new-files.md`, six lines, and the exception is
 measured.** A path-scoped rule loads when a matching file is *read*; a task that writes `x.py` into
@@ -188,7 +202,7 @@ its modality.
 A budget counted by eye was broken by six lines before anyone noticed. What this file can hand to a
 machine, `scripts/check_rules.py` checks: the budget, that every `python` block parses, that every
 skill and `.md` file a document names exists, that `core.md` names every skill, and that every
-`SKILL.md` has a `name` matching its directory and a `description`.
+`SKILL.md` has a `name` matching its directory, a `description` and `paths`.
 
 ```bash
 python <this skill's directory>/scripts/check_rules.py ~/.claude
@@ -203,8 +217,20 @@ names — paste the block into a file with the names it uses declared, and run b
 
 **A rule is written in exactly one file, and every other file points to it.** Three copies of the
 retry policy drift into three policies; two files that disagree about where a test fake lives get
-one of them followed at random. When a library skill needs a principle from a topic skill, it names
-the skill — "see `python-boundaries`" — and adds only the library's mechanics.
+one of them followed at random.
+
+**A topic skill is library-agnostic; a library with traps of its own is a skill of its own.** The
+topic's examples run against the application's own contract — a `Cache`, a `TokenVerifier`, an
+`OrderEventChannel` — and the library skill implements that contract and adds the library's traps:
+`python-caching` and `python-redis`, `python-persistence` and `python-sqlalchemy`. A library that
+earns a line or a table row, not a screen, stays in the topic as that line.
+
+**A skill is self-sufficient at its trigger, and a pointer adds depth, never the rule.** Naming a
+skill does not load it — Anthropic's own guidance says skills cannot reference each other, and the
+model decides what to open. So a skill that relies on a rule homed elsewhere states it as **one
+imperative line** and points home for the reason, the examples and the carve-outs: "a cache failure
+is a counted miss, never an error (why and how: `python-caching`)". One line is the ceiling; the
+reasoning stays in one file and cannot drift.
 
 **A carve-out lives beside its prohibition, even across files.** "Retry only in the adapter" in one
 skill and "a deadlock retries the whole unit of work" in another are two contradictory rules until
@@ -217,6 +243,12 @@ others. It is written in the third person, says **what** the skill covers and th
 it, and puts the words a user or a file would actually contain first — library names, `async def`,
 "slow", "migration" — because the listing is truncated from the end. A skill that never loads
 teaches nothing; two skills whose descriptions both match the same work load the same text twice.
+
+**Neighbouring descriptions are told apart in their own words.** The listing is read as a whole,
+and a description that matches better than the right one wins — on a public benchmark, wrong
+selection grew with the size of the library and caused most of the loss. A topic says it holds the
+design "whatever the library" and names its library skills; a library skill starts with the
+library's name and says the design lives in the topic.
 
 ## Evaluation Before and After
 
