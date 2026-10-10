@@ -2,11 +2,13 @@
 name: python-performance
 description: >-
   Python performance work, measure first: profiling and benchmarking before optimizing, fixing the
-  algorithm before the constants, streaming instead of materializing, slots=True, functools.cache
-  and lru_cache as a bounded contract and never on methods, precompiling and hoisting out of hot
-  loops, and pinning a budget with a test so a regression fails a check. Use when Python code is
-  slow or must be sped up, when asked to optimize, profile or benchmark it, when reaching for
-  functools.cache or lru_cache, or when reviewing a proposed optimization.
+  algorithm before the constants, the container chosen by its operation — deque, heapq, bisect,
+  Counter, itertools.batched, array, memoryview — streaming instead of materializing, slots=True,
+  functools.cache and lru_cache as a bounded contract and never on methods, precompiling and
+  hoisting out of hot loops, and pinning a budget with a test so a regression fails a check. Use
+  when Python code is slow or must be sped up, when asked to optimize, profile or benchmark it,
+  when a list serves as a queue, a sort only takes the top k, or many numbers sit in memory, when
+  reaching for functools.cache or lru_cache, or when reviewing a proposed optimization.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,8 +16,8 @@ paths:
 
 # Performance
 
-Algorithmic sanity and `slots=True` are defaults in the always-loaded rules and need no measurement;
-everything here does.
+Algorithmic sanity — `slots=True` from the always-loaded rules, and the container chosen by its
+operation below — needs no measurement; everything else here does.
 
 - **Measure before optimizing.** Any performance change references a measurement — a profile for
   CPU, an allocation profile for memory, a benchmark to pin the improvement. An optimization
@@ -46,6 +48,61 @@ everything here does.
   # CORRECT — the reader yields one row at a time, and only the running sum is kept
   with export_path.open(encoding="utf-8", newline="") as export_file:
       total_cents = sum(int(row["amount_cents"]) for row in csv.DictReader(export_file))
+  ```
+
+- **The container is chosen by the operation it serves** — algorithmic sanity, so it needs no
+  profile. `types.md` picks `tuple` and `frozenset` for immutability; this is the cost side.
+  Measured on CPython 3.14:
+
+  | the operation | use | instead of | measured |
+  |---|---|---|---|
+  | take from the front | `deque.popleft`; `deque(maxlen=n)` for a bounded buffer | `list.pop(0)`, which shifts every element | 100k items: 1.2 s → 6 ms |
+  | the k largest or smallest | `heapq.nlargest` / `nsmallest` | `sorted(...)[:k]` | top 10 of 1M: 680 ms → 34 ms |
+  | a position in sorted data — a tier, a bucket | `bisect.bisect_right` over a sorted tuple | a scan of the thresholds | 10k lookups in 1k: 550 ms → 3 ms |
+  | count by key | `Counter(iterable)`, which counts in C | a dict and `if key in` | 1M items: 2× |
+  | fixed-size groups from a stream | `itertools.batched(iterable, n)` (3.12+) | slicing a list, which must exist first | — |
+
+  ```python
+  # WRONG — a scan of every threshold for every order
+  def discount_rate(order_total_cents: int) -> Decimal:
+      tier = 0
+      for threshold_cents in _TIER_THRESHOLDS_CENTS:
+          if order_total_cents >= threshold_cents:
+              tier += 1
+      return _TIER_RATES[tier]
+
+  # CORRECT — sorted thresholds, one fewer than the rates: bisect counts those passed in log n
+  def discount_rate(order_total_cents: int) -> Decimal:
+      return _TIER_RATES[bisect.bisect_right(_TIER_THRESHOLDS_CENTS, order_total_cents)]
+  ```
+
+- **Many numbers of one type are an `array`, not a list.** Every element of a `list[int]` or
+  `list[float]` is an object of its own behind a pointer; `array("q")` and `array("d")` store eight
+  bytes each in one buffer — a million latencies took 40 MB as a list and 8 MB as an array.
+  Arithmetic over whole columns is numpy's job, a dependency a measurement decides.
+
+  ```python
+  # WRONG — a million int objects behind a million pointers
+  latencies_ns: list[int] = []
+  # CORRECT — eight bytes per sample, in one buffer
+  latencies_ns = array("q")
+  ```
+
+- **Slicing `bytes` copies; slicing a `memoryview` does not.** Cutting 50 MB into 64 KiB chunks
+  took 15.5 ms a pass as `bytes` slices and 0.2 ms as views, with no second copy alive. Release the
+  view with `with`: while it exists, the buffer under it cannot be resized or freed.
+
+  ```python
+  # WRONG — every chunk is a fresh 64 KiB copy
+  def write_in_chunks(payload: bytes, sink: BinaryIO) -> None:
+      for offset in range(0, len(payload), _CHUNK_SIZE_BYTES):
+          sink.write(payload[offset : offset + _CHUNK_SIZE_BYTES])
+
+  # CORRECT — the slices point into payload, and the view is released on the way out
+  def write_in_chunks(payload: bytes, sink: BinaryIO) -> None:
+      with memoryview(payload) as view:
+          for offset in range(0, len(view), _CHUNK_SIZE_BYTES):
+              sink.write(view[offset : offset + _CHUNK_SIZE_BYTES])
   ```
 
 - **`slots=True` is the `types.md` default**, and a hand-written class with fixed attributes gets
