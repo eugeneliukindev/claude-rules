@@ -1,12 +1,9 @@
 ---
 name: python-async
 description: >-
-  Python asyncio and concurrency: asyncio.run once in the entry point, one async library per
-  codebase, never blocking the event loop, offloading sync and CPU-bound work to shared executors,
-  a deadline on every await, structured concurrency with TaskGroup, cancellation and shielding,
-  bounded fan-out, contextvars, graceful shutdown, and choosing between async, threads and
-  processes. Use when writing async def, awaiting external I/O, using create_task, a semaphore or
-  anyio, or moving Python work to threads or a process pool.
+  Writes asyncio code that never blocks the loop, bounds every await and fan-out, and cleans up on
+  cancellation; chooses between async, threads and processes. Use when writing async def, awaiting
+  I/O, or using create_task, gather, a semaphore, a queue, anyio, threads or a process pool.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,61 +11,24 @@ paths:
 
 # Asyncio and Concurrency
 
-## Asyncio
+Testing coroutines — the plugin, its mode and loop scope — is in `python-pytest`.
 
-- **`asyncio.run(main())` once, in the entry point**, and nowhere else. No
-  `asyncio.get_event_loop()` — since 3.14 it raises when no loop is running, and where one is,
-  `asyncio.get_running_loop()` says so honestly — no `loop.run_until_complete`, and no
-  `asyncio.run` inside library code, which fails the moment its caller is already async.
+## Deadlines
 
-```python
-# WRONG — raises on 3.14 when no loop is running, and never closes the loop or its tasks
-loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
+### Every `await` on external I/O runs under a deadline
 
-# CORRECT — creates the loop, runs main, cancels what is left and closes the loop
-asyncio.run(main())
-```
+**Why:** an unbounded `await` is the async equivalent of an infinite loop: a peer that stops sending
+holds the task forever. The deadline is the client's configured timeout or an `asyncio.timeout`
+scope — one scope bounds every await in its block, where two `wait_for` calls in sequence each get
+the whole budget. In an async generator the scope wraps the `await` and closes before the `yield`
+(`python-streaming`).
 
-- **One async library per codebase**: `asyncio`, or `anyio` when a dependency is built on it or the
-  code must also run under trio. Mixing them mixes two cancellation models — anyio's cancel scopes
-  are level-triggered, asyncio's cancellation is delivered once — and a timeout written in one does
-  not hold in the other's task group.
-- **Never block the event loop**: no sync drivers, no `time.sleep`, no heavy CPU work inside
-  `async def`.
-- **Blocking calls are offloaded, not tolerated**: `await asyncio.to_thread(...)` for I/O-bound
-  sync code. CPU-bound work goes to a **shared** process pool created once in the composition root
-  and passed in — never an executor constructed per call, which pays pool startup every time and
-  breaks concurrency limits.
-
-```python
-# WRONG — the whole event loop stops while the file is read
-async def load_report(path: Path) -> bytes:
-    return path.read_bytes()
-
-# CORRECT — the read runs on a worker thread and the loop keeps serving
-async def load_report(path: Path) -> bytes:
-    return await asyncio.to_thread(path.read_bytes)
-
-# WRONG — a pool per call: worker processes are started and torn down for every report
-async def render_report(report_id: ReportId) -> bytes:
-    with ProcessPoolExecutor() as pool:
-        return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
-
-# CORRECT — one pool, sized and built by the composition root, passed in
-async def render_report(report_id: ReportId, *, pool: Executor) -> bytes:
-    return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
-```
-
-- **Every `await` on external I/O runs under a deadline** — the client's configured timeout or an
-  explicit `asyncio.timeout(...)` scope. An unbounded `await` is the async equivalent of an
-  infinite loop. In an async generator the scope wraps the `await` and closes before the `yield`:
-  one left open across it cancels whichever task is iterating (`python-streaming`).
-
+**Example:**
 ```python
 # WRONG — a peer that stops sending leaves this await, and its task, waiting forever
 async def read_frame(reader: asyncio.StreamReader) -> bytes:
     return await reader.readuntil(_FRAME_SEPARATOR)
+
 
 # CORRECT — at the deadline the scope cancels the read and raises TimeoutError
 async def read_frame(reader: asyncio.StreamReader) -> bytes:
@@ -76,73 +36,96 @@ async def read_frame(reader: asyncio.StreamReader) -> bytes:
         return await reader.readuntil(_FRAME_SEPARATOR)
 ```
 
-- **`asyncio.timeout` around `to_thread` stops the waiting, not the thread.** A thread cannot be
-  cancelled: the call runs to completion and keeps its executor slot, so a handful of hung calls
-  exhausts the pool. The deadline for blocking work lives in the blocking client's own timeout.
+### A deadline on blocking work lives in the blocking client, not around `to_thread`
 
+**Why:** a thread cannot be cancelled. `asyncio.timeout` around `to_thread` stops the waiting; the
+call runs to completion and keeps its executor slot, so a handful of hung calls exhausts the pool.
+
+**Example:**
 ```python
 # WRONG — the caller gets TimeoutError, and the hung call keeps its worker thread regardless
-async def fetch_invoice(invoice_id: InvoiceId, *, client: BillingClient) -> Invoice:
+async def fetch_statement(statement_id: StatementId, *, bank: BankClient) -> Statement:
     async with asyncio.timeout(_FETCH_TIMEOUT_SECONDS):
-        return await asyncio.to_thread(client.fetch_invoice, invoice_id)
+        return await asyncio.to_thread(bank.fetch_statement, statement_id)
+
 
 # CORRECT — the blocking client enforces the deadline, so the thread itself gives up
-async def fetch_invoice(invoice_id: InvoiceId, *, client: BillingClient) -> Invoice:
+async def fetch_statement(statement_id: StatementId, *, bank: BankClient) -> Statement:
     return await asyncio.to_thread(
-        client.fetch_invoice, invoice_id, timeout_seconds=_FETCH_TIMEOUT_SECONDS
+        bank.fetch_statement, statement_id, timeout_seconds=_FETCH_TIMEOUT_SECONDS
     )
 ```
 
-- **Structured concurrency by default**: `asyncio.TaskGroup` — tasks cannot leak, the first failure
-  cancels siblings and raises an `ExceptionGroup`. **Fire-and-forget `create_task` without keeping
-  a reference is forbidden**: the task can be garbage-collected mid-flight and its exception
-  silently lost.
+## Tasks
 
+### Concurrent tasks run in a `TaskGroup`; a bare `create_task` is never fired and forgotten
+
+**Why:** a task nobody holds can be garbage-collected mid-flight and its exception silently lost.
+The group holds every task, waits for all, cancels the siblings at the first failure and raises
+the failures together. `asyncio.gather` with its default raises the first failure and leaves the
+siblings running with nobody awaiting them — measured, the sibling ran to the end and printed;
+`return_exceptions=True` is right only where a partial result is the contract, with every element
+checked before use.
+
+**Example:**
 ```python
 # WRONG — nothing holds either task, and the caller never learns that one failed
-async def complete_order(order: Order, *, mailer: Mailer, audit: AuditLog) -> None:
-    asyncio.create_task(mailer.send_receipt(order))
-    asyncio.create_task(audit.record(order))
+async def complete_signup(account: Account, *, mailer: Mailer, audit: AuditLog) -> None:
+    asyncio.create_task(mailer.send_welcome(account))
+    asyncio.create_task(audit.record_signup(account))
+
 
 # CORRECT — the group holds both, waits for both, and raises their failures together
-async def complete_order(order: Order, *, mailer: Mailer, audit: AuditLog) -> None:
+async def complete_signup(account: Account, *, mailer: Mailer, audit: AuditLog) -> None:
     async with asyncio.TaskGroup() as group:
-        group.create_task(mailer.send_receipt(order))
-        group.create_task(audit.record(order))
+        group.create_task(mailer.send_welcome(account))
+        group.create_task(audit.record_signup(account))
 ```
 
-- **Cancellation is not an error to swallow.** On cancellation, clean up in `finally` and re-raise.
-  Shielding is reserved for genuinely-must-finish commits, always combined with a timeout.
+### A `TaskGroup`'s failures are caught with `except*`
 
+**Why:** the group raises an `ExceptionGroup`, so a plain `except` clause never matches and the
+failure escapes; flattening to the first exception loses the rest. Cancelling the task that owns
+the group raises `CancelledError`, not an `ExceptionGroup`, and an `except*` for the children's
+failures does not see it.
+
+**Example:**
 ```python
-# WRONG — swallowed: an enclosing timeout or TaskGroup sees a normal return and carries on
-async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+# WRONG — a TaskGroup raises ExceptionGroup, so this clause never matches and the failure escapes
+async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
     try:
-        while not await client.is_finished(job_id):
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-    except asyncio.CancelledError:
-        logger.info("polling stopped", extra={"job_id": job_id})
+        async with asyncio.TaskGroup() as group:
+            for feed in feeds:
+                group.create_task(cache.refresh(feed))
+    except FeedUnavailableError:
+        logger.warning("rate refresh incomplete")
 
-# CORRECT — the stop is recorded, and the cancellation travels on to whoever asked for it
-async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+
+# CORRECT — except* matches inside the group, however many feeds failed
+async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
     try:
-        while not await client.is_finished(job_id):
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-    except asyncio.CancelledError:
-        logger.info("polling stopped", extra={"job_id": job_id})
-        raise
+        async with asyncio.TaskGroup() as group:
+            for feed in feeds:
+                group.create_task(cache.refresh(feed))
+    except* FeedUnavailableError as failures:
+        logger.warning("rate refresh incomplete", extra={"failed_feeds": len(failures.exceptions)})
 ```
 
-- **Concurrency is bounded**: fan-outs go through a `Semaphore` with a named constant limit; queues
-  between producers and consumers are bounded — an unbounded queue is a memory leak with extra
-  steps.
+### A fan-out is bounded by a semaphore, and a queue between tasks has a size
 
+**Why:** ten thousand items open ten thousand requests at once, and an unbounded queue is a memory
+leak with extra steps. The limit is a named constant; a producer–consumer pair ends with
+`asyncio.Queue.shutdown()` (3.13) — `put` raises `QueueShutDown` at once, `get` once the queue is
+drained — or a sentinel on a 3.12 floor.
+
+**Example:**
 ```python
 # WRONG — ten thousand SKUs open ten thousand requests at once
 async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
     async with asyncio.TaskGroup() as group:
         tasks = [group.create_task(catalog.fetch_price(sku)) for sku in skus]
     return [task.result() for task in tasks]
+
 
 # CORRECT — at most _MAX_CONCURRENT_FETCHES requests are in flight at any moment
 async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
@@ -157,36 +140,44 @@ async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[P
     return [task.result() for task in tasks]
 ```
 
-- **Request-scoped context travels via `contextvars`** — never module globals, never thread-locals
-  in async code. Do not smuggle business parameters through it.
-- **Graceful shutdown is designed, not hoped for**: handle `SIGTERM`/`SIGINT`, stop accepting work,
-  drain or cancel with a deadline, then close resources in reverse order. Consumers acknowledge
-  only after processing — the mechanics, and the drain inside the grace period, are in
-  `python-workers`. In a container the process is PID 1, which ignores a signal it has no handler
-  for, and only an exec-form start command lets the signal reach Python at all
-  (`python-container`).
+## Cancellation
 
+### Cancellation is cleaned up after and re-raised, never swallowed
+
+**Why:** swallowed, an enclosing timeout or `TaskGroup` sees a normal return and carries on.
+`CancelledError` is a `BaseException`, so `except Exception` lets it through by design, and
+`except BaseException` "for resilience" swallows it. Shielding is reserved for a commit that must
+finish, always under a timeout of its own.
+
+**Example:**
 ```python
-# WRONG — SIGTERM's default action ends the process at once: no finally runs, nothing is closed
-async def main() -> None:
-    async with build_application() as application:
-        await application.serve_forever()
+# WRONG — swallowed: whoever cancelled this task believes it finished normally
+async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+    try:
+        while not await client.is_finished(job_id):
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+    except asyncio.CancelledError:
+        logger.info("polling stopped", extra={"job_id": job_id})
 
-# CORRECT — a signal sets the event; the application stops taking work, drains and closes
-async def main() -> None:
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for signal_number in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(signal_number, stop.set)
-    async with build_application() as application:
-        await application.serve_until(stop)
+
+# CORRECT — the stop is recorded, and the cancellation travels on to whoever asked for it
+async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+    try:
+        while not await client.is_finished(job_id):
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+    except asyncio.CancelledError:
+        logger.info("polling stopped", extra={"job_id": job_id})
+        raise
 ```
 
-- **Async generators are closed deterministically** — consume with `aclosing(...)` when the loop
-  may break early. Left open, a generator is closed when it is collected, or at `asyncio.run`'s
-  shutdown if something still holds it — a moment nothing controls, and its file or cursor stays
-  open until then.
+### An async generator left early is closed with `aclosing`
 
+**Why:** left open, a generator is closed when it is collected, or at `asyncio.run`'s shutdown if
+something still holds it — a moment nothing controls, and its file or cursor stays open until then.
+`aclosing` needs `aclose()`, so a method whose result callers close returns `AsyncGenerator`, not
+`AsyncIterator` — mypy rejects the latter.
+
+**Example:**
 ```python
 # WRONG — returning mid-loop leaves the generator open; its finally waits for the collector
 async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
@@ -194,6 +185,7 @@ async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
         if invoice.is_disputed:
             return invoice
     return None
+
 
 # CORRECT — aclosing closes the generator on the way out, so its cursor is released here
 async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
@@ -204,156 +196,51 @@ async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
     return None
 ```
 
-- **Locks protect state, not I/O.** Never hold a lock across an external `await` you do not control.
-- **Sync and async versions of an API are separate, explicit functions** — no boolean, no
-  auto-detection. Write the async core and delegate the sync wrapper at the edge, never the
-  reverse.
-- **`ExceptionGroup` / `except*` for concurrent failures** from a `TaskGroup`; do not flatten to
-  the first exception.
+## Context and Locks
 
+### Request-scoped context travels in `contextvars`, and a lock guards state, never I/O
+
+**Why:** a module global or a thread-local is shared by every task on the loop, so one request's
+id lands in another's log lines; a context variable is per task. It carries cross-cutting context —
+a correlation id, a tenant — never business parameters smuggled past the signature. A lock held
+across an external `await` you do not control makes every task that needs it wait for the network.
+
+**Example:**
 ```python
-# WRONG — a TaskGroup raises ExceptionGroup, so this clause never matches and the failure escapes
-async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
-    try:
-        async with asyncio.TaskGroup() as group:
-            for feed in feeds:
-                group.create_task(cache.refresh(feed))
-    except FeedUnavailableError:
-        logger.warning("rate refresh incomplete")
+# WRONG — one global for the whole loop: concurrent requests overwrite each other's id
+_current_request_id = ""
 
-# CORRECT — except* matches inside the group, however many feeds failed
-async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
-    try:
-        async with asyncio.TaskGroup() as group:
-            for feed in feeds:
-                group.create_task(cache.refresh(feed))
-    except* FeedUnavailableError as failures:
-        logger.warning("rate refresh incomplete", extra={"failed_feeds": len(failures.exceptions)})
+
+async def handle(request: Request, *, handler: Handler) -> Response:
+    global _current_request_id  # noqa: PLW0603  # the bug this example shows
+    _current_request_id = request.headers.get("x-request-id", "")
+    return await handler(request)
+
+
+# CORRECT — each task sees the value set in its own context
+_REQUEST_ID: Final = contextvars.ContextVar[str]("request_id", default="")
+
+
+async def handle(request: Request, *, handler: Handler) -> Response:
+    _REQUEST_ID.set(request.headers.get("x-request-id", ""))
+    return await handler(request)
 ```
 
-## Cancellation, `gather` and Threads Calling In
+## Threads
 
-- **`TaskGroup`, not `asyncio.gather`.** With its default `return_exceptions=False`, `gather` raises
-  the first failure and leaves the siblings running with nobody awaiting them — their results and
-  errors go nowhere. `gather(..., return_exceptions=True)` is right only where a partial result is
-  the contract, and then every element is checked for an exception before it is used. Measured:
-  after `gather` raised, the sibling ran to the end and printed with nobody awaiting it.
+**Before running work on a thread pool, sharing state between threads and tasks, or calling into
+the loop from a thread, read [threads.md](threads.md)** — `contextvars` through `run_in_executor`,
+`run_coroutine_threadsafe`, `threading.Lock` against `asyncio.Lock`, the GIL is not a lock, a lock
+held only for the data, `threading.local`.
 
-```python
-# WRONG — the first failure is raised, and the other fetch runs on with nobody awaiting it
-async def load_dashboard(*, orders: OrderService, stock: StockService) -> Dashboard:
-    recent, low = await asyncio.gather(orders.recent(), stock.running_low())
-    return Dashboard(recent=recent, low=low)
+## Processes
 
-# CORRECT — a failure cancels the sibling, and both are finished when the block exits
-async def load_dashboard(*, orders: OrderService, stock: StockService) -> Dashboard:
-    async with asyncio.TaskGroup() as group:
-        recent = group.create_task(orders.recent())
-        low = group.create_task(stock.running_low())
-    return Dashboard(recent=recent.result(), low=low.result())
-```
+**Before choosing between async, threads and processes, creating an executor or a process pool, or
+picking a `multiprocessing` start method, read [processes.md](processes.md)** — the workload table,
+shared injected executors, small picklable arguments, `spawn` or `forkserver`.
 
-- **`CancelledError` is a `BaseException`**, so `except Exception` lets it through, by design.
-  `except BaseException` "for resilience" swallows cancellation exactly like the WRONG above.
-- **Cancelling the task that owns a `TaskGroup` cancels the children and raises `CancelledError`**,
-  not an `ExceptionGroup`; an `except*` for the children's failures does not see it.
-- **`asyncio.to_thread` copies the caller's `contextvars` into the thread; `run_in_executor` does
-  not**, and every log line the thread writes loses its correlation id (`python-observability`).
-  On a thread pool, submit `functools.partial(contextvars.copy_context().run, func, *args)`.
+## Shutdown
 
-```python
-# WRONG — the thread sees the variable's default: the report's log lines carry no request id
-report = await loop.run_in_executor(self._executor, render_report, order_ids)
-
-# CORRECT — the caller's context travels with the call
-report = await loop.run_in_executor(
-    self._executor, functools.partial(contextvars.copy_context().run, render_report, order_ids)
-)
-```
-
-- **A thread reaches the loop only through `asyncio.run_coroutine_threadsafe(coroutine, loop)` or
-  `loop.call_soon_threadsafe(...)`.** Every other loop, `Future` and `asyncio.Queue` method is
-  unsafe from another thread; only debug mode reports it — `Non-thread-safe operation invoked`.
-- **`async with asyncio.timeout(...)` over `asyncio.wait_for`**: one deadline bounds every await in
-  the block, where two `wait_for` calls in sequence each get the whole budget.
-- **`asyncio.Queue.shutdown()` (3.13) ends a producer–consumer pair**: `put` raises
-  `QueueShutDown` at once, `get` once the queue is drained, and `shutdown(immediate=True)` drops
-  what is queued. On a 3.12 floor the producer enqueues a sentinel instead.
-
-## Threads, Processes, and the GIL
-
-Pick the model by the workload, and measure before assuming parallelism helps — pool and pickling
-overhead is real:
-
-| Workload | Model |
-|---|---|
-| Many concurrent network / DB waits | async |
-| A blocking library with no async API | threads |
-| CPU-bound Python | processes |
-| CPU-bound inside a C extension that releases the GIL | threads |
-| CPU-bound Python on 3.14, measured against processes | `InterpreterPoolExecutor`, or threads on a free-threaded `3.14t` build — if every C extension supports it |
-
-- **Executors are shared and injected**, sized by a named constant, and closed on shutdown.
-- **Process pools receive picklable, small arguments** and return small results; pass ids and
-  paths, not loaded objects. A function submitted to a process pool is a module-level function.
-- **Shared mutable state between threads is protected by a lock**, held for the shortest time,
-  never across I/O. Prefer no shared state at all.
-
-```python
-# WRONG — every thread asking for any price waits behind one slow catalog call
-def fetch_price(self, sku: Sku) -> Decimal:
-    with self._lock:
-        if sku not in self._price_by_sku:
-            self._price_by_sku[sku] = self._catalog.fetch_price(sku)
-        return self._price_by_sku[sku]
-
-# CORRECT — the lock covers the dictionary only; the fetch runs outside it
-def fetch_price(self, sku: Sku) -> Decimal:
-    with self._lock:
-        cached = self._price_by_sku.get(sku)
-    if cached is not None:
-        return cached
-    fetched = self._catalog.fetch_price(sku)
-    with self._lock:
-        return self._price_by_sku.setdefault(sku, fetched)
-```
-
-- **Thread-safety is a documented property of a class**, not an assumption.
-- **`threading.local` only for genuinely per-thread resources**; in async code it is wrong — use
-  `contextvars`.
-- **Daemon threads are forbidden** for anything that does work; every thread is joined on shutdown
-  with a timeout.
-
-```python
-# WRONG — a daemon thread is killed wherever it stands when the interpreter exits
-writer = threading.Thread(target=flush_audit_log, args=(entries,), daemon=True)
-writer.start()
-
-# CORRECT — the thread watches a stop event, and shutdown waits for it with a deadline
-stop = threading.Event()
-writer = threading.Thread(target=flush_audit_log, args=(entries, stop))
-writer.start()
-...
-stop.set()
-writer.join(timeout=_SHUTDOWN_TIMEOUT_SECONDS)
-```
-
-- **The `multiprocessing` start method is `spawn` or `forkserver`, set explicitly** — never `fork`:
-  forking a process that already has threads or an event loop is undefined behaviour in practice.
-  Since 3.14 the Linux default is `forkserver` rather than `fork`, so code that silently relied on
-  inherited globals breaks on upgrade; naming the method makes that dependence visible.
-
-```python
-# WRONG — the platform and the Python version pick the start method
-with ProcessPoolExecutor(max_workers=_RENDER_WORKERS) as pool:
-    ...
-
-# CORRECT — named once, so the workers start the same way on every platform and version
-with ProcessPoolExecutor(
-    max_workers=_RENDER_WORKERS, mp_context=multiprocessing.get_context("spawn")
-) as pool:
-    ...
-```
-- **Signals are handled in the main thread only**; workers get a stop event, not a signal.
-
-Testing coroutines — the plugin, its mode and loop scope — is in `python-pytest`.
+**Before handling `SIGTERM` or `SIGINT`, starting a thread that does work, or writing the stop
+path of a service, read [shutdown.md](shutdown.md)** — a signal that sets an event, drain with a
+deadline, no daemon threads, signals in the main thread only.
