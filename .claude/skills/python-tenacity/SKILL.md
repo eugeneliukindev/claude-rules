@@ -1,12 +1,9 @@
 ---
 name: python-tenacity
 description: >-
-  tenacity retry policies: keying retry= on a translated exception type rather than a status code,
-  always setting stop= with a total time budget and reraise=True, choosing jitter in proportion to
-  the backoff instead of the one-second default, before_sleep_log for visibility, and testing a
-  policy through retry_with(wait=wait_none()). The retry design — what is transient, at which level,
-  within which budget — is in python-boundaries. Use when Python code imports tenacity or applies
-  the @retry decorator.
+  tenacity mechanics for retry policies: retry keyed on a translated exception, a stop with a time
+  budget, proportional jitter, logging, testing a policy. Use when code imports tenacity or
+  applies @retry.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,99 +11,106 @@ paths:
 
 # tenacity
 
-Checked against tenacity 9.2. Retry only transient failures, at one level — the adapter — within
-a total deadline the outermost boundary owns (why and how: `python-boundaries`); this skill is how
-to write the policy once that is decided.
+Checked against tenacity 9.2. What is retried — only a transient failure, at one level, within a
+total deadline — is `python-boundaries`; inside a worker, a backoff that fits the handler's deadline
+is tenacity's and a longer wait the broker's (`python-workers`); a gRPC call whose channel retries
+through `retryPolicy` gets no tenacity around it (`python-grpc`). This file is how the policy is
+written once that is decided.
 
-## The Shape of a Retry Policy
+### A policy names `retry=` by exception type, `stop=` with a total budget, and `reraise=True`
 
-Four decisions, all explicit, none left to a default:
+**Why:** without `retry=` every exception is retried, a `KeyError` from your own parsing included;
+keyed on the adapter's translated transient type, the policy reads as a sentence. Without `stop=`
+it retries forever — a dependency's outage becomes an unkillable worker — and `stop_after_delay`,
+checked between attempts, bounds the total while the per-request timeout bounds each one. Without
+`reraise=True` the caller gets `RetryError` and loses the exception its handling was written for.
 
+**Example:**
 ```python
-# WRONG — the README shape: retries every exception, bugs included, and hides the cause in
-# RetryError
+# WRONG — the README shape: every exception retried, bugs included, the cause hidden in RetryError
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
-async def _fetch_page(url: str, *, session: AsyncSession) -> Page: ...
+async def fetch_rates(*, upstream: RatesUpstream) -> RateTable:
+    return await upstream.fetch_table()
 
-# CORRECT
+
+# CORRECT — transient failures only, a total budget, and the real exception on give-up
 @retry(
     retry=retry_if_exception_type(TransientUpstreamError),
     wait=wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2),
     stop=stop_after_attempt(3) | stop_after_delay(_FETCH_BUDGET_SECONDS),
     reraise=True,
 )
-async def _fetch_page(url: str, *, session: AsyncSession) -> Page: ...
+async def fetch_rates(*, upstream: RatesUpstream) -> RateTable:
+    return await upstream.fetch_table()
 ```
 
-- **`retry=` keys on an exception type, never on a status code.** Translate the upstream failure
-  into a transient and a permanent error first, in the adapter; then the policy reads as a sentence
-  and the classification lives in one place instead of being spread across every call site. Without
-  `retry=` the default retries every exception — a `KeyError` from your own parsing three times.
-- **`stop=` is always set.** Without it the default retries forever, which turns a dependency's
-  outage into an unkillable worker. Combine the attempt count with a total budget:
-  `stop_after_delay` is checked between attempts, so the per-request timeout still bounds each one.
-- **`reraise=True`, always.** Without it tenacity raises `RetryError`, and the caller loses the
-  actual exception — including the one your error handling upstream was written to catch.
+### The jitter is stated in proportion to the backoff, and the first wait is `multiplier=`
 
-## Set the Jitter Explicitly
+**Why:** `wait_exponential_jitter` defaults to `jitter=1`, in seconds; with `multiplier=0.2` that
+random second is five times the wait it perturbs, and the exponential curve stops mattering.
+`initial=` is the deprecated name of `multiplier=` since 9.2 and warns when the policy is built — at
+import, for a module-level one — which a suite with warnings as errors turns into a failure.
 
-`wait_exponential_jitter` defaults to `jitter=1`, measured in seconds. With `multiplier=0.2` that
-random second is five times the backoff it is supposed to perturb: the exponential curve stops
-mattering and every wait is dominated by noise. State the jitter in proportion to the backoff.
-
+**Example:**
 ```python
-# WRONG — jitter left at its default of 1 second, five times the 0.2-second first wait
-_FETCH_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0)
+# WRONG — jitter left at 1 second, five times the 0.2-second first wait, and a deprecated name
+_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0)
 
-# CORRECT — the jitter stated in proportion to the backoff it perturbs
+
+# CORRECT — the first wait and the jitter both chosen
 _FETCH_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2)
 ```
 
-The first wait is `multiplier=`; `initial=` is its deprecated name since 9.2 and warns when the
-policy is built — at import, for a module-level one — which a suite running with warnings as errors
-turns into a failure. The same care applies to `max` — a policy whose numbers were never chosen is a
-policy nobody can reason about during an incident.
+### A retried call is logged before each sleep, and the give-up once, at the boundary
 
-## What Not to Retry
+**Why:** a silent retry hides a degrading dependency until it fails completely;
+`before_sleep_log` makes each retry visible. The final failure is logged once, where it is
+converted, never on every attempt.
 
-Never retry a business rejection, a non-idempotent write without a key, or a call a lower level
-already retries; the one carve-out is a deadlock or serialization failure, which retries the whole
-unit of work (why: `python-boundaries`). Inside a worker, tenacity and the broker's redelivery never
-both retry one failure: a backoff that fits inside the handler's deadline is tenacity's, a longer
-wait is the broker's (why: `python-workers`). A gRPC call whose
-channel retries it through a service-config `retryPolicy` gets no tenacity around it
-(`python-grpc`).
+**Example:**
+```python
+# WRONG — retries happen in silence
+_RATES_POLICY: Final = retry(
+    retry=retry_if_exception_type(TransientUpstreamError),
+    wait=_FETCH_WAIT,
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
 
-## Observability
 
-- **`before_sleep=before_sleep_log(logger, logging.WARNING)`** so a retried call is visible. A
-  silent retry hides a degrading dependency until it fails completely.
-- Log the give-up once, at the boundary that converts the failure — not on every attempt.
+# CORRECT — every retry leaves a warning that names the call and the wait
+_RATES_POLICY: Final = retry(
+    retry=retry_if_exception_type(TransientUpstreamError),
+    wait=_FETCH_WAIT,
+    stop=stop_after_attempt(3),
+    reraise=True,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+```
 
-## Testing a Policy
+### A policy is tested through `retry_with(wait=wait_none())`, counting calls on a fake
 
-- **Test a copy of the policy with `wait=wait_none()`** — the attempt count and the exception
-  classification stay under test, which is what matters, and the suite does not sleep through the
-  backoff. `fetch_rates.retry_with(wait=wait_none())` is that copy, and since 9.2 the decorator is
-  typed so that `mypy --strict` accepts it; the test calls the public function it already tests,
-  and reaches into nothing private.
+**Why:** the attempt count and the exception classification stay under test, which is what
+matters, and the suite does not sleep through the backoff. Since 9.2 `retry_with` is typed, so the
+test calls the public function it already tests and reaches into nothing private. Attempts are
+asserted on a fake that counts calls, never on timing.
 
+**Example:**
 ```python
 # WRONG — the test sleeps through the real backoff on every run
-def test_fetch_rates_retries_transient_failures() -> None:
+async def test_fetch_rates_retries_transient_failures() -> None:
     upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
 
-    fetch_rates(upstream)
+    await fetch_rates(upstream=upstream)
 
     assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
 
+
 # CORRECT — the same policy without the waits; attempts and classification stay under test
-def test_fetch_rates_retries_transient_failures() -> None:
+async def test_fetch_rates_retries_transient_failures() -> None:
     upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
 
-    fetch_rates.retry_with(wait=wait_none())(upstream)
+    await fetch_rates.retry_with(wait=wait_none())(upstream=upstream)
 
     assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
 ```
-
-- Assert the number of attempts against a fake that counts calls, not against timing.
