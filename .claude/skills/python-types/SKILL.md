@@ -1,12 +1,10 @@
 ---
 name: python-types
 description: >-
-  Python type design decisions: the precision ladder from a bare primitive to Literal, Enum,
-  NewType, TypedDict, frozen value objects and validating models; PEP 695 generics, dispatch and
-  variance; narrowing Any and object; Annotated constraints; enumerations; collections.abc
-  parameter types; and the mypy error codes that enforce them. Use when choosing a representation
-  for a Python value, designing a generic class or function, narrowing an unknown value, replacing
-  a dict[str, Any], picking a collections.abc type, or deciding what to put in an annotation.
+  Chooses how a Python value is typed: the ladder from a primitive to Literal, Enum, NewType,
+  TypedDict and value objects, narrowing, generics, collections.abc. Use when choosing a
+  representation for a value, replacing a dict[str, Any], writing a generic or a typed decorator,
+  narrowing an unknown value, or deciding an annotation.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -16,13 +14,7 @@ paths:
 
 The `types.md` rule carries the defaults; this file carries the decisions behind them.
 
-**Choosing a `collections.abc` ABC** — which one to accept in a parameter, which to return, how to
-check one at runtime, how to implement a container: see [collections-abc.md](collections-abc.md).
-
-## Type Precision Ladder
-
-Every value has a narrowest honest type. A wider type is a runtime check you owe later, in a place
-nobody will remember to write it.
+## Choosing a Representation
 
 | Instead of | Use | When |
 |---|---|---|
@@ -37,415 +29,405 @@ nobody will remember to write it.
 | `Any` | `object` + narrowing, or a `Protocol` | the value is genuinely unknown |
 | several `bool` fields | one `Enum` state | the flags encode a state machine |
 
+### Every value takes its narrowest honest type
+
+**Why:** a wider type is a runtime check you owe later, in a place nobody will remember to write it
+— any string is a status, any dict a request, any `str` an id. Narrow fields still combine freely:
+a `finished_at: datetime | None` beside `status` lets a done job exist with no finish time, and a
+field that belongs to one state is a tagged union (Closed Sets, below).
+
+**Example:**
 ```python
-# WRONG — every field a primitive: any string is a status, any dict a payload, any str an id
+# WRONG — every field a primitive: "pending", "PENDING" and "in-progress" are all statuses
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Job:
-    id: str
-    status: str                    # "pending"? "PENDING"? "in-progress"?
-    payload: dict[str, Any]
+class ExportJob:
+    job_id: str
+    status: str
+    request: dict[str, Any]
+
 
 # CORRECT — every field at its narrowest honest type
-JobId = NewType("JobId", UUID)
+ExportJobId = NewType("ExportJobId", UUID)
 
-class JobStatus(StrEnum):
+
+class ExportJobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
 
+
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Job:
-    id: JobId
-    status: JobStatus
-    payload: JobPayload
+class ExportJob:
+    job_id: ExportJobId
+    status: ExportJobStatus
+    request: ExportRequest
 ```
-
-Narrow fields still combine freely: a `finished_at: datetime | None` beside `status` lets a done job
-exist with no finish time. When a field belongs to one state, give each state its own variant — a
-tagged union, below under `Literal` — and the combination cannot be constructed at all.
 
 ## Value Objects
 
-A primitive that carries rules is not a primitive. Choose by how much behaviour the concept has:
+### A primitive with rules is a frozen value object, valid by construction
 
-- **Plain `str` / `int` / `Decimal`** — only for values with no rules at all (a free-text comment).
-- **`NewType`** — *identity* rules only: it must not be confused with other same-typed values, but
-  has no validation or behaviour. `UserId = NewType("UserId", int)`. Zero runtime cost.
-- **Frozen dataclass value object** — the value has validation, invariants, or operations: `Money`,
-  `Email`, `DateRange`. Validate in `__post_init__` and raise the package's own error; from then on
-  an instance is **valid by construction**, and functions receiving it never re-validate.
-- **Promotion is one-way**: when a `NewType` grows its first rule it becomes a value object
-  everywhere; never keep both representations alive.
-- Value objects are compared by value, are `Hashable`, and carry no I/O.
+**Why:** a rule checked at the call sites is checked at some of them. Choose by behaviour: a plain
+`str`, `int` or `Decimal` for a value with no rules; `NewType` for identity only, at no runtime
+cost; a frozen dataclass for validation, invariants or operations — `Money`, `Email`, `DateRange`
+— validated in `__post_init__` with the package's own error, after which no function re-validates
+it. Promotion is one-way: a `NewType` that grows its first rule becomes a value object everywhere.
+Value objects compare by value, are hashable and carry no I/O.
 
-**Dataclass field rules**: validation and derived fields go in `__post_init__`, with
-`object.__setattr__` when frozen; `field(default_factory=…)` for anything mutable or computed;
-`field(repr=False)` for secrets and blobs; `field(compare=False)` for ids and timestamps that must
-not affect equality. Derive a modified copy with `dataclasses.replace()`, never by mutation.
-
+**Example:**
 ```python
-# WRONG — primitives with implicit rules scattered at call sites
-def apply_discount(price: float, rate: float) -> float:
-    if rate < 0 or rate > 1:
-        raise ValueError("bad rate")
-    return round(price * (1 - rate), 2)
+# WRONG — the range rule lives in the function, and every other caller of the floats skips it
+def distance_km(
+    from_latitude: float, from_longitude: float, to_latitude: float, to_longitude: float
+) -> float:
+    if not (-90 <= from_latitude <= 90 and -90 <= to_latitude <= 90):
+        raise ValueError("latitude out of range")
+    return haversine_km(from_latitude, from_longitude, to_latitude, to_longitude)
 
-# CORRECT — the rule lives in the type; no instance can hold an invalid rate
+
+# CORRECT — no Coordinates instance can hold an impossible point
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class DiscountRate:
-    value: Decimal
+class Coordinates:
+    latitude: float
+    longitude: float
 
     def __post_init__(self) -> None:
-        if not Decimal(0) <= self.value <= Decimal(1):
-            raise InvalidDiscountRateError(self.value)
+        if not (-90 <= self.latitude <= 90 and -180 <= self.longitude <= 180):
+            raise InvalidCoordinatesError(self.latitude, self.longitude)
 
-def apply_discount(price: Money, rate: DiscountRate) -> Money:
-    return price * (1 - rate.value)
+
+def distance_km(origin: Coordinates, destination: Coordinates) -> float:
+    return haversine_km(
+        origin.latitude, origin.longitude, destination.latitude, destination.longitude
+    )
 ```
 
-**Dunders where the behaviour is a natural fit**, never to satisfy a style preference. `__repr__` on
-every domain class that is not a dataclass: unambiguous, identifying fields, no secrets. `__eq__`
-and `__hash__` come together or not at all — value objects get both from `@dataclass(frozen=True)`;
-entities compare by identity and say so. A container protocol is implemented by subclassing the
-matching `collections.abc` ABC, not by hand-writing every dunder. The class-creation hooks —
-`__init_subclass__`, `__set_name__`, `__class_getitem__`, a metaclass — and typing them with
-`ClassVar` and `dataclass_transform` are in `python-metaclasses`.
+### A field says what it holds: secrets out of `repr`, ids and timestamps out of equality
+
+**Why:** the generated `repr` prints a secret into the first log line that formats the object, and
+an `issued_at` in `__eq__` makes two copies of one credential unequal. A mutable or computed default
+is `field(default_factory=...)`; validation and derived fields go in `__post_init__`, through
+`object.__setattr__` when frozen; a modified copy comes from `dataclasses.replace()`.
+
+**Example:**
+```python
+# WRONG — repr shows the secret, and a re-issued copy compares unequal
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ApiCredential:
+    client_id: str
+    secret: str
+    issued_at: datetime
+
+
+# CORRECT — each field states where it may appear
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ApiCredential:
+    client_id: str
+    secret: str = field(repr=False)
+    issued_at: datetime = field(compare=False)
+```
+
+### A dunder is written where the behaviour fits, and `__eq__` comes with `__hash__`
+
+**Why:** a class that defines `__eq__` alone gets `__hash__ = None`, and its first use as a set
+member or a dict key raises `TypeError: unhashable type`. Value objects get both from
+`@dataclass(frozen=True)`; an entity compares by identity and says so in both. A domain class that
+is not a dataclass has a `__repr__` naming its identity and no secret; a container subclasses its
+`collections.abc` ABC. Class-creation hooks — `__init_subclass__`, `__set_name__`, a metaclass —
+are in `python-metaclasses`.
+
+**Example:**
+```python
+# WRONG — equality without a hash: {account} raises TypeError
+@final
+class Account:
+    def __init__(self, *, account_id: AccountId, owner: str) -> None:
+        self.account_id = account_id
+        self.owner = owner
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Account) and other.account_id == self.account_id
+
+
+# CORRECT — the entity's identity decides both equality and the hash
+@final
+class Account:
+    def __init__(self, *, account_id: AccountId, owner: str) -> None:
+        self.account_id = account_id
+        self.owner = owner
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Account) and other.account_id == self.account_id
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.account_id)
+```
 
 ## `TypedDict`
 
-- **For dict-shaped data that must stay a dict** — a JSON payload you don't own, a `**kwargs`
-  bundle, a driver row, a file you read back with `json.load`. No validation, no methods, no
-  invariants, no runtime identity (`isinstance` does not work); anything needing those is a
-  dataclass or a model.
-- **A file read back is the clearest case.** The rows come out of the library as dicts and stay
-  dicts — the loader built them, not you — and converting every one costs more than it returns when
-  most of the file is only counted, filtered or written back. The `TypedDict` names the keys so
-  `row["labels"]` stops being `Any`; the part that carries meaning is still parsed by a model where
-  it is used.
-- **`total=False` is not "optional-ish"** — mark individual keys `NotRequired[…]` / `Required[…]`.
-  **`ReadOnly[…]`** (PEP 705) for keys consumers must not mutate.
-- **Never as an internal domain type.** Convert at the boundary and pass the domain object inward.
-- **`Unpack[SomeKwargs]` for typed `**kwargs`** when a signature forwards a fixed set of options.
-- Extra keys are a type error, never a runtime one — rejecting unknown fields is `extra="forbid"`
-  on a model.
+### Dict-shaped data that stays a dict is a `TypedDict`, turned into a domain object where it enters
 
+**Why:** a JSON payload you don't own, a `**kwargs` bundle, a driver row, a file read back — the
+`TypedDict` names the keys so `row["labels"]` stops being `Any`, at no runtime cost. A file read
+back stays dicts: converting every row costs more than it returns when most of the file is only
+counted or filtered. It has no validation, methods or `isinstance`, so it is never a domain type.
+Keys are marked `NotRequired[...]` or `Required[...]`, not `total=False`; `ReadOnly[...]` for keys
+consumers must not change; `Unpack[Options]` types a forwarded `**kwargs`.
+
+**Example:**
 ```python
-# WRONG — dict[str, Any] at the boundary and inside; the keys exist only in the author's head
+# WRONG — the keys exist only in the author's head, and the dict travels inward
 def parse_product(raw: dict[str, Any]) -> dict[str, Any]:
-    return {"title": raw["name"], "price": raw.get("price")}
+    return {"title": raw["name"], "price_cents": raw.get("price_cents")}
 
-# CORRECT — TypedDict describes the foreign JSON; a domain object travels inward
+
+# CORRECT — the TypedDict describes the foreign JSON; a domain object travels inward
 class ProductPayload(TypedDict):
     name: str
-    price: NotRequired[int | None]
+    price_cents: NotRequired[int | None]
     published_at: str
 
+
 def parse_product(raw: ProductPayload) -> Product:
-    price = raw.get("price")
+    price_cents = raw.get("price_cents")
     return Product(
         title=raw["name"],
-        price=Money.from_minor(price) if price is not None else None,
+        # is not None, not truthiness: a price of zero is a price
+        price=Money.from_cents(price_cents) if price_cents is not None else None,
         published_at=datetime.fromisoformat(raw["published_at"]),
     )
 ```
 
-Test the bound value with `is not None`, not `if raw.get("price")`: truthiness turns a price of
-`0` into "no price", and a re-read `raw.get(...)` is not narrowed by the first one.
+## `Annotated`
 
-## `Literal` — Closing a Set
+### A constraint the type cannot express is an `Annotated` alias, named once
 
-- **For a closed set inside one or two signatures**: `def export(fmt: Literal["csv", "json"]) ->
-  bytes`. Callers are checked at type-check time; no runtime cost.
-- **Promote to `Enum`** at the ladder's threshold — three or more users — or earlier when the set
-  needs iteration, carries behaviour, or crosses a boundary where the wire value and the code value
-  may diverge (`StrEnum` keeps them equal).
-- **`Final` keeps a constant's exact value**: `DEFAULT_EXPORT_FORMAT: Final = "json"` is inferred as
-  `Literal["json"]` and passes wherever the `Literal` is expected; `Final[Literal[...]]` adds
-  nothing.
-- **Tagged unions**: a `Literal` discriminator field (`kind: Literal["circle"]`) is what narrows a
-  union of `TypedDict`s and what a validator dispatches serialized data on. Dataclass variants
-  need none — a class pattern in `match` narrows them, and `assert_never` closes the match.
-- **Never `Literal[True]` / `Literal[False]` to fake two functions** — that is a boolean flag with
-  extra syntax.
+**Why:** `Literal` narrows which values; `Annotated` attaches rules the static type has no room for
+— bounds, a pattern, a dependency marker — read at runtime by whatever validates the boundary. The
+same bounds in five models are five places to get one wrong. A bound restated in a service body
+means the boundary leaked: domain code receives values that are already valid.
 
+**Example:**
 ```python
-# WRONG — an unconstrained string; the mistake surfaces at runtime, in the caller's process
-def export(orders: Sequence[Order], fmt: str) -> bytes:
-    if fmt == "csv": ...
-    elif fmt == "json": ...
-    raise ValueError(fmt)
+# WRONG — one limit, written into every query model
+class ArticleQuery(BaseModel):
+    page_size: int = Field(default=50, ge=1, le=200)
 
-# CORRECT — the set is closed at type-check time
-def export(orders: Sequence[Order], fmt: Literal["csv", "json"]) -> bytes: ...
 
-export(orders, "xml")   # error: Argument 2 has incompatible type
-```
+class CommentQuery(BaseModel):
+    page_size: int = Field(default=50, ge=1, le=200)
 
-```python
-# Tagged union of dataclasses with an exhaustive match
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Circle:
-    radius: Decimal
 
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Rectangle:
-    width: Decimal
-    height: Decimal
-
-type Shape = Circle | Rectangle
-
-def area(shape: Shape) -> Decimal:
-    match shape:
-        case Circle(radius=radius):
-            return PI * radius * radius
-        case Rectangle(width=width, height=height):
-            return width * height
-        case _:
-            assert_never(shape)
-```
-
-## `Annotated` — Constraints the Type System Cannot Express
-
-`Literal` narrows *which values*; `Annotated` attaches *rules about* a value that the static type
-keeps no room for. The static type stays `T`; the metadata is read at runtime by whatever validates
-the boundary.
-
-- **Constraints, DI markers, unit tags**: `Annotated[int, Field(ge=1, le=100)]`.
-- **Name the constrained type once and reuse it.** Repeating the same bounds in five signatures is
-  five places to get it wrong, and the constraint travels with the name when it is aliased.
-- **Constraints belong at the boundary.** Domain code receives values that are already valid, so a
-  bound restated in a service body means the boundary leaked.
-
-```python
-# WRONG — the same limits repeated in every signature, enforced by hand in the body
-def list_orders(page_size: int) -> list[Order]:
-    if not 1 <= page_size <= 200:
-        raise ValueError("bad page size")
-
-# CORRECT — the constrained type is named once
+# CORRECT — the constrained type is named once and travels with its name
 type PageSize = Annotated[int, Field(ge=1, le=200)]
-type Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
 
-class OrderQuery(BoundaryModel):
+
+class ArticleQuery(BaseModel):
     page_size: PageSize = 50
-    source: Slug
+
+
+class CommentQuery(BaseModel):
+    page_size: PageSize = 50
 ```
 
-## Enumerations
+## Closed Sets
 
-- **`StrEnum`** (3.11+) when the values are strings that appear in serialized output — no `.value`
-  access, transparent serialization. **`IntEnum`** for integer codes that must compare equal to
-  plain ints. **`Flag`** / **`IntFlag`** for combinable bit flags. Plain **`Enum`** for a domain
-  concept with no serialization requirement, members from `auto()`.
-- **Compare member to member**, never against a raw literal: `order.status == OrderStatus.PENDING`.
-- Enums are singular nouns; members are states or kinds.
+### A closed set in one or two signatures is a `Literal`; reused, it is an `Enum`
 
-## Narrowing and `Any`
+**Why:** the checker rejects `"jpeg"` at the call site, where a `str` lets the function raise in
+the caller's process. Promote to `Enum` at three users, or earlier when the set needs iteration,
+behaviour, or crosses a boundary where wire and code values may diverge. `Final` keeps a constant's
+exact value — `DEFAULT_IMAGE_FORMAT: Final = "png"` passes where the `Literal` is expected; a
+`Literal[True]` parameter is a boolean flag with extra syntax.
 
-- **`Any` is legal and rarely what you want.** It does not say "unknown", it says "stop checking",
-  and a function *returning* `Any` spreads that silence to everything downstream. Two positions
-  earn it: an untyped third-party edge, where it is narrowed on the first line and never
-  propagates; and a signature a library fixes — a wrap-validator, a hook, a callback whose shape is
-  not yours to choose. There, `Any` stays in exactly the position the library defines, and the
-  arguments you *do* control are typed.
-- **`object` is how "unknown" is spelled**: it forces narrowing. A parameter you merely inspect —
-  `isinstance` checks, `repr`, passing it on — is `object`, not `Any`, even when the value beside
-  it has to stay `Any`.
-- **`cast()` is a claim, not a fix**: allowed only when you can state on one line why the checker
-  cannot see what you can. Prefer a checked `isinstance` or a reusable `TypeIs` predicate.
-- **Never widen a return type to avoid a branch**: `-> Order | None` on a function that always
-  returns an `Order` forces a pointless check on every caller.
-
+**Example:**
 ```python
-# WRONG — Any escapes the function and infects everything downstream
-def load_settings(path: Path) -> Any:
+# WRONG — any string is accepted, and the mistake surfaces as a ValueError at runtime
+def render_chart(chart: Chart, image_format: str) -> bytes:
+    if image_format == "png":
+        return chart.to_png()
+    if image_format == "svg":
+        return chart.to_svg()
+    raise ValueError(f"unsupported image format {image_format!r}")
+
+
+# CORRECT — render_chart(chart, "jpeg") is a type error
+def render_chart(chart: Chart, image_format: Literal["png", "svg"]) -> bytes:
+    if image_format == "png":
+        return chart.to_png()
+    return chart.to_svg()
+```
+
+### An enumeration's kind follows its use, and a member is compared to a member
+
+**Why:** `StrEnum` serializes as its value with no `.value`; `IntEnum` equals the integer codes it
+replaces; `Flag` combines bits; a plain `Enum` with `auto()` has no wire form to leak. A comparison
+with a raw literal survives a renamed value and turns false without an error. An enum is a
+singular noun, its members states or kinds.
+
+**Example:**
+```python
+# WRONG — a plain Enum on the wire, compared through its raw value
+class TicketPriority(Enum):
+    LOW = "low"
+    HIGH = "high"
+
+
+def needs_page(ticket: Ticket) -> bool:
+    return ticket.priority.value == "high"
+
+
+# CORRECT — a StrEnum serializes as itself, and the comparison names the member
+class TicketPriority(StrEnum):
+    LOW = "low"
+    HIGH = "high"
+
+
+def needs_page(ticket: Ticket) -> bool:
+    return ticket.priority is TicketPriority.HIGH
+```
+
+### A field that belongs to one state makes each state its own variant
+
+**Why:** a status beside optional fields lets a delivered shipment have no delivery time. Variants
+make that combination unconstructable, a class pattern in `match` narrows each one, and
+`assert_never` turns a new variant into a type error at every `match` that misses it. A union of
+`TypedDict`s narrows on a `Literal` field — `kind: Literal["in_transit"]` — the same field a
+validator dispatches serialized data on.
+
+**Example:**
+```python
+# WRONG — any combination of status and optional fields can be built
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Shipment:
+    status: ShipmentStatus
+    tracking_number: str | None = None
+    delivered_at: datetime | None = None
+
+
+# CORRECT — each state carries exactly its own fields, and the match is exhaustive
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AwaitingPickup:
+    warehouse: str
+
+
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class InTransit:
+    tracking_number: str
+
+
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Delivered:
+    tracking_number: str
+    delivered_at: datetime
+
+
+type Shipment = AwaitingPickup | InTransit | Delivered
+
+
+def describe(shipment: Shipment) -> str:
+    match shipment:
+        case AwaitingPickup(warehouse=warehouse):
+            return f"waiting at {warehouse}"
+        case InTransit(tracking_number=tracking_number):
+            return f"in transit, tracking {tracking_number}"
+        case Delivered(delivered_at=delivered_at):
+            return f"delivered {delivered_at:%Y-%m-%d %H:%M}"
+        case _:
+            assert_never(shipment)
+```
+
+## Narrowing
+
+### An unknown value is `object`, narrowed at once; `Any` stays only where a library put it
+
+**Why:** `Any` turns checking off, and a function returning it spreads that silence to every
+caller. Two positions earn it: an untyped third-party edge, narrowed on the next line; and a
+signature a library fixes — a validator, a hook — where `Any` stays in exactly the library's
+position and the arguments you control are typed. A return type is never widened to skip a branch:
+`-> Playlist | None` on a function that always returns one makes every caller check for nothing.
+
+**Example:**
+```python
+# WRONG — Any escapes, and every caller's flags.anything type-checks
+def load_feature_flags(path: Path) -> Any:
     return json.loads(path.read_bytes())
 
-# CORRECT — narrowed on the first line, never leaves
-def load_settings(path: Path) -> Settings:
+
+# CORRECT — narrowed where it was read; only a typed value leaves
+def load_feature_flags(path: Path) -> FeatureFlags:
     raw: object = json.loads(path.read_bytes())
     if not isinstance(raw, Mapping):
-        raise ConfigurationError(f"{path} must contain an object")
-    return Settings.parse(raw)
+        raise ConfigurationError(f"{path} must hold a JSON object")
+    return FeatureFlags.from_mapping(raw)
 ```
 
-## Generics, Dispatch, and Variance
+### `cast()` is a claim; `isinstance` or a `TypeIs` predicate is a check
 
-- **PEP 695 syntax from Python 3.12**: `def first[T](...)`, `class Repository[T: Entity]`. The
-  parameter belongs to the signature, so nothing module-level is declared and nothing can be reused
-  by accident.
-- **Below 3.12 it is `TypeVar` + `Generic`, and that is not a lapse** — the `types.md` rule asks for
-  PEP 695 on a 3.12+ floor, and below it the syntax does not exist yet. The same applies to the
-  `typing` names that arrived with it: `typing_extensions.override` until 3.12,
-  `typing_extensions.TypeIs` until 3.13. A project states its floor once, in `requires-python`, and
-  every one of these choices follows from it rather than being argued per file.
-- **PEP 695 type parameters are single capital letters** — `T`, `K`/`V`, `P`/`R` for
-  `ParamSpec`/return. The bound carries the meaning (`[T: BaseModel]`); the letter does not need
-  to, and only a generic with three or more parameters spells them out.
-- **A `TypeVar` is a module-level name, so it is private and suffixed** — `_T`, `_KT`, `_VT`, `_P`,
-  `_R`. Where one module declares several and the letters stop telling them apart, the role goes in
-  front of the suffix, never instead of it: `_BackendT`, `_ModelT`. Variance is the PEP 484 suffix
-  after it — `_ModelT_co`, `_ModelT_contra` — which is what ruff's `PLC0105` checks, and the twins
-  sort together.
-- **Bound the parameter when it has requirements.** An unbounded parameter whose body calls methods
-  on it is a lie.
-- **Parameters take `Sequence`/`Mapping`, returns are concrete** — that handles variance without
-  ever writing `covariant=`.
-- **A default for a type parameter (PEP 696, 3.13+)**: `class Repository[T = Entity]` lets a bare
-  `Repository` mean `Repository[Entity]`, where strict mypy otherwise demands the argument. On a
-  3.12 floor it is a syntax error, and mypy reports it against `python_version`.
-- **`ParamSpec` + `Concatenate` for decorators**: `def logged[**P, R](func: Callable[P, R]) ->
-  Callable[P, R]`. A decorator returning `Callable[..., Any]` erases type safety for every
-  function it wraps.
-- **`typing.Self` for methods returning their own instance** — `def with_row(self) -> Self`,
-  `@classmethod def from_env(cls) -> Self`, `__enter__`. Never a quoted class name, which breaks
-  for subclasses.
-- **`@typing.overload` when one function genuinely has several signatures** — not to paper over a
-  function that should be two.
-- **`functools.singledispatch` instead of an `isinstance` ladder** when behaviour varies by the
-  type of one argument and the set is open. For a closed set, `match` on a tagged union.
-- **`TypeIs` (3.13+, or `TypeGuard`) for custom narrowing predicates**; the name follows the
-  boolean rules.
+**Why:** `cast` changes the type and checks nothing, so a wrong claim fails far from where it was
+made; it stays only with a one-line reason the checker cannot see. A narrowing needed twice is a
+`TypeIs` predicate — 3.13, or `typing_extensions` below — named like any boolean.
 
+**Example:**
 ```python
-# WRONG — T promises nothing although the body needs an id, and list[T] refuses a tuple
-def index_by_id[T](entities: list[T]) -> dict[EntityId, T]:
-    return {entity.id: entity for entity in entities}   # error: "T" has no attribute "id"
+# WRONG — the claim is believed, and a list of ints fails three calls later
+def tag_names(payload: Mapping[str, object]) -> list[str]:
+    return cast(list[str], payload["tags"])
 
-# CORRECT — the bound states the requirement; Sequence takes any read-only sequence
-def index_by_id[T: Entity](entities: Sequence[T]) -> dict[EntityId, T]:
-    return {entity.id: entity for entity in entities}
+
+# CORRECT — the predicate checks what the annotation then promises
+def is_string_list(value: object) -> TypeIs[list[str]]:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def tag_names(payload: Mapping[str, object]) -> list[str]:
+    tags = payload["tags"]
+    if not is_string_list(tags):
+        raise MalformedPayloadError("tags must be a list of strings")
+    return tags
 ```
 
-```python
-# WRONG — an isinstance ladder over an open hierarchy: every new kind edits this function
-def render(notification: Notification) -> str:
-    if isinstance(notification, EmailNotification): ...
-    elif isinstance(notification, SmsNotification): ...
-    raise NotImplementedError(type(notification).__name__)
+## Generics
 
-# CORRECT — each kind gets its own renderer, registered beside the generic function
-@singledispatch
-def render(notification: Notification) -> str:
-    raise NotImplementedError(type(notification).__name__)
+**Before writing a generic class or function, a type parameter, a decorator, an `@overload` or a
+dispatch on an argument's type, read [generics.md](generics.md)** — PEP 695 on the floor that has
+it, parameter names and bounds, variance, `ParamSpec`, `@overload`, `singledispatch`.
 
-@render.register
-def _(notification: EmailNotification) -> str: ...
+## `collections.abc`
 
-@render.register
-def _(notification: SmsNotification) -> str: ...
-```
+**Before choosing a parameter's collection type, checking a value against a container type at
+runtime, or implementing a container, read [collections-abc.md](collections-abc.md)** — the
+annotation table, a bare `str` as a `Sequence[str]`, `numbers`, subclassing the ABC instead of
+`dict`.
 
 ## Further Constructs
 
-- **`Never` for functions that never return normally** — the checker then knows the code after the
-  call is unreachable. `NoReturn` is the older spelling of the same type; `Never` is also the type
-  of the impossible branch, which is why `assert_never(value)` works.
-- **`LiteralString` (PEP 675) for parameters that must not receive interpolated input**: a query
-  builder, a shell helper, a template loader. pyright accepts literals and concatenations of
-  literals and rejects anything that passed through user input; mypy treats `LiteralString` as
-  plain `str` and accepts every string, so under mypy the annotation documents intent and checks
-  nothing.
-- **A recursive alias instead of `Any` for free-form JSON**: `type Json = str | int | float | bool
-  | None | list[Json] | dict[str, Json]`. Only where the shape is genuinely unknown. A `type`
-  statement is evaluated lazily, so the recursion and a class defined further down need no quotes.
-- **`isinstance` against a `@runtime_checkable` `Protocol` checks only that the names exist** —
-  not their signatures or types: a `close()` missing the protocol's parameter passes, and the call
-  fails later. Where the check must mean it, narrow on the ABC the implementation inherits.
-- **`@deprecated` (PEP 702) on a name that is going away**: with mypy's `deprecated` code every use
-  is an error, not a runtime warning (when, and the message it carries: `python-packaging`).
-- **`Protocol` with `__call__` instead of a multi-parameter `Callable`.** `Callable[[str, int,
-  datetime], None]` names nothing — the reader cannot tell which argument is which, and keyword
-  arguments cannot be expressed at all. One parameter and an obvious return → `Callable`; two or
-  more, or any keyword argument → a named calling protocol.
-- **Phantom types for units**: `Seconds = NewType("Seconds", float)`. In a signature the unit
-  belongs in the type, so that passing a distance where a duration is expected is an error rather
-  than a bug. Arithmetic on a `NewType` returns the base type, so the check holds at signatures,
-  not inside expressions. A phantom unit type does not drop the unit from the name:
-  `duration_seconds: Seconds` — the reader of a call site still has only the name. A spacecraft was
-  lost to exactly this: one program reported thruster impulse in pound-force seconds, the program
-  consuming it read newton-seconds, and both sides were plain floats.
-- **`Iterator` vs `Iterable` in return types** — `Iterator[T]` only when the caller consumes it
-  once. Returning an `Iterator` that callers re-iterate produces silent empty results the second
-  time.
-- **A sentinel, not `None`, when `None` is a legal value.** For PATCH-style updates, `None` cannot
-  distinguish "not provided" from "explicitly null". JSON Merge Patch (RFC 7396) made that choice
-  for a whole format: `null` there means "remove the key", so a merge patch can never set a value
-  to null. Make the sentinel a one-member `Enum`: mypy narrows `is UNSET` on an enum member in
-  every branch, but on a plain-class instance only in the `if` branch, leaving the `else` wide. Its
-  type is public, because a caller that forwards the parameter has to name it.
-- **No `Result` / `Either` types.** Python signals failure with exceptions; a wrapper duplicates
-  that, defeats `raise … from`, and forces every caller into manual unwrapping. The one acceptable
-  use is a batch operation whose *normal output* is a mix of successes and failures — and then it
-  is an explicit frozen dataclass with a `Literal` tag, not a general-purpose monad.
-- **`Buffer` (PEP 688) instead of `bytes | bytearray | memoryview`**; `SupportsIndex` /
-  `SupportsFloat` when only the conversion protocol is needed.
-- **`assert_type()` in tests for public library APIs** — pins the inferred type so a refactor
-  cannot silently widen it. `reveal_type()` is a debugging tool and never gets committed.
-
-```python
-# WRONG — an anonymous Callable: which argument is which, and none can be passed by keyword
-def register(handler: Callable[[str, int, datetime], None]) -> None: ...
-
-# CORRECT — a named calling protocol
-class EventHandler(Protocol):
-    def __call__(self, event: str, attempt: int, *, received_at: datetime) -> None: ...
-
-def register(handler: EventHandler) -> None: ...
-```
-
-```python
-# WRONG — None means both "leave unchanged" and "clear the nickname"
-def update_user(user_id: UserId, nickname: str | None = None) -> None: ...
-
-# CORRECT — absence has its own value, and None keeps its one meaning
-class Unset(Enum):
-    UNSET = auto()
-
-UNSET: Final = Unset.UNSET
-
-def update_user(user_id: UserId, nickname: str | None | Unset = UNSET) -> None:
-    if nickname is UNSET:
-        ...        # leave unchanged
-    elif nickname is None:
-        ...        # clear it
-    else:
-        ...        # nickname is str here
-```
-
-```python
-def fail_missing(entity: str, entity_id: object) -> Never:
-    raise EntityNotFoundError(f"{entity} {entity_id} not found")
-
-def execute_ddl(statement: LiteralString) -> None: ...
-
-execute_ddl(f"DROP TABLE {name}")        # pyright: error; mypy: accepted
-
-Seconds = NewType("Seconds", float)
-Meters = NewType("Meters", float)
-
-def wait(duration_seconds: Seconds) -> None: ...
-
-wait(Meters(5.0))                        # error: incompatible type "Meters"
-```
+**Before writing a function that always raises, a parameter that must stay a literal string, a
+free-form JSON value, a callback with several parameters, a unit of measure in a signature, a
+returned generator, a runtime protocol check, a type pinned in a test, an "unset" default beside
+`None`, a batch that collects failures, or bytes-like input, read [constructs.md](constructs.md)**
+— `Never`, `LiteralString`, a recursive JSON alias, calling protocols, unit types, `Iterator`
+returns, `assert_type`, sentinels, batch results, `Buffer`.
 
 ## Enforcement
 
-`strict = true` already turns on `disallow_any_generics`, `warn_return_any`, `strict_equality`,
+`strict = true` turns on `disallow_any_generics`, `warn_return_any`, `strict_equality`,
 `extra_checks`, `no_implicit_reexport` and the rest of that family. What it does **not** turn on —
 `warn_unreachable`, `strict_equality_for_none` and a list of error codes — is in the `[tool.mypy]`
-block of `python-project`, and three of those codes enforce rules this file otherwise only asks
-for: `explicit-override`, `exhaustive-match` and `ignore-without-code`.
-
-- **A rule the checker can hold is a rule you stop having to remember.** `@override` on every
-  override, an exhaustive `match`, a coded ignore: all three are stated elsewhere in these files
-  and all three become errors once the codes are enabled. Adding a code is the cheapest thing in
-  this document.
-- `# type: ignore[code]` always with a code and a reason; their count only ratchets down.
-- A `dict[str, Any]` or an untyped `**kwargs` crossing a layer boundary is a review blocker.
+block of `python-project`; three of those codes turn rules into errors: `explicit-override`,
+`exhaustive-match` and `ignore-without-code`. A rule the checker holds is a rule nobody has to
+remember, and adding a code is the cheapest change in this file. A `dict[str, Any]` or an untyped
+`**kwargs` crossing a layer boundary is a review blocker.
