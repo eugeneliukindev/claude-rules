@@ -5,13 +5,105 @@ paths:
 
 # Python — Logging
 
-- `logging.getLogger(__name__)`, once per module. `ERROR` means someone must look — never for an
-  expected user mistake.
-- **Never log secrets or PII** — tokens, passwords, card numbers, raw request payloads. Log
-  identifiers, not objects, as fields in `extra={...}` rather than formatted into the message.
-- Message style: lower-case start, no trailing punctuation, present tense, event first then
-  context — `"payment captured"`, not `"Captured the payment successfully!"`.
-- Configure logging **once** at the entry point, never in a library or on import — a framework that
-  configured the root logger for every app importing it took a major version to undo. **Logs are
-  JSON**, one object per line, so every `extra=` field arrives as a field a search can filter on.
-- Timing and counters are metrics, not logs (`python-observability`); never log in a hot loop.
+### One logger per module, from `getLogger(__name__)`; `ERROR` only when someone must look
+
+**Why:** the module name is what lets a handler filter by package; `ERROR` that also fires for an
+expected user mistake trains everyone to ignore it.
+
+**Example:**
+```python
+# WRONG — a shared named logger, and ERROR for a customer typing a wrong code
+log = logging.getLogger("app")
+
+
+def apply_discount(code: str, *, discounts: DiscountRepository) -> Discount:
+    discount = discounts.find(code)
+    if discount is None:
+        log.error("discount not found", extra={"code": code})
+        raise UnknownDiscountError(code)
+    return discount
+
+
+# CORRECT — the module's own logger, and INFO for an expected outcome
+logger = logging.getLogger(__name__)
+
+
+def apply_discount(code: str, *, discounts: DiscountRepository) -> Discount:
+    discount = discounts.find(code)
+    if discount is None:
+        logger.info("discount code unknown", extra={"code_length": len(code)})
+        raise UnknownDiscountError(code)
+    return discount
+```
+
+### No secret or personal data in a log; identifiers go in `extra=`, not into the message
+
+**Why:** tokens, passwords, card numbers and raw request payloads in logs leak to everyone who reads
+them; an identifier formatted into the message is a string a search cannot filter on.
+
+**Example:**
+```python
+# WRONG — the whole payment, card number included, formatted into the text
+logger.info(f"payment captured: {payment}")
+
+
+# CORRECT — the identifiers as fields, and nothing a reader should not see
+logger.info("payment captured", extra={"payment_id": payment.payment_id, "amount": payment.amount})
+```
+
+### A message is the event, lower-case, present tense, without punctuation
+
+**Why:** `"payment captured"` reads and greps the same in every module; `"Captured the payment
+successfully!"` is the same event in a spelling nobody searches for.
+
+**Example:**
+```python
+# WRONG
+logger.info("Successfully captured the payment!", extra={"payment_id": payment.payment_id})
+
+
+# CORRECT
+logger.info("payment captured", extra={"payment_id": payment.payment_id})
+```
+
+### Logging is configured once, at the entry point, and writes JSON
+
+**Why:** a library or an import that configures the root logger reconfigures every application that
+imports it — a framework that did took a major version to undo; JSON, one object per line, turns
+every `extra=` field into a field a search can filter on.
+
+**Example:**
+```python
+# WRONG — configured on import, in a module others import
+logging.basicConfig(level=logging.INFO)
+
+
+def capture(payment: Payment) -> None:
+    logger.info("payment captured", extra={"payment_id": payment.payment_id})
+
+
+# CORRECT — the entry point configures it, once (the JSON formatter: python-observability)
+def main() -> None:
+    configure_json_logging(level=logging.INFO)
+    run_worker()
+```
+
+### Timing and counting are metrics, not log lines
+
+**Why:** a log line per event in a hot loop costs I/O on every iteration and is still not a number a
+dashboard can sum (`python-observability`).
+
+**Example:**
+```python
+# WRONG — one line per image, to count images
+for image in images:
+    logger.info("thumbnail generated", extra={"image_id": image.image_id})
+    thumbnailer.generate(image)
+
+
+# CORRECT — a counter, and one line for the run
+for image in images:
+    thumbnailer.generate(image)
+    generated_thumbnails.add(1)
+logger.info("thumbnails finished", extra={"image_count": len(images)})
+```
