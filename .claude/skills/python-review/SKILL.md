@@ -1,12 +1,9 @@
 ---
 name: python-review
 description: >-
-  A procedure for reviewing Python changes against these rules: the project's own formatter,
-  linters, type checker and tests first, then find_unprefixed_names.py, then the eight Definition
-  of Done checks from core.md applied to every changed unit of the diff, reported as findings with
-  a location, the rule and the fix — and violations in untouched code listed apart. Use when asked
-  to review Python code, a diff, a branch or a pull request, or to check that Python work is done,
-  or when invoked as /python-review.
+  Reviews Python changes against these rules: the tools first, then the prefix check, then the
+  Definition of Done checks per changed unit, reported as findings. Use when asked to review
+  Python code, a diff, a branch or a pull request, or to check that Python work is done.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
