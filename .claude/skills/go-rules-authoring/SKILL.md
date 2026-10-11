@@ -17,11 +17,10 @@ paths:
 ## What Is Shared, and Where It Lives
 
 The method is the same for every language, and it is written once, in `python-rules-authoring`:
-**How a Rule Is Written** (widest category, carve-out beside the prohibition, the failure mode,
-invented and real examples, the pair differing in one dimension, no project names), **What Holds
-These Rules Up**, **One Rule, One Home**, **A Skill's Description Is Its Trigger**, and
-**Evaluation Before and After**. Read those sections before changing a Go rule; this file holds
-only what is different for Go.
+its body (the rule format, widest category, carve-out beside the prohibition, the failure mode,
+complete examples differing in one dimension, no project names) and its reference files on
+placement, layering, descriptions and evaluation. Read those before changing a Go rule; this file
+holds only what is different for Go.
 
 ## What Loads When
 
@@ -41,8 +40,10 @@ The budget, counted without front matter:
 | **everything loaded on every `.go`** | **800** |
 | any one `SKILL.md` | 500 |
 
-The numbers are the Python set's, for the Python set's reasons; the Go set reached 880 lines on its
-first draft and was cut to 800 by tightening prose, not by dropping rules. **An addition displaces
+These are the Python set's old numbers: the Go set reached 880 lines on its first draft and was cut
+to 800 by tightening prose, not by dropping rules. The Python set has since moved to 120 rules and
+28,000 tokens on every file, with a heading per rule (`python-rules-authoring`); the Go set keeps
+these lines until its rules take that shape, and then takes those limits. **An addition displaces
 something**, and what cannot displace anything becomes a skill with a row in `core.md`'s map.
 
 ## Every Go Example Compiles
@@ -71,14 +72,14 @@ not compile teaches nothing about the bug it was meant to show — the compiler 
 
 ## API Claims Come from `go doc`, Not Memory
 
-Every function, option, tag and version number in these files is checked with `go doc` at the
-target version before it is written. Four claims in the first draft of this set were written from
-memory and wrong: the standard `uuid` package has no `NewString`; `testing/synctest` fails a test
-whose bubble deadlocks rather than reporting leftover goroutines; `type OrderID uuid.UUID` drops
-every method of `UUID`; and `url.URL.JoinPath` does not escape its segments — an example built on
-that claim let an ID of `../admin` leave the path, in the skill about HTTP clients. A behaviour claim is checked
-by running ten lines, not by reading: that is how `encoding/json/v2` turned out to have no default
-representation for `time.Duration` — it fails rather than writing nanoseconds as v1 does.
+Every function, option, tag and version number in these files is checked with `go doc` at the target
+version before it is written. Four claims in the first draft of this set were written from memory
+and wrong: the standard `uuid` package has no `NewString`; `testing/synctest` fails a test whose
+bubble deadlocks rather than reporting leftover goroutines; `type OrderID uuid.UUID` drops every
+method of `UUID`; and `url.URL.JoinPath` does not escape its segments — an example built on that
+claim let an ID of `../admin` leave the path, in the skill about HTTP clients. A behaviour claim is
+checked by running ten lines, not by reading: that is how `encoding/json/v2` turned out to have no
+default representation for `time.Duration` — it fails rather than writing nanoseconds as v1 does.
 
 **Every version-specific statement names its version** — "since Go 1.27", "(Go 1.25)" — so a
 reader on an older `go` line knows which advice does not yet apply to them, and an audit after
