@@ -29,15 +29,62 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 | `python-rules-authoring` | editing these rules or skills |
 | `python-<library>` | the code imports that library — `pydantic`, `sqlalchemy`, `alembic`, `fastapi`, `strawberry`, `grpc`, `tenacity`, `niquests`, `orjson`, `pytest`, `asyncpg`, `redis`, `cashews`, `faststream`, `pyjwt` |
 
-Style, layout and complexity belong to the formatter, the linters and the type checker, which the
-project picks; **nothing here restates what a tool decides**, and where they disagree the tool wins
-and this file gets a PR. Two things do belong here:
+The principles and YAGNI, KISS and DRY are in `principles.md`.
 
-- **A suppression carries its rule code and its reason on its line**, or directly above when it
-  will not fit — never wrapped away by the formatter. The count only ever ratchets down.
-- **A limit is named, not raised.** One module with fifteen members must not buy every other
-  module the right to fifteen: the limit stays and the file is named, with a checkable reason. When
-  three files need the same escape, the rule is describing something real about the architecture.
+## The Tools Decide Style
+
+### Nothing here restates what a tool decides; where they disagree, the tool wins
+
+**Why:** style, layout and complexity belong to the formatter, the linters and the type checker the
+project picks; a rule that restates one drifts from it, and the disagreement is fixed here. Code
+laid out by hand against the formatter is undone on its next run, in someone else's diff.
+
+**Example:**
+```python
+# WRONG — aligned by hand: the formatter rewrites it, and the next diff carries the noise
+_RETRY_DELAYS_SECONDS: Final = (0.5,   1.0,   2.0,   4.0)
+_MAX_ATTEMPTS: Final         = 4
+
+
+# CORRECT — the formatter's layout, left as it writes it
+_RETRY_DELAYS_SECONDS: Final = (0.5, 1.0, 2.0, 4.0)
+_MAX_ATTEMPTS: Final = 4
+```
+
+### A suppression carries its rule code and its reason on its line
+
+**Why:** a bare `# type: ignore` or `# noqa` hides every future error on that line too, and nobody
+can tell whether it is still needed; the count only ratchets down.
+**Except:** directly above the line, when the reason will not fit — never wrapped away by the
+formatter.
+
+**Example:**
+```python
+# WRONG — what is ignored, and why?
+payload = json.loads(body)  # type: ignore
+
+
+# CORRECT — the code and the reason
+payload = legacy_decoder.decode(body)  # type: ignore[no-untyped-call]  # vendored, untyped until v4
+```
+
+### A limit is named, not raised
+
+**Why:** one module with fifteen members must not buy every other module the right to fifteen; the
+limit stays and the file is named, with a checkable reason. When three files need the same escape,
+the rule is describing something real about the architecture.
+
+**Example:**
+```toml
+# WRONG — raised for the whole project because one module needed it
+[tool.ruff.lint.pylint]
+max-args = 12
+
+
+# CORRECT — the limit stays; the one file is named, with its reason
+[tool.ruff.lint.per-file-ignores]
+"src/billing/export/columns.py" = ["PLR0913"]  # one column per CSV field, fixed by the tax format
+```
 
 ## When Rules Conflict
 
@@ -51,60 +98,23 @@ and this file gets a PR. Two things do belong here:
 A rule that is wrong for the situation, or regularly worked around, is changed here with the
 reasoning — never worked around silently in code.
 
-**In old code, what the task writes obeys these files; what it only passes stays as it is** —
-reformatting or renaming beyond the task buries the change in its diff. A violation noticed and
-left goes in the summary or the PR description, never copied into the new code.
+### In old code, what the task writes obeys these files; what it only passes stays as it is
 
-## Principles
+**Why:** reformatting or renaming beyond the task buries the change in its diff. A violation noticed
+and left goes in the summary or the PR description, never copied into the new code.
 
-Five, in priority order; when two rules conflict the earlier principle wins. **Correct** — the code
-does what its name and signature promise for every input the types allow, and fails loudly
-otherwise. **Readable** — a teammate new to the file understands it top-down without opening
-others; names carry the meaning. **Simple** — the least machinery that solves today's problem.
-**Typed** — illegal states are unrepresentable; the checker catches the mistake, not the reviewer.
-**Fast enough, by measurement** — algorithmic sanity always, anything more with a profile in hand.
+**Example:**
+```python
+# WRONG — the fix to one rounding bug arrives with a renamed module-wide helper and a reflow
+def total_due(inv: Inv) -> Decimal:
+    return sum((line.amount for line in inv.lines), start=Decimal(0)).quantize(_CENT)
 
-And three properties of the system as a whole:
 
-- **A failure stays where it happened.** One bad input or one unreachable dependency never stops
-  the run: name what is protected — this row, this source, this request — and catch at exactly that
-  boundary, recording the reason. Degradation has a stated direction — skip, retry later, serve
-  stale, return partial — written where the code makes the choice.
-
-  ```python
-  # WRONG — the boundary is the whole loop: one unreachable SKU and nothing after it is updated
-  try:
-      for sku in skus:
-          store.update_price(sku, supplier.fetch_price(sku))
-  except SupplierError:
-      logger.warning("price fetch failed", extra={"sku": sku})
-
-  # CORRECT — the boundary is one SKU: it is recorded and skipped, the run goes on
-  for sku in skus:
-      try:
-          price = supplier.fetch_price(sku)
-      except SupplierError:
-          logger.warning("price fetch failed", extra={"sku": sku})
-          continue
-      store.update_price(sku, price)
-  ```
-- **Cost grows slower than the work.** Every external collection has a limit, every fan-out a
-  semaphore, every run a deadline, every cache an expiry — one without grew per request, never read.
-  "It has always been small" is not a bound.
-- **The next person is you, without the context.** One actor per module; a new case is data or a
-  new file, never a new branch in something that already works. Deleting must be as easy as adding.
-
-## YAGNI, KISS, DRY
-
-- **Build what today's requirement needs.** A speculative feature costs everything that must keep it
-  working; a generalisation built for one case is a guess about the second. An option nobody sets is
-  a branch never known to work: a test client's flag did nothing for two majors.
-- **The simplest construction that fully solves the problem**, not the shortest: the boring
-  mechanism — a function over a class, a dict over a registry — judged at the point of *use*.
-- **DRY is about knowledge, not text.** Identical fragments answering to different actors are not
-  duplication — merged, the next change arrives as a parameter, then a flag, then a branch.
-  Fragments that must change together are duplication however different they look — a limit in a
-  validator and in a schema. **Wait for the third occurrence**; a shared constant often cures it.
+# CORRECT — the new function follows the rules; the old neighbours are listed in the PR instead
+def total_due(invoice: Invoice) -> Decimal:
+    subtotal = sum((line.amount for line in invoice.lines), start=Decimal(0))
+    return subtotal.quantize(_CENT, ROUND_HALF_EVEN)
+```
 
 ## Definition of Done
 
@@ -115,8 +125,8 @@ clean with no new suppression. Then the eight checks no tool makes, skipped firs
 - [ ] Every new identifier passes `naming.md`'s Self-Check and survives the relocation test
 - [ ] Every new module and class answers to one actor — name who would ask to change it
 - [ ] Every helper has a reason from `functions.md`, every class a trigger from `classes.md`
-- [ ] Constants sit at the top of the module, and **every top-level name not used outside is
-      prefixed** — `find_unprefixed_names.py` reports nothing new
+- [ ] Constants sit at the top of the module, and **every name used only inside its module or
+      class is prefixed** — `find_unprefixed_names.py` reports nothing new
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
 - [ ] No `Any`, magic literal or cross-layer `dict[str, Any]`; `@override` and `Final` where due
 - [ ] Every conversion preserves the cause; nothing returns `None`/`False`/`-1` to signal an error;
