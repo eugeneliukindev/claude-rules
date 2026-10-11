@@ -1,60 +1,57 @@
 ---
 name: python-streaming
 description: >-
-  Server-Sent Events, WebSockets and streamed downloads in ASGI services — StreamingResponse,
-  EventSourceResponse from FastAPI or sse-starlette, Starlette's WebSocket: the client leaving,
-  producer and reader in one TaskGroup, a bounded queue per connection, heartbeats and proxy
-  buffering, Last-Event-ID resume, a lifetime per connection, handshake authentication and Origin,
-  fan-out between worker processes behind a channel contract (redis: python-redis), close codes and
-  tests. Use when code returns a StreamingResponse or EventSourceResponse, yields from a route,
-  imports sse_starlette, accepts a WebSocket, streams a file, or syncs WebSocket rooms between
-  processes.
+  Designs long-lived responses whatever serves them: release on disconnect, bounded queues,
+  deadlines, the SSE and WebSocket protocols, fan-out across workers, downloads. Use when code
+  yields events to a client, returns a StreamingResponse or EventSourceResponse, accepts a
+  WebSocket, streams a file or an export, or syncs connections between processes.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
 ---
 
-# Streaming Responses
+# Streaming
 
-Checked against FastAPI 0.143, Starlette 1.7, sse-starlette 3.5 and uvicorn 0.54, on Python
-3.13+ (`asyncio.Queue.shutdown`). Structured concurrency and cancellation are
-`python-async`; the factory, lifespan and `Depends` accessors are `python-fastapi`; message models
-are `python-pydantic`. This file is what changes when a response lives for minutes instead of
-milliseconds. GraphQL subscriptions and gRPC server streams follow the same lifecycle rules; their
-mechanics are `python-strawberry` and `python-grpc`. None of it applies to a script: a script does
-not serve connections.
+A response that lives for minutes instead of milliseconds, whatever serves it; the examples run on
+Python 3.13+ (`asyncio.Queue.shutdown`). Structured concurrency and cancellation are
+`python-async`. Serving a stream from FastAPI — the response classes, Starlette's WebSocket,
+uvicorn's flags, the test clients — is `python-fastapi`; GraphQL subscriptions are
+`python-strawberry`, gRPC server streams `python-grpc`, and the redis channel behind fan-out
+`python-redis`. A script does not serve connections, so none of this applies there.
 
-**Pick the mechanism by who talks.** The server only — SSE: plain HTTP, and the browser reconnects
-and resumes by itself. Both sides — a WebSocket. A finite body too large to build in memory —
-`StreamingResponse` over a generator, or `FileResponse` for a file already on disk, which also
-answers range requests. For SSE, FastAPI's own `response_class=EventSourceResponse` on a generator
-route sends a `: ping` comment after 15 idle seconds and sets `X-Accel-Buffering: no` and
-`Cache-Control: no-cache`, none of it configurable; `sse_starlette.EventSourceResponse` takes
-`ping=` seconds and `send_timeout=`, and ends its streams when uvicorn begins shutting down. A
-plain `StreamingResponse` does none of this.
+**The mechanism follows who talks.** The server only — SSE: plain HTTP, and the browser reconnects
+and resumes by itself. Both sides — a WebSocket. A finite body too large to build in memory — a
+streamed download.
 
 ## The Client Leaves Without Saying So
 
-- **Everything a stream holds is released in `finally` or by `async with` inside the generator.**
-  Under uvicorn's HTTP protocol (ASGI spec 2.3) Starlette listens for `http.disconnect` and cancels
-  the generator where it awaits; a server on spec 2.4 does not listen, and the generator learns only
-  when its next send fails. Either way the code after the loop never runs.
+### Everything a stream holds is released by `async with` or `finally` inside the generator
 
+**Why:** when the client goes, the server cancels the generator where it awaits, or the next send
+fails — either way the code after the loop never runs, and whatever it was meant to release stays
+held.
+
+**Example:**
 ```python
 # WRONG — on disconnect the generator is cancelled inside get(), and the queue stays registered
-async def follow_order(order_id: OrderId, *, feed: OrderFeed) -> AsyncGenerator[OrderEvent]:
-    events = feed.add_subscriber(order_id)
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed
+) -> AsyncGenerator[ParcelEvent]:
+    events = feed.add_subscriber(tracking_number)
     while True:
         try:
             event = await events.get()
         except asyncio.QueueShutDown:
             break
         yield event
-    feed.remove_subscriber(order_id, events)
+    feed.remove_subscriber(tracking_number, events)
+
 
 # CORRECT — the context manager removes the queue however the stream ends
-async def follow_order(order_id: OrderId, *, feed: OrderFeed) -> AsyncGenerator[OrderEvent]:
-    async with feed.subscribe(order_id) as events:
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed
+) -> AsyncGenerator[ParcelEvent]:
+    async with feed.subscribe(tracking_number) as events:
         while True:
             try:
                 event = await events.get()
@@ -63,133 +60,168 @@ async def follow_order(order_id: OrderId, *, feed: OrderFeed) -> AsyncGenerator[
             yield event
 ```
 
-- **`CancelledError` is the disconnect; it is never caught to carry on** (`python-async`).
-  `await request.is_disconnected()` is a non-blocking poll, for a loop that does expensive work
-  between sends on a server that will not cancel it.
-- **A WebSocket's producer and reader run in one `TaskGroup`.** The reader is what notices the
-  close: `receive_text()` raises `WebSocketDisconnect`, the group cancels the producer, and the
-  handler returns. A producer started with `create_task` outlives the socket unless every exit
-  path cancels it — measured without the cancel, it stayed parked on a queue nobody would fill.
-  `except*` cannot `return`; `pass` and fall out.
+### `CancelledError` is the disconnect, and it is never caught to carry on
 
+**Why:** caught and continued, the stream outlives its client and keeps its subscription forever
+(`python-async`).
+
+**Example:**
 ```python
-# WRONG — the reference is kept, and the pusher still outlives the socket it writes to
-@live_router.websocket("/orders/{order_id}/live")
-async def follow_order_live(websocket: WebSocket, order_id: OrderId, feed: OrderFeedDep) -> None:
-    await websocket.accept()
-    async with feed.subscribe(order_id) as events:
-        pusher = asyncio.create_task(_push_events(websocket, events))
-        try:
-            await _read_client_messages(websocket)
-        except WebSocketDisconnect:
-            pusher.cancel()
+# WRONG — the cancellation is swallowed, and the loop waits for the next event for nobody
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed
+) -> AsyncGenerator[ParcelEvent]:
+    async with feed.subscribe(tracking_number) as events:
+        while True:
+            try:
+                event = await events.get()
+            except asyncio.CancelledError:
+                logger.info("tracking client left", extra={"tracking_number": tracking_number})
+                continue
+            yield event
 
-# CORRECT — the first task to fail cancels the other; nothing outlives the connection
-@live_router.websocket("/orders/{order_id}/live")
-async def follow_order_live(websocket: WebSocket, order_id: OrderId, feed: OrderFeedDep) -> None:
-    await websocket.accept()
-    async with feed.subscribe(order_id) as events:
-        try:
-            async with asyncio.TaskGroup() as group:
-                group.create_task(_push_events(websocket, events))
-                group.create_task(_read_client_messages(websocket))
-        except* WebSocketDisconnect:
-            pass
+
+# CORRECT — cancellation propagates, and async with releases the subscription
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed
+) -> AsyncGenerator[ParcelEvent]:
+    async with feed.subscribe(tracking_number) as events:
+        while True:
+            try:
+                event = await events.get()
+            except asyncio.QueueShutDown:
+                return
+            yield event
 ```
 
-The `WRONG` does cancel on a clean close; any other exception out of the reader — a bug, a
-malformed frame — skips the `cancel`, and the pusher is left behind.
+### Release on disconnect is tested on the generator itself
 
-- **`WebSocketDisconnect` ends the reader; it is never caught to keep reading.** After the
-  disconnect message every further `receive` raises `RuntimeError: Cannot call "receive" once a
-  disconnect message has been received` — the handler that logged the close and looped turns a
-  normal goodbye into an error.
+**Why:** closing the generator runs the same `finally` a cancellation runs, without a server or a
+client: take one event, `aclose()`, and assert the feed has no subscriber left.
 
+**Example:**
 ```python
-# WRONG — the close is logged and the loop goes on: the next receive raises RuntimeError
-async def _read_client_messages(websocket: WebSocket) -> None:
-    while True:
-        try:
-            await websocket.receive_text()
-        except WebSocketDisconnect:
-            logger.info("client left")
+# WRONG — asserts the event and never the release, so a leaked subscription passes
+async def test_follow_parcel_yields_published_event() -> None:
+    feed = ParcelFeed()
+    events = follow_parcel(_TRACKING_NUMBER, feed=feed)
+    first_event = asyncio.create_task(anext(events))
+    await _wait_for_subscriber(feed, _TRACKING_NUMBER)
 
-# CORRECT — the disconnect leaves the loop, and the TaskGroup above ends the connection
-async def _read_client_messages(websocket: WebSocket) -> None:
-    while True:
-        await websocket.receive_text()
+    feed.publish(_OUT_FOR_DELIVERY)
+
+    assert await first_event == _OUT_FOR_DELIVERY
+
+
+# CORRECT — the stream is closed, and the subscription is asserted gone
+async def test_follow_parcel_releases_subscription_when_closed() -> None:
+    feed = ParcelFeed()
+    events = follow_parcel(_TRACKING_NUMBER, feed=feed)
+    first_event = asyncio.create_task(anext(events))
+    await _wait_for_subscriber(feed, _TRACKING_NUMBER)
+    feed.publish(_OUT_FOR_DELIVERY)
+    await first_event
+
+    await events.aclose()
+
+    assert feed.subscriber_count(_TRACKING_NUMBER) == 0
 ```
 
 ## A Slow Client Is Cut Off, Not Buffered
 
-- **Every connection gets a bounded queue, and the publisher never waits on one.** `put_nowait`;
-  on `QueueFull` the subscriber is shut down and removed, its stream ends, and the client
-  reconnects and resumes from its last id. An unbounded queue turns one stalled phone into the
-  worker's memory; an awaited `put` stalls every other subscriber behind it.
+### Every connection has a bounded queue, and the publisher never waits on one
 
+**Why:** an unbounded queue turns one stalled phone into the worker's memory; an awaited `put`
+stalls every other subscriber behind it. `put_nowait`; on `QueueFull` the subscriber is shut down
+and removed in the same step — `put_nowait` on a shut-down queue raises `QueueShutDown` — its
+stream ends, and the client reconnects and resumes from its last id.
+
+**Example:**
 ```python
 # WRONG — an unbounded queue per subscriber: a client that stops reading grows it without limit
-def publish(self, event: OrderEvent) -> None:
-    for events in self._queues_by_order.get(event.order_id, set()):
-        events.put_nowait(event)
+@final
+class ParcelFeed:
+    def __init__(self) -> None:
+        self._queues_by_parcel: dict[TrackingNumber, set[asyncio.Queue[ParcelEvent]]] = {}
 
-# CORRECT — each queue holds _MAX_PENDING_EVENTS; a subscriber that falls behind is shut down
-def publish(self, event: OrderEvent) -> None:
-    subscribers = self._queues_by_order.get(event.order_id, set())
-    for events in tuple(subscribers):
-        try:
+    def _add_queue(self, tracking_number: TrackingNumber) -> asyncio.Queue[ParcelEvent]:
+        events = asyncio.Queue[ParcelEvent]()
+        self._queues_by_parcel.setdefault(tracking_number, set()).add(events)
+        return events
+
+    def publish(self, event: ParcelEvent) -> None:
+        for events in self._queues_by_parcel.get(event.tracking_number, set()):
             events.put_nowait(event)
-        except asyncio.QueueFull:
-            events.shutdown(immediate=True)
-            subscribers.discard(events)
+
+
+# CORRECT — each queue is bounded; a subscriber that falls behind is shut down and removed
+@final
+class ParcelFeed:
+    def __init__(self, *, max_pending_events: int = _MAX_PENDING_EVENTS) -> None:
+        self._max_pending_events = max_pending_events
+        self._queues_by_parcel: dict[TrackingNumber, set[asyncio.Queue[ParcelEvent]]] = {}
+
+    def _add_queue(self, tracking_number: TrackingNumber) -> asyncio.Queue[ParcelEvent]:
+        events = asyncio.Queue[ParcelEvent](maxsize=self._max_pending_events)
+        self._queues_by_parcel.setdefault(tracking_number, set()).add(events)
+        return events
+
+    def publish(self, event: ParcelEvent) -> None:
+        subscribers = self._queues_by_parcel.get(event.tracking_number, set())
+        for events in tuple(subscribers):
+            try:
+                events.put_nowait(event)
+            except asyncio.QueueFull:
+                events.shutdown(immediate=True)
+                subscribers.discard(events)
 ```
 
-  Removed in the same step because `put_nowait` on a shut-down queue raises `QueueShutDown`. The
-  consumer's `get()` raises it too, which is what ends the stream in `follow_order`.
-- **The send itself is bounded**: a client whose TCP window is full blocks `send` indefinitely.
-  sse-starlette's `send_timeout` ends the response; around a WebSocket `send_text`, an
-  `asyncio.timeout`. sse-starlette's default is no timeout at all.
+### The send itself has a deadline
 
-## Heartbeats, Proxies, Resume
+**Why:** a client whose TCP window is full blocks a send indefinitely, and the connection holds its
+task and its queue with it. The deadline wraps each send; how a framework exposes one is its own
+skill.
 
-- **A browser opens about six HTTP/1.1 connections to one origin, and every open `EventSource`
-  holds one.** The seventh tab's stream, and its ordinary requests, wait until another closes.
-  HTTP/2 multiplexes them over one connection — serve SSE behind a proxy that speaks it to the
-  browser — or share one stream between tabs.
+**Example:**
+```python
+# WRONG — a client that stops reading parks this task on send forever
+async def push_events(
+    events: asyncio.Queue[ParcelEvent], *, send: Callable[[str], Awaitable[None]]
+) -> None:
+    while True:
+        event = await events.get()
+        await send(event.to_json())
 
-- **An idle stream sends something below the shortest idle timeout on the path** — proxies and
-  load balancers commonly cut a silent connection after about a minute, and a dead client is
-  discovered only by a send that fails. SSE: a comment line (`: ping`), which `EventSource`
-  ignores; both SSE classes above do it. WebSocket: uvicorn's protocol pings (`--ws-ping-interval`,
-  20 s by default) — leave them on.
-- **Buffering is off along the path.** `X-Accel-Buffering: no` tells nginx not to buffer the
-  response; both SSE classes set it, a `StreamingResponse` carrying events must set it itself.
-  Starlette's `GZipMiddleware` already skips `text/event-stream`; another compressor may not.
-- **An SSE `id` is a position in a durable log** — the event's sequence in the database or the
-  broker — never a counter in process memory, which means nothing to the worker the client
-  reconnects to. On reconnect the browser sends it back as `Last-Event-ID`:
-  `last_event_id: Annotated[int | None, Header()] = None` reads it, and a malformed value is a 422.
-- **Subscribe first, then replay what was missed, then follow live, skipping what was replayed.**
-  Replay first and an event published between the query and the subscription is lost for good.
-- **`retry:` (milliseconds) is sent once, in the first event** — it sets how long the browser waits
-  before reconnecting; after a restart every client returns at once, so it is not set low.
+
+# CORRECT — a send that cannot complete in time ends the connection
+async def push_events(
+    events: asyncio.Queue[ParcelEvent], *, send: Callable[[str], Awaitable[None]]
+) -> None:
+    while True:
+        event = await events.get()
+        async with asyncio.timeout(_SEND_TIMEOUT_SECONDS):
+            await send(event.to_json())
+```
 
 ## A Connection Has a Deadline
 
-- **Every stream ends by itself after a maximum lifetime**, and the client reconnects: a token
-  checked at the handshake expires while the stream lives on, a deploy cannot drain, and load stays
-  pinned to the workers that were up when the connection opened. SSE reconnects by itself; a
-  WebSocket closes with a code the client acts on.
-- **The deadline wraps an `await`, never a `yield`.** A timeout scope open across a `yield` fires
-  in whichever task is iterating the generator — measured: the response task was cancelled from
-  outside, and the generator's `except TimeoutError` never ran (PEP 789).
+### A stream ends after a maximum lifetime, under a deadline that wraps an `await`, never a `yield`
 
+**Why:** without a lifetime, a token checked at the handshake expires while the stream lives on, a
+deploy cannot drain, and load stays pinned to the workers that were up when the connection opened;
+SSE reconnects by itself, a WebSocket closes with a code the client acts on (`websocket.md`). The
+server's own drain at shutdown is set below the orchestrator's kill grace period, and the lifetime
+bounds what is left. A timeout scope open across a `yield` fires in whichever task is iterating the
+generator — measured: the response task was cancelled from outside, and the generator's
+`except TimeoutError` never ran (PEP 789).
+
+**Example:**
 ```python
 # WRONG — the scope spans the yield: at the deadline it cancels the response, not this loop
-async def follow_order(
-    order_id: OrderId, *, feed: OrderFeed, lifetime_seconds: float
-) -> AsyncGenerator[OrderEvent]:
-    async with feed.subscribe(order_id) as events:
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed, lifetime_seconds: float
+) -> AsyncGenerator[ParcelEvent]:
+    async with feed.subscribe(tracking_number) as events:
         try:
             async with asyncio.timeout(lifetime_seconds):
                 while True:
@@ -197,12 +229,13 @@ async def follow_order(
         except (TimeoutError, asyncio.QueueShutDown):
             return
 
+
 # CORRECT — one deadline, and each wait for an event runs under it; the yield is outside
-async def follow_order(
-    order_id: OrderId, *, feed: OrderFeed, lifetime_seconds: float
-) -> AsyncGenerator[OrderEvent]:
+async def follow_parcel(
+    tracking_number: TrackingNumber, *, feed: ParcelFeed, lifetime_seconds: float
+) -> AsyncGenerator[ParcelEvent]:
     deadline = asyncio.get_running_loop().time() + lifetime_seconds
-    async with feed.subscribe(order_id) as events:
+    async with feed.subscribe(tracking_number) as events:
         while True:
             try:
                 async with asyncio.timeout_at(deadline):
@@ -212,226 +245,62 @@ async def follow_order(
             yield event
 ```
 
-  A WebSocket handler yields nothing, so there the timeout wraps the whole `TaskGroup`, and each
-  ending gets its own close code:
+### A stream never holds a transaction or a pooled connection while it waits
 
+**Why:** a unit of work held for a stream's life holds a pooled connection, and ten idle listeners
+drain a pool of ten. The replay is its own short read (`python-persistence`); the live part reads
+the feed, not the database. A framework that keeps a dependency open until the response finishes
+holds it the same way.
+
+**Example:**
 ```python
-@live_router.websocket("/orders/{order_id}/live")
-async def follow_order_live(websocket: WebSocket, order_id: OrderId, feed: OrderFeedDep) -> None:
-    await websocket.accept()
-    try:
-        async with (
-            feed.subscribe(order_id) as events,
-            asyncio.timeout(_CONNECTION_LIFETIME_SECONDS),
-            asyncio.TaskGroup() as group,
-        ):
-            group.create_task(_push_events(websocket, events))
-            group.create_task(_read_client_messages(websocket))
-    except* WebSocketDisconnect:
-        pass
-    except* TimeoutError:
-        await websocket.close(code=status.WS_1001_GOING_AWAY)
-    except* asyncio.QueueShutDown:
-        await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)
-    except* ValidationError:
-        await websocket.close(code=status.WS_1003_UNSUPPORTED_DATA)
+# WRONG — the unit of work, and its connection, stay open until the client leaves
+async def stream_parcel(
+    tracking_number: TrackingNumber, *, unit_of_work: UnitOfWork, feed: ParcelFeed
+) -> AsyncIterator[ParcelEvent]:
+    async with unit_of_work, feed.subscribe(tracking_number) as events:
+        for event in await unit_of_work.parcel_history.events_for(tracking_number):
+            yield event
+        while True:
+            yield await events.get()
+
+
+# CORRECT — the replay opens and closes its own short unit of work before the live part
+async def stream_parcel(
+    tracking_number: TrackingNumber,
+    *,
+    unit_of_work: Callable[[], UnitOfWork],
+    feed: ParcelFeed,
+) -> AsyncIterator[ParcelEvent]:
+    async with feed.subscribe(tracking_number) as events:
+        async with unit_of_work() as unit:
+            history = await unit.parcel_history.events_for(tracking_number)
+        for event in history:
+            yield event
+        while True:
+            yield await events.get()
 ```
 
-- **Close codes are a contract with the client**: 1001 and 1012 — reconnect; 1013 — reconnect
-  after a backoff; 1008 — do not retry with the same credentials; 1011 — a server error.
-- **Shutdown needs the deadline too.** uvicorn sends 1012 to every WebSocket, but waits for open
-  HTTP responses — forever, unless `--timeout-graceful-shutdown` is set — and runs the lifespan's
-  shutdown only afterwards, so an event set there never reaches a stream. Set the timeout below the
-  orchestrator's kill grace period; the maximum lifetime bounds what is left. sse-starlette's
-  `shutdown_event` and `shutdown_grace_period` let a stream send a farewell event first.
+## WebSockets
 
-## The WebSocket Edge
+**Before writing the pusher and reader of a WebSocket, choosing its close codes, or checking its
+handshake, read [websocket.md](websocket.md)** — pusher and reader in one `TaskGroup`, a code for
+each ending, authentication and `Origin` before accepting, each message validated, the frame size.
 
-- **Authenticate at the handshake, before `accept()`**, in a dependency on the router that raises
-  `WebSocketException(code=status.WS_1008_POLICY_VIOLATION)`. A browser cannot set `Authorization`
-  on a WebSocket: the credential is the session cookie, or a short-lived single-use ticket in the
-  query string, minted over authenticated HTTP — a URL is logged, so nothing longer-lived goes in
-  one. Verifying it is `python-auth`.
-- **Check `Origin` against an allowlist.** `CORSMiddleware` passes WebSocket scopes through
-  untouched, so a cookie-authenticated socket accepts a connection opened by any page the user
-  visits — cross-site WebSocket hijacking.
+## Server-Sent Events
 
-```python
-# WRONG — a cookie-authenticated socket with no Origin check: any site the user visits connects
-live_router = APIRouter(dependencies=[Depends(require_session)])
-
-# CORRECT — a foreign origin is refused with 1008 before the handshake completes
-async def require_allowed_origin(websocket: WebSocket) -> None:
-    if websocket.headers.get("origin") not in _ALLOWED_ORIGINS:
-        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-
-
-live_router = APIRouter(dependencies=[Depends(require_allowed_origin), Depends(require_session)])
-```
-
-- **Every incoming message is validated at the edge, one by one**, into a strict discriminated
-  union built once as a `TypeAdapter` (`python-pydantic`); a message that fails closes the
-  socket with 1003, as the handler above does. `receive_json()` returns `Any`, and a dict passed
-  inward is the unvalidated payload `python-boundaries` forbids.
-
-```python
-# WRONG — whatever JSON arrives is handed to the service as a dict
-async def _read_client_messages(websocket: WebSocket, *, orders: OrderService) -> None:
-    while True:
-        await orders.apply_client_message(await websocket.receive_json())
-
-# CORRECT — each frame becomes a typed message or a validation error, here
-async def _read_client_messages(websocket: WebSocket, *, orders: OrderService) -> None:
-    while True:
-        message = _CLIENT_MESSAGE.validate_json(await websocket.receive_text())
-        await orders.apply_client_message(message.to_domain())
-```
-
-- **The frame size is bounded by the server**: uvicorn's `--ws-max-size` is 16 MiB by default and
-  closes an oversize frame with 1009 — set it to what the protocol needs. A client that sends too
-  often is limited per connection like any other input (`python-security`).
-
-## No Database Session for the Life of a Stream
-
-- **A stream never holds a transaction or a pooled connection while it waits.** A dependency with
-  `yield` stays open until the response finishes — measured: its `finally` ran after the stream
-  ended — so a unit of work taken through `Depends` by a streaming route is held for the stream's
-  whole life, and ten idle listeners drain a pool of ten. The replay is its own short read
-  (`python-persistence`); the live part reads the feed, not the database.
-- **An export from a large table pages by key in short reads** rather than holding one cursor open
-  while a slow client downloads; a server-side cursor is acceptable only under the stream's
-  deadline, on a pool of its own.
+**Before emitting server-sent events, setting an event `id`, resuming from `Last-Event-ID`, or
+keeping an idle stream alive, read [sse.md](sse.md)** — the browser's connection limit,
+heartbeats and buffering, ids from a durable log, subscribe before replay, `retry:`.
 
 ## Fan-Out Across Workers
 
-- **An in-process subscriber set reaches only the connections on the same process.** With two
-  workers or two replicas, an event published on one never arrives at clients of the other. Each
-  worker subscribes **once** to a channel between processes and fans out locally through the
-  bounded queues above — one subscription per worker, never one per connection. The durable log
-  behind `Last-Event-ID` is separate: a pub/sub channel forgets what nobody was listening for.
-- **The relay depends on a contract, never on a broker.** Redis pub/sub, a NATS subject and
-  PostgreSQL `LISTEN` are implementations of one capability (`python-contracts`), and the contract
-  states the two things the relay's correctness rests on, which every client library hides
-  differently: delivery is at most once, and **a subscription that may have missed an event raises,
-  instead of carrying on**.
-
-```python
-class OrderEventChannelLostError(ShopError):
-    """The subscription ended, and an event published meanwhile may never arrive."""
-
-
-class OrderEventChannel(ABC):
-    """Carries order events between worker processes, each event at most once."""
-
-    @abstractmethod
-    async def publish(self, event: OrderEvent) -> None: ...
-
-    @abstractmethod
-    def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[OrderEvent]]:
-        """Enter once live; iterating raises OrderEventChannelLostError if an event is lost."""
-```
-
-- **Every time a subscription goes live, the relay ends the worker's streams.** A stream opened
-  while the channel was down replayed from the log, then followed a feed nothing was filling; one
-  open across the drop missed what was published during it. Ended, each reconnects — SSE with
-  `Last-Event-ID`, a WebSocket after 1013 — and replays from its own id.
-
-```python
-# WRONG — the relay resubscribes and carries on: a stream that missed events never learns it
-async with self._channel.subscribe() as events:
-    async for event in events:
-        self._feed.publish(event)
-
-# CORRECT — the subscription is live: every stream from before it resumes from its own id
-async with self._channel.subscribe() as events:
-    self._feed.end_all_streams()
-    async for event in events:
-        self._feed.publish(event)
-```
-
-- **The relay only queues; it never awaits a socket.** Sending to each connection in turn lets
-  one client that stops reading stall its room, then the subscription behind it, until the broker
-  drops a subscriber that does not read (redis's limits: `python-redis`). `feed.publish` is
-  `put_nowait` into the bounded queues above, and each connection's own push task does the
-  sending.
-
-```python
-# WRONG — the relay awaits every socket in the room: one client that stops reading stalls them all
-async for event in events:
-    for websocket in tuple(self._sockets_by_order.get(event.order_id, set())):
-        await _send_event(websocket, event)
-
-# CORRECT — the relay queues; a lagging connection is cut off by the feed, never waited for
-async for event in events:
-    self._feed.publish(event)
-```
-
-- **A room is a key of the feed, not a channel.** One channel per kind of event; the room — here
-  the order — travels in the payload, a versioned wire model validated on arrival like any queued
-  message (`python-boundaries`), because during a deploy two versions publish to the same channel.
-- **An implementation turns every sign of a gap into the contract's error, while iterating.**
-  Client libraries hide a dropped subscription differently — some reconnect and resubscribe
-  without raising, and the event published in between is simply never delivered — so each
-  implementation finds its library's signals and raises `OrderEventChannelLostError` from the
-  iterator itself (the redis signals and implementation: `python-redis`).
-
-The relay, the wiring, the fake and the contract suite are in [fanout.md](fanout.md).
+**Before publishing an event that connections on other workers or replicas must receive, or
+writing the relay between a broker and the feed, read [fanout.md](fanout.md)** — one subscription
+per worker behind a channel contract, streams ended when a subscription goes live, a relay that
+only queues, rooms in the payload, gaps raised while iterating, the fake and the contract suite.
 
 ## Downloads
 
-Streaming instead of materializing is `python-performance`; for a response it means a generator
-handed to `StreamingResponse`, with `Content-Disposition` set. A sync generator is iterated in the
-thread pool, so blocking reads belong in one; an async generator must not block (`python-async`).
-
-```python
-# WRONG — the whole export is built in memory before the first byte leaves
-@orders_router.get("/orders/export")
-async def export_orders(orders: OrderServiceDep) -> Response:
-    lines = [_csv_line(order) async for order in orders.stream_orders()]
-    return Response("".join(lines), media_type="text/csv", headers=_EXPORT_HEADERS)
-
-# CORRECT — each line is sent as it is produced; memory stays at one row
-@orders_router.get("/orders/export")
-async def export_orders(orders: OrderServiceDep) -> StreamingResponse:
-    lines = (_csv_line(order) async for order in orders.stream_orders())
-    return StreamingResponse(lines, media_type="text/csv", headers=_EXPORT_HEADERS)
-```
-
-## Testing
-
-- **A WebSocket is tested through `TestClient.websocket_connect`**, inside `with TestClient(app)`
-  so the lifespan runs. A handshake refused before `accept()` raises `WebSocketDisconnect` on
-  entering the `with`, carrying the close code.
-
-```python
-def test_follow_order_live_refuses_foreign_origin(app: FastAPI) -> None:
-    with (
-        TestClient(app) as client,
-        pytest.raises(WebSocketDisconnect) as excinfo,
-        client.websocket_connect("/orders/42/live", headers=_FOREIGN_ORIGIN),
-    ):
-        pass
-
-    assert excinfo.value.code == status.WS_1008_POLICY_VIOLATION
-```
-
-- **SSE through a client needs a stream that ends.** Both `TestClient` and httpx2's `ASGITransport`
-  collect the whole body before returning, and send `http.disconnect` only after it is complete —
-  an endless stream hangs the test. Build the app with a short lifetime and publish once the
-  subscriber is registered; the async client and `LifespanManager` are in `python-fastapi`.
-- **Release on disconnect is tested on the generator**: take one event, `aclose()` it, and assert
-  the feed has no subscriber left — the same `finally` a cancellation runs.
-
-```python
-async def test_follow_order_releases_subscription_when_closed() -> None:
-    feed = OrderFeed()
-    events = follow_order(_ORDER_ID, feed=feed, lifetime_seconds=_LIFETIME_SECONDS)
-    first_event = asyncio.create_task(anext(events))
-    await _wait_for_subscriber(feed, _ORDER_ID)
-    feed.publish(_SHIPPED)
-    await first_event
-
-    await events.aclose()
-
-    assert feed.subscriber_count(_ORDER_ID) == 0
-```
+**Before streaming an export of a large table, read [downloads.md](downloads.md)** — pages by key
+in short reads, nothing held while the client downloads.
