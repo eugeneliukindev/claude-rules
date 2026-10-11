@@ -1,11 +1,8 @@
 ---
 name: python-orjson
 description: >-
-  orjson practice: dumps returns bytes and loads accepts bytes directly, explicit options for
-  non-string keys and sorted output, the default= escape hatch that must raise TypeError on anything
-  it does not know, NaN and infinity written as null, and the boundary rules serialization still
-  follows. The serialization design is in python-boundaries. Use when Python code imports orjson or
-  serializes a payload with it.
+  orjson mechanics: bytes in and out, options for keys and ordering, a default= that raises, NaN
+  written as null. Use when code imports orjson or serializes a payload with it.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -13,46 +10,48 @@ paths:
 
 # orjson
 
-Checked against orjson 3.13.
+Checked against orjson 3.13. It serializes `datetime`, `UUID`, dataclass and enum values without a
+hand-written encoder, and faster than `json`; `Decimal` it refuses with `TypeError`. What a payload
+may contain, and that a parsed one is still validated, is `python-boundaries`.
 
-## Why It Is Here
+### `dumps` returns `bytes` and `loads` takes `bytes`; nothing is decoded on the way
 
-Speed, and correctness the standard library does not give: `datetime`, `UUID`, `dataclass` and
-`enum` values serialize without a hand-written encoder, and `numpy` arrays do with
-`OPT_SERIALIZE_NUMPY`. `Decimal` does not — it raises `TypeError`, so money needs an explicit
-`default=` that renders it as a string. Reach for it in services; the standard `json` is fine in a
-throwaway script.
+**Why:** a reflexive `.decode()` that the next layer encodes again is a round trip that buys
+nothing; decoding happens only where a `str` is genuinely required — a response body, a database
+column, a log line.
 
-## The Two Facts That Trip Everyone
-
-- **`orjson.dumps` returns `bytes`, not `str`.** Decode only where a `str` is genuinely required —
-  a response body, a database column, a log line. Writing `.decode()` reflexively and then
-  re-encoding on the way out is a round trip that buys nothing.
-- **`orjson.loads` accepts `bytes` directly.** Do not decode a response body to `str` first; hand it
-  the bytes.
-
+**Example:**
 ```python
 # WRONG — decoded to str only for the broker to encode it again, and decoded again to parse
-broker.publish(_ORDER_EVENTS_TOPIC, orjson.dumps(event.to_dict()).decode())
-payload = orjson.loads(message.body.decode())
+async def publish_shipped(event: ShipmentShipped, *, broker: Broker) -> None:
+    await broker.publish(_SHIPMENT_EVENTS_TOPIC, orjson.dumps(event.to_dict()).decode())
+
+
+def read_shipped(body: bytes) -> object:
+    return orjson.loads(body.decode())
+
 
 # CORRECT — bytes out, bytes in
-broker.publish(_ORDER_EVENTS_TOPIC, orjson.dumps(event.to_dict()))
-payload = orjson.loads(message.body)
+async def publish_shipped(event: ShipmentShipped, *, broker: Broker) -> None:
+    await broker.publish(_SHIPMENT_EVENTS_TOPIC, orjson.dumps(event.to_dict()))
+
+
+def read_shipped(body: bytes) -> object:
+    return orjson.loads(body)
 ```
 
-## `NaN` and Infinity Become `null`
+### A number is checked for `NaN` and infinity where it is parsed: orjson writes them as `null`
 
-- **`orjson.dumps(float("nan"))` is `b"null"`, and so is infinity** — no error, where the standard
-  `json` writes `NaN`. A bad number then ships as "no value", and the consumer cannot tell the two
-  apart. `float()` accepts `"nan"` and `"inf"`, so a parsed number is checked where it is parsed;
-  orjson will not refuse it.
+**Why:** `orjson.dumps(float("nan"))` is `b"null"`, and so is infinity — no error, where `json`
+writes `NaN` — so a bad number ships as "no value" and the consumer cannot tell the two apart.
+`float()` accepts `"nan"` and `"inf"`.
 
+**Example:**
 ```python
 # WRONG — a "nan" in the sensor feed ships as null, and the consumer reads "no reading"
 def encode_reading(raw_celsius: str) -> bytes:
-    temperature_celsius = float(raw_celsius)
-    return orjson.dumps({"temperature_celsius": temperature_celsius})
+    return orjson.dumps({"temperature_celsius": float(raw_celsius)})
+
 
 # CORRECT — the number is checked where it is parsed; orjson would not refuse it
 def encode_reading(raw_celsius: str) -> bytes:
@@ -62,49 +61,47 @@ def encode_reading(raw_celsius: str) -> bytes:
     return orjson.dumps({"temperature_celsius": temperature_celsius})
 ```
 
-## Options Are Explicit
+### Output that is compared, hashed or kept in a fixture sets `OPT_SORT_KEYS`
 
-- **`OPT_NON_STR_KEYS`** when a mapping is keyed by anything other than `str` — otherwise it raises
-  rather than silently stringifying, which is the right default and a surprise the first time.
-- **`OPT_SORT_KEYS`** wherever the output is compared, hashed, or checked into a fixture. Unsorted
-  keys make a diff meaningless and a content hash unstable.
+**Why:** keys come out in insertion order, so two equal payloads can hash differently and a diff
+means nothing. The other options are explicit too: `OPT_NON_STR_KEYS` for a mapping keyed by
+anything but `str` — orjson raises rather than stringifying; `OPT_OMIT_MICROSECONDS` only when the
+consumer's format demands it; never `OPT_NAIVE_UTC` in place of an aware datetime fixed at its
+source.
 
-  ```python
-  # WRONG — keys come out in insertion order, so two equal payloads can hash differently
-  content_hash = hashlib.sha256(orjson.dumps(payload)).hexdigest()
+**Example:**
+```python
+# WRONG — insertion order: equal payloads can produce different hashes
+def content_hash(payload: Mapping[str, object]) -> str:
+    return hashlib.sha256(orjson.dumps(payload)).hexdigest()
 
-  # CORRECT — sorted keys, nested ones included: equal payloads give equal bytes
-  content_hash = hashlib.sha256(orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)).hexdigest()
-  ```
-- **`OPT_OMIT_MICROSECONDS`** only when the consumer's format demands it; otherwise keep the
-  precision you were given.
-- **Never `OPT_NAIVE_UTC` as a substitute for aware datetimes.** Fix the datetime at its source; the
-  option papers over a value that was already wrong.
 
-## Custom Types
+# CORRECT — sorted keys, nested ones included: equal payloads give equal bytes
+def content_hash(payload: Mapping[str, object]) -> str:
+    return hashlib.sha256(orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)).hexdigest()
+```
 
-- **`default=` is the one escape hatch**, and it is a function that raises `TypeError` for anything
-  it does not know. A `default` that returns `str(obj)` for the unknown case will happily
-  serialize a bug.
+### `default=` handles named types and raises `TypeError` for everything else
 
-  ```python
-  # WRONG — default=str accepts anything, so a stray object ships as its str() instead of failing
-  body = orjson.dumps(payload, default=str)
+**Why:** a `default=str` serializes a stray object as its `str()` instead of failing, and ships a
+bug. The escape hatch knows a few types — `Decimal` as a string — and raises for the rest; a type
+the codebase owns is made serializable at the boundary with a `to_dict()`, not taught to a `default`
+that grows to know every type.
 
-  # CORRECT — Decimal becomes a string; anything else still raises TypeError
-  def _encode_decimal(value: object) -> str:
-      if isinstance(value, Decimal):
-          return str(value)
-      raise TypeError(f"{type(value).__name__} is not JSON serializable")
+**Example:**
+```python
+# WRONG — anything is accepted, so a stray object ships as its str() instead of failing
+def encode_invoice(payload: Mapping[str, object]) -> bytes:
+    return orjson.dumps(payload, default=str)
 
-  body = orjson.dumps(payload, default=_encode_decimal)
-  ```
-- Prefer making the type serializable at the boundary — a `to_dict()` on the value object — over
-  growing a `default` that knows about every type in the codebase. That function is a generically
-  named unit accumulating concrete knowledge.
 
-## What It Does Not Change
+# CORRECT — Decimal becomes a string; anything else still raises TypeError
+def _encode_decimal(value: object) -> str:
+    if isinstance(value, Decimal):
+        return str(value)
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
-- **Serialization still lives at the boundary.** Never serialize a domain or ORM object directly,
-  whatever the encoder can technically handle: what it can reach, it will publish.
-- **Untrusted input is still validated after parsing.** `loads` gives you a shape, not a contract.
+
+def encode_invoice(payload: Mapping[str, object]) -> bytes:
+    return orjson.dumps(payload, default=_encode_decimal)
+```
