@@ -1,14 +1,9 @@
 ---
 name: python-scripts
 description: >-
-  One-off Python scripts, notebooks and data fixes: which rules relax for code that runs a few
-  times and is thrown away — contracts, fakes, a composition root, layers, the underscore prefix,
-  orjson — and which never do — timeouts, secrets, encodings, Decimal money, aware datetimes, narrow
-  excepts, subprocess lists, parameterized SQL; PEP 723 inline metadata run with uv run; dry-run by
-  default for a data fix; and the point where a script stops being one. Use when writing a
-  standalone .py script, a notebook, the backfill script itself or a one-off data fix, a file with
-  a "# /// script" block, or anything run by hand with uv run or python script.py; planning a
-  backfill is python-migrations.
+  Says which rules relax for one-off scripts, notebooks and data fixes and which never do; PEP 723
+  metadata, dry-run by default, the point a script stops being one. Use when writing a standalone
+  script, a notebook, a backfill script or a data fix, or a file with a '# /// script' block.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -16,40 +11,85 @@ paths:
 
 # Scripts
 
-The rules in this directory were written for code that lives — a service, a library, a worker —
-and models over-apply them. A forty-line script that renames files once does not improve by
-growing a contract, a fake and a composition root: it becomes four times longer and no safer. This
-file says what relaxes for a script, what does not, and when a script has stopped being one.
+The rules in this directory were written for code that lives — a service, a library, a worker — and
+models over-apply them: a forty-line script that renames files once does not improve by growing a
+contract, a fake and a composition root. A script is a file run by hand or by one person's one-off
+job, imported by nothing, read by its author — a data fix, a report, a backfill, a notebook. Where
+it uses a library, that library's skill still holds: a token it acts on is verified as
+`python-pyjwt` says, a call to a gRPC service is made as `python-grpc` says.
 
-## What a Script Is, and When It Stops Being One
+### A file stops being a script once it is imported, scheduled, run by others, or outgrows a screen
 
-A file run by hand or by one person's one-off job, imported by nothing, read by its author: a data
-fix, a report, a backfill, an exploration notebook, a release helper.
+**Why:** from the next edit on, every rule applies. The signals are: something imports it or copies
+a function out of it; it runs on a schedule, or in production with nobody watching; someone other
+than its author is expected to run it; `main()` no longer fits on a screen — a few hundred lines in
+all. The promotion is a move, not a rewrite: the functions go into a package, and the contracts,
+fakes and tests arrive with the second implementation or the first test, as they would anywhere.
 
-**It stops being a script the moment one of these is true**, and from the next edit on every rule
-applies:
+**Example:**
+```python
+# WRONG — the service imports from a script, which is now a module nobody maintains as one
+from scripts.import_tracks import parse_duration
 
-- something imports it, or another file copies a function out of it;
-- it runs on a schedule, or in production with nobody watching;
-- someone other than its author is expected to run it;
-- `main()` no longer fits on a screen — a few hundred lines in all.
+# CORRECT — promoted: the function moved into the package, and the script imports it from there
+from playlists.durations import parse_duration
+```
 
-The promotion is a move, not a rewrite: the functions go into a package, and the contracts, fakes
-and tests arrive with the second implementation or the first test, as they would anywhere.
+### A script calls its one implementation directly: no contract, no fake, no composition root
 
-## What Relaxes
+**Why:** an ABC with a single implementation in a file nobody imports is ceremony, and so are a
+fake, layers, `__init__.py`, `__all__` and the `_` prefix, which tell an importer what is internal
+when there is no importer. A script is verified by running it — on a copy of the data, or dry-run
+first; a function in it subtle enough to need a test is the first sign of a promotion. The module
+docstring says in one line what it does and how it is run.
 
-- **No contracts, no fakes, no `tests/fakes.py`.** One implementation, called directly. An ABC with
-  a single implementation in a file nobody imports is ceremony.
-- **No separate composition root.** `main()` builds the session or the engine and uses it, inside
-  a `with`. It is still `main()` plus functions, not statements at module level — that is what lets
-  the script be imported by a test, or promoted, without running.
+**Example:**
+```python
+# WRONG — a contract, an implementation and a root, for one CSV read once
+class StatusSource(ABC):
+    @abstractmethod
+    def statuses(self) -> Iterator[str]: ...
 
+
+@final
+class CsvStatusSource(StatusSource):
+    def __init__(self, *, path: Path) -> None:
+        self._path = path
+
+    @override
+    def statuses(self) -> Iterator[str]:
+        with self._path.open(encoding="utf-8", newline="") as source:
+            yield from (row["status"] for row in csv.DictReader(source))
+
+
+def main() -> None:
+    source: StatusSource = CsvStatusSource(path=Path(sys.argv[1]))
+    print(Counter(source.statuses()))
+
+
+# CORRECT — one function, called from main()
+def count_statuses(path: Path) -> Counter[str]:
+    with path.open(encoding="utf-8", newline="") as source:
+        return Counter(row["status"] for row in csv.DictReader(source))
+
+
+def main() -> None:
+    print(count_statuses(Path(sys.argv[1])))
+```
+
+### The statements still live in `main()` and functions, never at module level
+
+**Why:** `main()` builds what it needs — the session, the engine — and uses it inside a `with`;
+statements at module level run on import, so the file cannot be imported by a test or promoted
+without running.
+
+**Example:**
 ```python
 # WRONG — statements at module level: importing the file, from a test or a package, runs it
 with Path(sys.argv[1]).open(encoding="utf-8", newline="") as source:
     count_by_status = Counter(row["status"] for row in csv.DictReader(source))
 print(count_by_status)
+
 
 # CORRECT — main() plus functions; importing the file runs nothing
 def main() -> None:
@@ -62,149 +102,86 @@ if __name__ == "__main__":
     main()
 ```
 
-- **No layers, no packaging, no `_` prefix.** One file, no `__init__.py`, no `__all__`. The prefix
-  tells an importer what is internal, and a script has no importer.
-- **The standard library first.** `json` rather than `orjson`, `argparse` rather than a CLI
-  framework. A dependency is worth it when it replaces real code — an HTTP client, a database
-  driver — and then it is declared inline (below), never assumed installed.
-- **Tests are optional.** A script is verified by running it — on a copy of the data, or in dry-run
-  first. A function in it that is subtle enough to need a test is the first sign of a promotion.
-- **One-line docstring for the module**: what it does and how it is run.
-- **Plain-text logging.** `basicConfig` is enough, and it prints no `extra=` field — so the name
-  of a skipped item goes in the message, and the counts the reader must see go to stderr.
+### The standard library comes first, and any other package is declared in the script's own header
 
-## What Never Relaxes
+**Why:** `json` rather than `orjson`, `argparse` rather than a CLI framework; a dependency is worth
+it when it replaces real code — an HTTP client, a database driver. Declared in the PEP 723 block, it
+runs anywhere with one command and never against whatever happens to be installed: `uv run
+script.py` builds an isolated environment from the block, `uv add --script script.py
+'niquests>=3.21'` edits it, `uv lock --script script.py` writes `script.py.lock` for a script that
+must give the same result in a month. `#!/usr/bin/env -S uv run --script` as the first line makes
+the file executable.
 
-Each of these fails on exactly the run that mattered, and a script is the code most often run once
-against production data:
+**Example:**
+```python
+# WRONG — assumes niquests is installed wherever the script happens to run
+"""Download the nightly export. Run: python fetch_export.py URL."""
 
+import niquests
+
+# CORRECT — the header declares the floor and the dependency; uv run builds the environment
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["niquests>=3.21"]
+# ///
+"""Download the nightly export. Run: uv run fetch_export.py URL."""
+
+import niquests
+```
+
+### Under `basicConfig`, what the reader must see goes in the message, not in `extra=`
+
+**Why:** plain-text logging is enough for a script, and `basicConfig`'s format prints no `extra=`
+field — the name of a skipped item passed there never reaches the terminal. The counts the reader
+must see go to stderr at the end.
+
+**Example:**
+```python
+# WRONG — prints "target exists, skipped" and nothing about which file
+logger.warning("target exists, skipped", extra={"file_name": source.name})
+
+# CORRECT — the file's name is in the message basicConfig prints
+logger.warning("target exists, skipped: %s", source.name)
+```
+
+### What fails on exactly the run that mattered never relaxes
+
+**Why:** a script is the code most often run once against production data. What holds there:
 - a timeout on every network call (`python-boundaries`);
 - secrets from the environment, never in the file — scripts get pasted into chats and committed;
 - `encoding="utf-8"` on every text file, `Decimal` for money, aware UTC datetimes;
-- a narrow `except` and no swallowed error: a script that "finished" after silently skipping half
+- a narrow `except` and no swallowed error — a script that "finished" after silently skipping half
   the rows is worse than one that crashed;
-- the failure boundary from `core.md`: one row, one file, one request — recorded, counted, and the
-  count reported at the end, with a non-zero exit code when it is not zero;
+- the failure boundary from `principles.md`: one row, one file, one request recorded and counted,
+  the count reported at the end, and a non-zero exit code when it is not zero;
 - subprocess argument lists and parameterized SQL (`python-security`);
-- a token the script acts on is verified, never decoded unverified — with PyJWT, algorithms
-  pinned and audience and issuer passed (`python-pyjwt`);
 - a key written to a shared cache carries a TTL and never holds a pickle (`python-caching`);
-- annotated signatures — the cheapest part of a later promotion, and `mypy` still finds the
-  `None` passed where a value was required.
+- annotated signatures — the cheapest part of a later promotion, and mypy still finds the `None`
+  passed where a value was required.
 
+**Example:**
 ```python
 # WRONG — urlopen has no default timeout: a server that stops answering holds the script forever
-with urllib.request.urlopen(export_url) as response:
-    rows = response.read()
+def fetch_export(export_url: str) -> bytes:
+    with urllib.request.urlopen(export_url) as response:
+        export: bytes = response.read()
+    return export
+
 
 # CORRECT — even a one-off waits for a stated time, then fails and says so
-with urllib.request.urlopen(export_url, timeout=TIMEOUT_SECONDS) as response:
-    rows = response.read()
+def fetch_export(export_url: str) -> bytes:
+    with urllib.request.urlopen(export_url, timeout=TIMEOUT_SECONDS) as response:
+        export: bytes = response.read()
+    return export
 ```
 
 ## A Script That Changes Data
 
-The batching, bounding and idempotence of a backfill are in `python-migrations`. What a script
-adds:
-
-- **Dry run is the default; writing takes `--apply`.** The first run of a data fix is the one with
-  the bug in it, and it should print what it would do.
-- **Report before and after**: how many rows match, how many were changed, how many failed — and
-  the identifiers of the changed ones, in a file, so the run can be audited or undone.
-- **Re-runnable**: a second run after a crash changes nothing that the first one already changed.
-- **A replay of dead-lettered messages republishes each under its original event id**, so the
-  consumers' idempotency recognises what already went through (`python-workers`).
-
-```python
-# /// script
-# requires-python = ">=3.12"
-# dependencies = []
-# ///
-"""Lower-case every file name in a directory. Run: uv run lowercase_names.py DIR [--apply]."""
-
-import argparse
-import logging
-import sys
-from collections.abc import Sequence
-from pathlib import Path
-from typing import Final
-
-EXIT_SUCCESS: Final = 0
-EXIT_FAILURE: Final = 1
-
-logger = logging.getLogger(__name__)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Lower-case every file name in a directory.")
-    parser.add_argument("directory", type=Path)
-    parser.add_argument("--apply", action=argparse.BooleanOptionalAction, default=False)
-    arguments = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
-
-    renames, skipped_count = planned_renames(arguments.directory)
-    for source, target in renames:
-        print(f"{source.name} -> {target.name}")
-    failed_count = apply_renames(renames) if arguments.apply else 0
-    verb = "renamed" if arguments.apply else "would rename"
-    print(
-        f"{verb} {len(renames) - failed_count} of {len(renames)}, "
-        f"{skipped_count} skipped, {failed_count} failed",
-        file=sys.stderr,
-    )
-    sys.exit(EXIT_FAILURE if failed_count or skipped_count else EXIT_SUCCESS)
-
-
-def planned_renames(directory: Path) -> tuple[list[tuple[Path, Path]], int]:
-    renames = []
-    skipped_count = 0
-    for source in sorted(directory.iterdir()):
-        target = source.with_name(source.name.lower())
-        if target == source:
-            continue
-        # rename() replaces an existing target without asking
-        if target.exists():
-            logger.warning("target exists, skipped: %s", source.name)
-            skipped_count += 1
-            continue
-        renames.append((source, target))
-    return renames, skipped_count
-
-
-def apply_renames(renames: Sequence[tuple[Path, Path]]) -> int:
-    failed_count = 0
-    for source, target in renames:
-        try:
-            source.rename(target)
-        except OSError:
-            logger.exception("rename failed: %s", source.name)
-            failed_count += 1
-    return failed_count
-
-
-if __name__ == "__main__":
-    main()
-```
-
-## Inline Metadata: PEP 723 and `uv run`
-
-A script that needs a third-party package declares it in its own header, so it runs anywhere with
-one command and never against whatever happens to be installed:
-
-- **`uv run script.py`** reads the `# /// script` block, builds an isolated environment from it and
-  runs the file. `uv add --script script.py 'niquests>=3.21'` edits the block;
-  `uv lock --script script.py` writes `script.py.lock` beside it, for a script that must give the
-  same result when it is run again in a month.
-- **Dependencies carry a lower bound**, as everywhere, and `requires-python` states the floor the
-  script was written against.
-- **`#!/usr/bin/env -S uv run --script`** as the first line makes the file directly executable.
+**Before writing a script that changes data — a fix, a backfill, a replay — read
+[data-fixes.md](data-fixes.md)** — dry run by default, a journal of what changed, a second run that
+changes nothing, a replay under the original event ids, and a complete example.
 
 ## Notebooks
 
-- **Restart and run all before the result is shared.** Cells run out of order leave state no reader
-  can reproduce; a notebook whose result depends on it has no result.
-- **Outputs are part of the file.** A printed token or a customer's row is committed with it; clear
-  outputs that hold either before saving.
-- **Code that survives the exploration moves to a module**, where the full rules apply, and the
-  notebook imports it. A function copied from one notebook into the next is a module not yet
-  written.
+**Before writing or committing a notebook, read [notebooks.md](notebooks.md)** — restart and run all
+before sharing, outputs cleared of secrets and customer rows, surviving code moved to a module.
