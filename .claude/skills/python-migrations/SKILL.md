@@ -1,14 +1,9 @@
 ---
 name: python-migrations
 description: >-
-  Library-agnostic schema migration discipline: one migration per logical change, a generated
-  migration read as a draft, a working downgrade with the destructive step in its own revision,
-  backfills kept out of schema migrations and batched, expand-migrate-contract against the deployed
-  code, inline table definitions instead of application models, the whole chain exercised, and
-  locks — lock_timeout, CONCURRENTLY, NOT VALID then VALIDATE, volatile defaults, enum values, one
-  runner. Use when planning or reviewing a schema migration, planning a backfill or a column
-  change, whatever the tool; the alembic mechanics are in python-alembic, the backfill script
-  itself in python-scripts.
+  Plans schema migrations whatever the tool: one change per migration, working downgrades,
+  backfills kept apart, expand-migrate-contract, locks. Use when planning or reviewing a schema
+  change, a column change or a backfill.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -17,91 +12,100 @@ paths:
 
 # Migrations
 
-These rules hold for any migration tool. How alembic spells them is in `python-alembic`.
+These rules hold for any migration tool. How alembic spells them is `python-alembic`; the deploy
+step that runs them from the release's image is `python-container`; the backfill script itself is
+`python-scripts`.
 
-- **One migration per logical schema change**, with an imperative, specific message — not
-  `update` or `fix`.
-- **A generated migration is a draft, read and edited before it is committed.** A generator diffs
-  shapes, not intent: a renamed column looks like a drop plus an add, and running that loses the
-  column's data.
-- **Every migration has a working downgrade**; an irreversible change is split so the destructive
-  step is its own, clearly named revision.
-- **Schema migrations never contain data migrations.** A backfill is a separate revision or a
-  one-off script: batched, bounded, idempotent, re-runnable after failure.
+## Revisions
 
+### A generated migration is a draft, read and edited before it is committed
+
+**Why:** a generator diffs shapes, not intent — a renamed column looks like a drop plus an add, and
+running that loses the column's data. One migration holds one logical change, with an imperative,
+specific message, never `update` or `fix`.
+
+**Example:**
 ```sql
--- WRONG — one statement holds a lock on every row it touches until the last one is written
-UPDATE orders SET currency = 'EUR' WHERE currency IS NULL;
+-- WRONG — what the generator wrote for a rename: the column and every value in it are dropped
+ALTER TABLE accounts DROP COLUMN name;
+ALTER TABLE accounts ADD COLUMN display_name TEXT;
+
+-- CORRECT — edited to the intent: the data stays
+ALTER TABLE accounts RENAME COLUMN name TO display_name;
+```
+
+### Every migration has a working downgrade, and a destructive step is a revision of its own
+
+**Why:** a downgrade nobody ran fails on the night it is needed; the whole chain is exercised
+against an empty database, up and back down, and drift between the models and the migrations fails
+the check. A step that loses data cannot be undone, so it stands alone and is named for what it
+destroys — the revisions around it stay reversible.
+
+**Example:**
+```sql
+-- WRONG — one revision adds the new column and drops the old: its downgrade cannot restore the data
+ALTER TABLE accounts ADD COLUMN email_verified_at TIMESTAMPTZ;
+ALTER TABLE accounts DROP COLUMN is_email_verified;
+
+-- CORRECT — the additive revision reverses cleanly; the drop is a later, separately named revision
+-- upgrade
+ALTER TABLE accounts ADD COLUMN email_verified_at TIMESTAMPTZ;
+-- downgrade
+ALTER TABLE accounts DROP COLUMN email_verified_at;
+```
+
+### A backfill is not in a schema migration; it runs in bounded, idempotent batches
+
+**Why:** one `UPDATE` over a large table holds a lock on every row it touches until the last one
+is written. A backfill is a separate revision or a one-off script: batched, bounded, idempotent,
+re-runnable after a failure. A migration carries its own definition of the tables it touches,
+never the application's models, so a migration written today still runs after the models change.
+
+**Example:**
+```sql
+-- WRONG — one statement locks every row it touches until the last one is written
+UPDATE accounts SET currency = 'EUR' WHERE currency IS NULL;
 
 -- CORRECT — one bounded batch per transaction, repeated until it updates nothing; a rerun resumes
-UPDATE orders SET currency = 'EUR'
-WHERE id IN (SELECT id FROM orders WHERE currency IS NULL ORDER BY id LIMIT 1000);
+UPDATE accounts SET currency = 'EUR'
+WHERE id IN (SELECT id FROM accounts WHERE currency IS NULL ORDER BY id LIMIT 1000);
 ```
 
-- **Migrations are backward compatible with the deployed code** — expand, migrate, contract. A
-  migration that breaks the running version is an outage.
+### A migration is compatible with the code already deployed: expand, migrate, contract
 
+**Why:** during a rolling deploy the old version runs against the new schema; a migration that
+breaks it is an outage. A rename becomes three releases, each survived by the code already running.
+
+**Example:**
 ```sql
 -- WRONG — one release renames the column, and the code still running queries a name that is gone
-ALTER TABLE users RENAME COLUMN name TO full_name;
+ALTER TABLE accounts RENAME COLUMN name TO display_name;
 
--- CORRECT — three releases, each one survived by the code already deployed
-ALTER TABLE users ADD COLUMN full_name TEXT;
--- next release writes both columns, and a backfill copies the old rows in batches, as above:
-UPDATE users SET full_name = name
-WHERE id IN (SELECT id FROM users WHERE full_name IS NULL ORDER BY id LIMIT 1000);
--- once no deployed code reads the old column:
-ALTER TABLE users DROP COLUMN name;
+-- CORRECT — expand, then a release that writes both and a batched backfill, then contract
+ALTER TABLE accounts ADD COLUMN display_name TEXT;
+UPDATE accounts SET display_name = name
+WHERE id IN (SELECT id FROM accounts WHERE display_name IS NULL ORDER BY id LIMIT 1000);
+ALTER TABLE accounts DROP COLUMN name;
 ```
 
-- **No application models inside migrations**: a migration carries its own inline definition of
-  the tables it touches, so a migration written today still runs after the model changes tomorrow.
-- **The whole chain is exercised** against an empty database, up and back down, and drift between
-  models and migrations fails the check.
-- **Migrations run once per deploy, as a step of their own, never at application or container
-  start** — how, from the release's image, is in `python-container`.
+### Migrations run once per deploy, by one process, never at application start
+
+**Why:** two replicas that each upgrade on start race on the version table, and a slow migration
+holds every replica's startup behind it. The deploy runs one migration step before the new version
+starts — or the runner takes an advisory lock first.
+
+**Example:**
+```bash
+# WRONG — every replica migrates as it starts, and they race
+exec sh -c "python -m ledger.migrate && exec uvicorn ledger.main:app"
+
+# CORRECT — the start command only serves; the deploy runs one migration job first
+exec uvicorn ledger.main:app --host 0.0.0.0 --port 8000
+```
+
 ## Locks
 
-Measured on PostgreSQL 17; other databases differ in the details, not in the danger.
-
-- **Every DDL statement runs under `SET lock_timeout`.** An `ALTER TABLE` needs an exclusive lock,
-  waits behind any open transaction that touched the table, and every query that arrives after it
-  queues behind *it* — a plain `SELECT` waited until its own two-second timeout. With a lock
-  timeout the migration fails in moments and is retried; without one it takes the table down.
-
-```sql
--- WRONG — waits behind a long transaction, and every read of orders queues behind the ALTER
-ALTER TABLE orders ADD COLUMN note TEXT;
-
--- CORRECT — gives up after two seconds instead of blocking the table; the deploy retries it
-SET lock_timeout = '2s';
-ALTER TABLE orders ADD COLUMN note TEXT;
-```
-
-- **An index on a live table is built `CONCURRENTLY`, outside a transaction** —
-  `CREATE INDEX CONCURRENTLY cannot run inside a transaction block` otherwise; how a revision
-  steps out of its transaction is `python-alembic`'s `autocommit_block`.
-- **A constraint on existing rows is added `NOT VALID`, then validated.** The first statement
-  takes a brief lock and checks new rows only; `VALIDATE CONSTRAINT` scans without blocking writes.
-  `SET NOT NULL` after a validated `CHECK (column IS NOT NULL)` skips its own full scan.
-
-```sql
--- WRONG — scans every row under a lock that blocks all writes until the scan ends
-ALTER TABLE orders ALTER COLUMN currency SET NOT NULL;
-
--- CORRECT — a quick NOT VALID constraint, a validation that lets writes through, then the flag
-ALTER TABLE orders ADD CONSTRAINT orders_currency_not_null CHECK (currency IS NOT NULL) NOT VALID;
-ALTER TABLE orders VALIDATE CONSTRAINT orders_currency_not_null;
-ALTER TABLE orders ALTER COLUMN currency SET NOT NULL;
-```
-
-- **A volatile default rewrites the table.** `ADD COLUMN … DEFAULT now()` is instant; `DEFAULT
-  gen_random_uuid()` rewrote every row under an exclusive lock. Add the column without the
-  default, set the default, then backfill in batches.
-- **A type changes by adding a new column**, never by rewriting the old one in place.
-- **A new enum value is added in one revision and used in the next.** `ALTER TYPE … ADD VALUE`
-  runs inside a transaction, but the value cannot be used before that transaction commits —
-  `unsafe use of new value` — so a backfill that writes it is a revision of its own.
-- **One process runs the migrations.** Two replicas that each upgrade on deploy race on the
-  version table; the deploy step runs once (`python-container`), or the runner takes an advisory
-  lock first.
+**Before writing DDL for a table that is live — a column, an index, a constraint, a default, a
+type or an enum value — read [locks.md](locks.md)** — `lock_timeout` on every statement,
+`CONCURRENTLY`, `NOT VALID` then `VALIDATE`, volatile defaults, a type changed through a new column,
+enum values used a revision later.
