@@ -1,13 +1,10 @@
 ---
 name: python-metaclasses
 description: >-
-  Python class-creation hooks: metaclasses and their methods — __prepare__, __new__, __init__,
-  __call__ — __init_subclass__ with keyword arguments in the class statement, __set_name__ on
-  descriptors, __class_getitem__ and class decorators; the order they run in, which rung to take
-  first, cooperative super() calls, validating a subclass at import, subclass registries and their
-  import side effects, metaclass conflicts, and typing them with ClassVar and dataclass_transform.
-  Use when writing or reviewing a metaclass, __init_subclass__, a descriptor, a plugin or subclass
-  registry, a declarative base class, or a class statement with keyword arguments.
+  Designs class-creation hooks: the rung to take — class decorator, __init_subclass__,
+  __set_name__, metaclass — their order, subclass validation, registries, conflicts, typing. Use
+  when writing a metaclass, __init_subclass__, a descriptor, a subclass or plugin registry, a
+  declarative base, or a class statement with keyword arguments.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -16,16 +13,12 @@ paths:
 # Class-Creation Hooks
 
 Code that runs when a `class` statement executes runs at import, once per class, before any test
-or request reaches it. Five mechanisms reach that moment, and they differ in how much they can do
-and in how hard they are to find afterwards. `__init_subclass__` and `__set_name__` (PEP 487,
-Python 3.6) exist because most metaclasses in the wild only wanted to customise their subclasses or
-name their descriptors. The examples assume a 3.12 floor — PEP 695 generics, `typing.override`;
-`typing.dataclass_transform` needs 3.11 or `typing_extensions`.
+or request reaches it. `__init_subclass__` and `__set_name__` (PEP 487) exist because most
+metaclasses in the wild only wanted to customise their subclasses or name their descriptors. The
+examples assume a 3.12 floor. In a one-off script none of this pays: call the function
+(`python-scripts`).
 
-**In a one-off script none of this pays**: call the function. A script that grows a registry or a
-declarative base has stopped being one (`python-scripts`).
-
-## The Ladder: Take the Lowest Rung That Does the Job
+## The Ladder
 
 | Rung | Reaches | Cannot |
 |---|---|---|
@@ -35,11 +28,14 @@ declarative base has stopped being one (`python-scripts`).
 | `__set_name__` on a descriptor | its owner class and the attribute name it was assigned to | anything beyond its own attribute |
 | metaclass | the namespace before the body runs (`__prepare__`), operators on the class object (`for x in Cls`, `Cls[key]`, `len(Cls)`, `isinstance` checks), `Cls(...)` itself (`__call__`) | share a class with another metaclass that is not its ancestor or descendant |
 
-Each rung up runs more implicitly. A metaclass costs the most: a hierarchy has one metaclass slot,
-the metaclass runs for the base class too, and mypy checks nothing a metaclass receives from the
-class statement. **A metaclass is earned only by the right-hand column of its own row** — the
-namespace, an operator on the class, or instance creation. Everything else is a rung below.
+### Take the lowest rung that does the job; a metaclass is earned only by its own column
 
+**Why:** each rung up runs more implicitly. A hierarchy has one metaclass slot, the metaclass runs
+for the base class too, and mypy checks nothing a metaclass receives from the class statement — so
+a metaclass is for the namespace, an operator on the class or instance creation, and everything
+else is a rung below.
+
+**Example:**
 ```python
 # WRONG — a metaclass for what __init_subclass__ does: it runs for Exporter too, so format_name
 # needs a default, a subclass that forgets it gets "" silently, and format_name=3 passes mypy
@@ -60,10 +56,8 @@ class _ExporterMeta(ABCMeta):
 
 
 class Exporter(metaclass=_ExporterMeta):
-    format_name: ClassVar[str]
-
     @abstractmethod
-    def export(self, orders: Sequence[Order]) -> bytes: ...
+    def export(self, reports: Sequence[Report]) -> bytes: ...
 
 
 # CORRECT — the hook runs for subclasses only, so the keyword is required and mypy checks it
@@ -76,70 +70,34 @@ class Exporter(ABC):
         cls.format_name = format_name
 
     @abstractmethod
-    def export(self, orders: Sequence[Order]) -> bytes: ...
+    def export(self, reports: Sequence[Report]) -> bytes: ...
 
 
 @final
 class JsonExporter(Exporter, format_name="json"):
     @override
-    def export(self, orders: Sequence[Order]) -> bytes:
-        return json.dumps([order.order_id for order in orders]).encode("utf-8")
+    def export(self, reports: Sequence[Report]) -> bytes:
+        return json.dumps([report.title for report in reports]).encode("utf-8")
 ```
-
-## The Order They Run In
-
-Observed on CPython 3.12 to 3.14 with every hook printing, for
-`@decorate class Child(Base, flavour="x")` where `Base` has a metaclass and `Child` a descriptor:
-
-1. `Meta.__prepare__("Child", bases, flavour="x")` returns the mapping the body will fill.
-2. The class body executes into that mapping.
-3. `Meta.__new__(mcls, "Child", bases, namespace, flavour="x")` calls `type.__new__`, which,
-   before it returns:
-   1. calls `__set_name__(Child, "field")` on every value in the namespace that defines it;
-   2. calls `__init_subclass__(flavour="x")` — the nearest one in the MRO of `Child`, never the
-      hook a class defines for itself.
-4. `Meta.__init__(cls, "Child", bases, namespace, flavour="x")`.
-5. The class decorators, innermost first.
-6. Later, `Child(...)` goes through `Meta.__call__`, which runs the instance's `__new__` and
-   `__init__`.
-
-What follows from it:
-
-- **`__init_subclass__` sees descriptors already named**, so it is where they are collected.
-- **It runs inside `type.__new__`**, before the rest of a metaclass's `__new__` and before its
-  `__init__`. Under `ABCMeta`, `cls.__abstractmethods__` does not exist yet;
-  `inspect.isabstract(cls)` works there, because it scans for exactly this case.
-- **It runs before the class decorators**: on a `@dataclass` subclass, `dataclasses.fields(cls)` is
-  not available yet. And a hook cannot apply `dataclass(slots=True)` itself: that builds a new
-  class, which re-enters the hook, and `dataclass` refuses to add `__slots__` or a frozen
-  `__setattr__` to a class that already defines them. A hook that must replace the class is a
-  decorator's job.
-- **A class decorator that implements a method `ABCMeta` already counted as abstract calls
-  `abc.update_abstractmethods(cls)`** before returning it; the set was computed in step 3, and
-  without the call the class still refuses to instantiate.
-- **A descriptor attached after the class exists** — `setattr(Cls, "x", Column(int))` — never gets
-  `__set_name__`.
-- **Class keywords travel to every metaclass method, then to `__init_subclass__`.** Every keyword
-  but `metaclass=` reaches `__prepare__`, `__new__` and `__init__`; `type.__new__` passes what it
-  is given to `__init_subclass__`, and `object.__init_subclass__` takes none, so a keyword nobody
-  consumed fails with `TypeError: X.__init_subclass__() takes no keyword arguments`. `type.__init__`
-  ignores keywords. A metaclass that consumes one leaves it out of `super().__new__(...)`.
 
 ## `__init_subclass__`
 
-**An implicit classmethod**: `@classmethod` is never written, `cls` is the new subclass. It
-overrides `object.__init_subclass__`, so it carries `@override` like any other override
-(`types.md`). Its parameters are the class statement's keywords — keyword-only, typed, each a
-decision the subclass author makes in the line that defines the class.
+An implicit classmethod: `@classmethod` is never written, `cls` is the new subclass, and it
+overrides `object.__init_subclass__`, so it carries `@override`. Its parameters are the class
+statement's keywords — keyword-only, typed, each a decision the subclass author makes in the line
+that defines the class.
 
-**It takes `**kwargs: object` and passes them to `super().__init_subclass__`.** The hooks of a
-class with several bases are a chain through the MRO, and each link forwards what it did not
-consume. A hook that swallows them breaks the chain silently: the next base's hook never runs, and
-its keyword is accepted and thrown away.
+### The hook passes what it did not consume to `super().__init_subclass__`
 
+**Why:** the hooks of a class with several bases are a chain through the MRO, and each link
+forwards what it did not consume. A hook that swallows `**kwargs` breaks the chain silently: the
+next base's hook never runs, and its keyword is accepted and thrown away. A hook with no `**kwargs`
+fails loudly instead, and still ends the chain for every base after it.
+
+**Example:**
 ```python
-# WRONG — takes **kwargs and ends the chain: with class CsvExporter(Exporter, Audited,
-# format_name="csv", audit_category="reports"), Audited's hook never runs and no error says so
+# WRONG — with class CsvExporter(Exporter, Audited, format_name="csv", audit_category="reports"),
+# Audited's hook never runs and no error says so
 class Exporter(ABC):
     format_name: ClassVar[str]
 
@@ -147,7 +105,8 @@ class Exporter(ABC):
     def __init_subclass__(cls, *, format_name: str, **kwargs: object) -> None:
         cls.format_name = format_name
 
-# CORRECT — what it does not consume goes on to the next hook, and object's rejects the leftovers
+
+# CORRECT — the rest goes on to the next hook, and object's rejects any leftover
 class Exporter(ABC):
     format_name: ClassVar[str]
 
@@ -157,29 +116,67 @@ class Exporter(ABC):
         cls.format_name = format_name
 ```
 
-A hook with no `**kwargs` at all fails loudly instead — `unexpected keyword argument` — but still
-ends the chain for every base after it. Forward even when nothing is expected to follow.
+### A keyword required of every subclass is required of abstract intermediates too
 
-**Required or optional is a decision about every subclass, abstract ones included.** A required
-keyword is demanded of an intermediate base too — `class _TabularExporter(Exporter)` without
-`format_name` is a `TypeError`. When intermediates exist, make the keyword optional and require it
-of concrete classes only, with `inspect.isabstract(cls)` in the hook; the price is that mypy no
-longer reports the omission, the import does.
+**Why:** `class _TabularExporter(Exporter)` without `format_name` is a `TypeError` at import, though
+it exports nothing. When intermediates exist, the keyword is optional and required of concrete
+classes only, checked with `inspect.isabstract(cls)`; the price is that mypy no longer reports the
+omission — the import does.
 
-**Validate at definition time, not at first use.** A rule about the subclass — a value in range,
-a combination that makes no sense, a method that must be overridden together with another — is
-checked in the hook, so the import fails in every test run instead of the first production job of
-that kind failing hours after a deploy.
-
+**Example:**
 ```python
-# WRONG — a subclass that forgets queue_name, or sets max_attempts = 0, imports cleanly and is
-# found by the first job of its kind
+# WRONG — the required keyword makes an abstract intermediate impossible to define
+class Exporter(ABC):
+    format_name: ClassVar[str]
+
+    @override
+    def __init_subclass__(cls, *, format_name: str, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.format_name = format_name
+
+
+class _TabularExporter(Exporter):  # TypeError: missing 'format_name'
+    @abstractmethod
+    def columns(self) -> Sequence[str]: ...
+
+
+# CORRECT — optional for abstract classes, demanded of every concrete one
+class Exporter(ABC):
+    format_name: ClassVar[str]
+
+    @override
+    def __init_subclass__(cls, *, format_name: str | None = None, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        if format_name is not None:
+            cls.format_name = format_name
+        elif not inspect.isabstract(cls):
+            raise ExportError(f"{cls.__qualname__}: a concrete exporter needs format_name")
+
+
+class _TabularExporter(Exporter):
+    @abstractmethod
+    def columns(self) -> Sequence[str]: ...
+```
+
+### A rule about the subclass is checked in the hook, and the error names the class
+
+**Why:** checked at definition, a value out of range fails the import in every test run instead of
+the first production job of that kind, hours after a deploy. The error is the package's own
+exception naming `cls.__qualname__` (`errors.md`); the interpreter's own message for a missing
+keyword names the base. The hook is pure on the class it receives — no I/O, no settings, nothing
+`modules.md` forbids at import. A type argument is not in `cls.__bases__`: for
+`class IntRepository(Repository[int])` the hook reads `types.get_original_bases(cls)` (3.12).
+
+**Example:**
+```python
+# WRONG — a subclass that forgets queue_name, or sets max_attempts = 0, imports cleanly
 class Job(ABC):
     queue_name: ClassVar[str]
     max_attempts: ClassVar[int] = _DEFAULT_MAX_ATTEMPTS
 
     @abstractmethod
     def run(self) -> None: ...
+
 
 # CORRECT — the omission is a mypy error, the bad value an import error naming the class
 class Job(ABC):
@@ -206,35 +203,23 @@ class SendReceipt(Job, queue_name="receipts", max_attempts=5):
     def run(self) -> None: ...
 ```
 
-**The error names the offending class**, by `cls.__qualname__`, and is the package's own exception
-(`errors.md`). The interpreter's own messages do not: a missing required keyword reads
-`Job.__init_subclass__() missing 1 required keyword-only argument: 'queue_name'` — the base, not
-the subclass; only the traceback's last frame points at the class statement.
-
-**A hook is pure on the class it receives**: it reads the class and assigns to it. No I/O, no
-settings, no logging configuration — it runs at import, and `modules.md` allows nothing executable
-there beyond constants and the logger.
-
-**A type argument is not in `cls.__bases__`.** For `class IntRepository(Repository[int])` the
-bases are `(Repository,)`; a hook that needs the `int` reads `types.get_original_bases(cls)`
-(3.12), which returns `(Repository[int],)`.
-
 ## Registries of Subclasses
 
-The tempting use of the hook is a registry: every subclass files itself under its keyword, and a
-lookup by name finds it. **The set of implementations a process has is decided by the composition
-root, not by which modules happened to be imported.** A registry filled as a side effect of import
-has three faults, each found late:
+### The composition root decides which implementations exist, not the imports that ran
 
-- **An implementation nobody imported is not registered.** `exporter_for("csv")` works in the test
-  that imported `csv.py` and fails in the worker that did not; adding an import "to register it" is
-  an unused import the linter wants removed.
-- **A duplicate key overwrites quietly**, or raises at import with no say over which one wins.
-- **Tests leak registrations.** A fake subclass defined in one test stays in the module-level
-  registry for every test after it — shadowing the real one, or colliding with the next fake.
+**Why:** a registry the hook fills at import has three faults, each found late. An implementation
+nobody imported is not registered — `exporter_for("csv")` works in the test that imported `csv.py`
+and fails in the worker that did not, and an import added "to register it" is one the linter wants
+removed. A duplicate key overwrites quietly. A fake subclass defined in one test stays registered
+for every test after it. Where implementations live and where they are built is `python-contracts`
+and `python-wiring`.
+**Except:** an open set the root cannot name — plugins shipped in other distributions
+(`python-packaging`). The loading is still one explicit call in the root, a duplicate raises naming
+both classes, and the registry is an object a test can replace, not a global the hook writes to.
 
+**Example:**
 ```python
-# WRONG — the registry fills as modules are imported, so "csv" exists only after csv.py was
+# WRONG — "csv" exists only after csv.py was imported, by whoever happened to import it
 class Exporter(ABC):
     format_name: ClassVar[str]
 
@@ -247,202 +232,118 @@ class Exporter(ABC):
 
 _EXPORTER_BY_FORMAT: Final[dict[str, type[Exporter]]] = {}
 
-# CORRECT — the hook only names the class; the root lists the exporters this process has
-class Exporter(ABC):
-    format_name: ClassVar[str]
 
-    @override
-    def __init_subclass__(cls, *, format_name: str, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        cls.format_name = format_name
-
-
+# CORRECT — the hook only names the class; main() passes [CsvExporter(), JsonExporter()]
 def index_by_format(exporters: Iterable[Exporter]) -> dict[str, Exporter]:
     exporter_by_format: dict[str, Exporter] = {}
     for exporter in exporters:
         claimed = exporter_by_format.setdefault(exporter.format_name, exporter)
         if claimed is not exporter:
             raise ExportError(
-                f"Format {exporter.format_name!r} is claimed by both "
+                f"format {exporter.format_name!r} is claimed by both "
                 f"{type(claimed).__qualname__} and {type(exporter).__qualname__}"
             )
     return exporter_by_format
-
-# in main(): index_by_format([CsvExporter(), JsonExporter()])
 ```
-
-Where the implementations live, and that they are built in one place, is `python-contracts` and
-`python-wiring`; a test builds its own index from fakes, and nothing leaks.
-
-**The carve-out is an open set the root cannot name** — plugins shipped in other distributions,
-which `python-packaging` lets register themselves. Then the loading is still one explicit call in
-the root — entry points, or the package importing each built-in implementation in one place — a
-duplicate raises naming both classes, and the registry is an object the root builds and a test can
-replace, not a module global the hook writes to.
-
-## Descriptors and `__set_name__`
-
-A descriptor that needs its own attribute name — a column, a form field, a lazily parsed setting —
-gets it from `__set_name__`, so the name is written once, on the left of the `=`. Together with
-`__init_subclass__`, which runs after every descriptor is named, it builds a declarative base
-without a metaclass:
-
-```python
-class Column[T]:
-    header: str
-
-    def __init__(self, parse: Callable[[str], T]) -> None:
-        self._parse = parse
-
-    def __set_name__(self, owner: type[object], name: str) -> None:
-        self.header = name
-
-    @overload
-    def __get__(self, row: None, owner: type[object]) -> Self: ...
-    @overload
-    def __get__(self, row: "CsvRow", owner: type[object]) -> T: ...
-    def __get__(self, row: "CsvRow | None", owner: type[object]) -> Self | T:
-        if row is None:
-            return self
-        return self._parse(row.cell(self.header))
-
-
-class CsvRow:
-    columns: ClassVar[tuple[Column[object], ...]] = ()
-
-    @override
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        own_columns = tuple(value for value in vars(cls).values() if isinstance(value, Column))
-        cls.columns = (*cls.columns, *own_columns)
-
-    def __init__(self, cells: Mapping[str, str]) -> None:
-        missing_headers = [column.header for column in self.columns if column.header not in cells]
-        if missing_headers:
-            raise CsvSchemaError(f"{type(self).__qualname__}: missing columns {missing_headers}")
-        self._cells = dict(cells)
-
-    def cell(self, header: str) -> str:
-        return self._cells[header]
-
-
-@final
-class OrderRow(CsvRow):
-    order_id = Column(int)
-    total_cents = Column(int)
-```
-
-`OrderRow(cells).order_id` is an `int` to mypy, through the overloaded `__get__`; accessed on the
-class it is the `Column` itself. `cls.columns` read before the assignment is the parent's, so a
-subclass of a row schema inherits its columns in order. The quotes around `CsvRow` are for the
-3.12 floor; from 3.14 annotations are evaluated lazily and the forward reference needs none.
-
-- **An exception raised in `__set_name__` reaches the import unwrapped** from 3.12 — 3.11 wrapped
-  it in `RuntimeError` — so it is the package's own error naming the owner, like a hook's.
-- **A descriptor that caches into the instance needs a `__dict__`, which `slots=True` removes.**
-  `functools.cached_property` on a slotted dataclass imports cleanly and fails at first access —
-  `No '__dict__' attribute on 'Order' instance to cache 'total' property`; there it is a plain
-  `@property`, or a field the constructor computes.
-
-## Metaclasses
-
-A metaclass is the class of a class: its methods run when a class is built, and its other dunders
-are operators on the class object. Set with `metaclass=` on the base; subclasses inherit it.
-
-- **`__prepare__(cls, name, bases, /, **kwargs) -> MutableMapping[str, object]`** — a classmethod,
-  so ruff's `N804` wants `cls` here; called first, it returns the mapping the body executes into.
-  The only hook that sees the body while it runs: an assignment repeated, the order of everything,
-  values before they are overwritten.
-- **`__new__(mcls, name, bases, namespace, **kwargs)`** builds the class through `super().__new__`
-  and returns it — `mcls` is the metaclass, `cls` the class it returns;
-  **`__init__(cls, name, bases, namespace, **kwargs)`** finishes it. Prefer `__init__` for anything
-  that does not replace the namespace or the bases.
-- **`__call__(cls, *args, **kwargs)`** is `Cls(...)`: it runs the instance's `__new__` and
-  `__init__`, and can return anything — which is how a metaclass singleton is built, and a
-  singleton is a global (`python-wiring`).
-- **Operator dunders on the metaclass act on the class**: `__iter__`, `__len__`, `__getitem__`,
-  `__contains__` make `for member in Cls` work — `Enum` is the stdlib's example, and a set of named
-  values is an `Enum`, not a new metaclass. `__instancecheck__` and `__subclasscheck__` are how
-  `ABCMeta` and runtime-checkable protocols answer `isinstance`; `__subclasshook__` on an ABC is
-  the rung below.
-
-**A class has exactly one metaclass, and it must be a (non-strict) subclass of the metaclass of
-every base** — otherwise `TypeError: metaclass conflict`. `ABCMeta`, `EnumType`, a validation
-library's model base and an ORM's declarative base each take the slot: a base with its own
-metaclass cannot be mixed with any of them, and the only fix is a metaclass deriving from the
-other one, which ties the code to that library's internals. In a library this is a cost every user
-pays — one ORM ships a second declarative base with no metaclass for exactly those users. How a
-contract avoids `ABCMeta` when the slot is taken is in `python-contracts`.
-
-**A legitimate one: `__prepare__` refusing a repeated column.** By the time `__init_subclass__`
-runs, a name assigned twice is one entry, and the first column is gone without a trace. Only the
-namespace sees the second assignment:
-
-```python
-class _ColumnNamespace(dict[str, object]):
-    @override
-    def __setitem__(self, name: str, value: object) -> None:
-        if name in self and isinstance(value, Column):
-            raise CsvSchemaError(f"{self['__qualname__']}: column {name!r} is defined twice")
-        super().__setitem__(name, value)
-
-
-class _CsvRowMeta(type):
-    @classmethod
-    @override
-    def __prepare__(
-        cls, name: str, bases: tuple[type, ...], /, **kwargs: Any
-    ) -> MutableMapping[str, object]:
-        return _ColumnNamespace()
-
-
-class CsvRow(metaclass=_CsvRowMeta): ...   # the rest as above
-```
-
-It refuses only columns, so a property and its `@x.setter` — the same name assigned twice by
-design — still work. In your own repository ruff's `PIE794` reports a repeated class attribute
-without any of this; the metaclass earns its slot when the classes are written by the users of a
-library, whose linters you do not run. `Any` stays where `type.__prepare__`'s signature puts it.
-The namespace is a `dict` subclass overriding `__setitem__` — the one place that is correct,
-because the class body stores every name through it ([collections-abc.md](../python-types/collections-abc.md)).
 
 ## Typing
 
-- **mypy checks class keywords against `__init_subclass__`**: a missing required one is
-  `[call-arg]` on the class statement, a wrong type `[arg-type]`. A keyword the hook does not name
-  passes through `**kwargs` unchecked and fails at import. **Keywords a metaclass consumes are not
-  checked at all** — missing, misspelt or mistyped, mypy says nothing.
-- **Declare on the base what the hook assigns**, as `ClassVar[...]`: undeclared,
-  `cls.format_name = ...` is `"type[Exporter]" has no attribute "format_name"`. An attribute a
-  metaclass adds is declared the same way, or as an annotation in the metaclass body — an
-  instance attribute of the metaclass is a class attribute of its classes. What is not declared
-  does not exist for the checker, and every use of it is an error or an `Any`.
-- **A hook that synthesizes `__init__` is marked `@typing.dataclass_transform`** — on the base
-  class, the metaclass or the decorator that does it — or mypy rejects every constructor call:
-  `Unexpected keyword argument "order_id"`. Prefer the rung below, `@dataclass(frozen=True,
-  slots=True, kw_only=True)` written on each class (`types.md`): explicit, and the only way to get
-  `slots`, which a hook cannot add.
+### What a hook assigns is declared on the base as a `ClassVar`
 
-  ```python
-  # CORRECT — mypy synthesizes the same frozen, keyword-only __init__ the hook builds at runtime
-  @dataclass_transform(frozen_default=True, kw_only_default=True)
-  class DomainEvent:
-      @override
-      def __init_subclass__(cls, **kwargs: object) -> None:
-          super().__init_subclass__(**kwargs)
-          dataclass(frozen=True, kw_only=True)(cls)
+**Why:** undeclared, `cls.format_name = ...` is `"type[Exporter]" has no attribute
+"format_name"`, and every later read is an error or an `Any`. mypy checks class keywords against
+`__init_subclass__` — a missing one is `[call-arg]` on the class statement, a wrong type
+`[arg-type]` — but a keyword the hook does not name passes through `**kwargs` unchecked, and
+keywords a metaclass consumes are not checked at all. An attribute a metaclass adds is declared the
+same way.
+
+**Example:**
+```python
+# WRONG — the checker has never heard of queue_name on a Job
+class Job(ABC):
+    @override
+    def __init_subclass__(cls, *, queue_name: str, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.queue_name = queue_name  # error: "type[Job]" has no attribute "queue_name"
 
 
-  @final
-  class OrderPlaced(DomainEvent):
-      order_id: int
-      total_cents: int
-  ```
-- **A registry of classes is typed `type[Exporter]`**, and mypy refuses the abstract base itself
-  there (`[type-abstract]`); a classmethod constructor on the base returns `Self`, so each subclass
-  gets its own type back.
-- **`__class_getitem__` is what makes `Cls[int]` work at runtime**, and a PEP 695 class
-  (`class Repository[T]`) gets it without being written. Written by hand on a non-generic class it
-  gives a runtime subscription mypy rejects — `"Gen" expects no type arguments` — and it is never a
-  lookup: `Exporter["csv"]` is a registry with operator syntax, found by nobody who searches for a
-  call.
+# CORRECT — declared where every subclass inherits it
+class Job(ABC):
+    queue_name: ClassVar[str]
+
+    @override
+    def __init_subclass__(cls, *, queue_name: str, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.queue_name = queue_name
+```
+
+### A hook that synthesizes `__init__` is marked `@dataclass_transform`
+
+**Why:** without it mypy rejects every constructor call — `Unexpected keyword argument "user_id"`.
+The rung below is usually better: `@dataclass(frozen=True, slots=True, kw_only=True)` written on
+each class is explicit, and the only way to get `slots`, which a hook cannot add (`run-order.md`).
+
+**Example:**
+```python
+# WRONG — the hook builds __init__ at runtime, and mypy knows nothing about it
+class AuditEvent:
+    @override
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        dataclass(frozen=True, kw_only=True)(cls)
+
+
+# CORRECT — mypy synthesizes the same frozen, keyword-only __init__ the hook builds
+@dataclass_transform(frozen_default=True, kw_only_default=True)
+class AuditEvent:
+    @override
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        dataclass(frozen=True, kw_only=True)(cls)
+
+
+@final
+class UserSuspended(AuditEvent):
+    user_id: int
+    reason: str
+```
+
+### A registry of classes is typed `type[Base]`, and `Cls[...]` is for generics only
+
+**Why:** mypy refuses the abstract base itself in a `type[Exporter]` slot (`[type-abstract]`), and a
+classmethod constructor on the base returns `Self`, so each subclass gets its own type back.
+`__class_getitem__` is what makes `Cls[int]` work at runtime, and a PEP 695 class gets it without
+writing it; written by hand for a lookup, `Exporter["csv"]` is a registry with operator syntax,
+rejected by mypy and found by nobody who searches for a call.
+
+**Example:**
+```python
+# WRONG — a lookup disguised as a type subscription
+class Exporter(ABC):
+    def __class_getitem__(cls, format_name: str) -> type["Exporter"]:
+        return _EXPORTER_CLASS_BY_FORMAT[format_name]
+
+
+# CORRECT — a plain mapping the root built, looked up like one
+def exporter_for(format_name: str, *, exporter_by_format: Mapping[str, Exporter]) -> Exporter:
+    return exporter_by_format[format_name]
+```
+
+## Run Order
+
+**Before writing a hook that reads the class's abstract methods or dataclass fields, replaces the
+class, or consumes a class keyword in a metaclass, read [run-order.md](run-order.md)** — the
+sequence for one class statement, `inspect.isabstract` inside the hook, what only a decorator can
+do, `abc.update_abstractmethods`, keywords a metaclass consumes.
+
+## Descriptors
+
+**Before writing a descriptor, `__set_name__`, `__get__`, or a declarative base whose class body
+declares fields, read [descriptors.md](descriptors.md)** — the name from `__set_name__`, a
+declarative base without a metaclass, errors that name the owner, caching on a slotted class.
+
+## Metaclasses
+
+**Before writing or reviewing a metaclass, or mixing a base that brings one, read
+[metaclasses.md](metaclasses.md)** — what each metaclass method is for, `__init__` over `__new__`,
+no singleton or value set through a metaclass, metaclass conflicts, a legitimate `__prepare__`.
