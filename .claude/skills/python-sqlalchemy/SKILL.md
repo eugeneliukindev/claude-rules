@@ -1,12 +1,9 @@
 ---
 name: python-sqlalchemy
 description: >-
-  SQLAlchemy 2.0 API: select() with session.execute() and scalars() instead of the legacy Query,
-  Mapped and mapped_column models with explicit column types, lazy="raise" relationships with
-  selectinload and joinedload, one engine with pool_pre_ping, sessionmaker, expire_on_commit, bulk
-  inserts, dialect upserts, optimistic locking with version_id_col, text() with bound parameters.
-  Use when Python code imports sqlalchemy; transaction and repository design is in
-  python-persistence, migrations in python-migrations and python-alembic.
+  SQLAlchemy 2.0 mechanics: select() and the session, Mapped models, relationship loading, the
+  engine and sessionmaker, bulk inserts, upserts, version_id_col, text() with bound parameters. Use
+  when code imports sqlalchemy.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -16,200 +13,107 @@ paths:
 
 Checked against SQLAlchemy 2.1; the 2.0-style API below is unchanged in 2.1. One use case is one
 transaction, opened by the service and never committed by a repository, and a repository returns
-frozen domain objects, never ORM rows (why and how: `python-persistence`); revisions are in
-`python-alembic`. This file is how to spell those rules here.
+frozen domain objects, never ORM rows (`python-persistence`); revisions are `python-alembic`. This
+file is how to spell those rules here.
 
-## The 2.0 API — `Query` Is Legacy
+## Queries
 
-`select()` with `session.execute(...)` is the API; the ORM `Query` object is documented in the
-source as a legacy construct. One query style per codebase, and it is this one:
+### A query is `select()` through `session.scalars` or `session.execute`; `Query` is legacy
 
+**Why:** the ORM `Query` object is documented in the source as a legacy construct, and one query
+style per codebase is this one. `session.scalars(...)` unwraps whole entities — through
+`execute(...)` every row comes back as a one-element `Row`. A primary-key lookup is
+`session.get(Course, course_id)`, which answers from the identity map before it queries.
+
+**Example:**
 ```python
-# WRONG — legacy Query API
-users = session.query(User).filter(User.is_active).all()
+# WRONG — the legacy Query API, and a round trip for a course the session may already hold
+def published_courses(session: Session) -> list[Course]:
+    return session.query(Course).filter(Course.is_published).all()
 
-# CORRECT — 2.0 style
-users = session.scalars(select(User).where(User.is_active)).all()
+
+def course(session: Session, course_id: int) -> Course | None:
+    return session.query(Course).filter(Course.id == course_id).one_or_none()
+
+
+# CORRECT — 2.0 style; the identity map answers a primary-key lookup first
+def published_courses(session: Session) -> list[Course]:
+    return list(session.scalars(select(Course).where(Course.is_published)).all())
+
+
+def course(session: Session, course_id: int) -> Course | None:
+    return session.get(Course, course_id)
 ```
 
-- **`session.scalars(...)` when selecting whole entities** — shorthand for
-  `session.execute(...).scalars()`. Without it every row comes back as a one-element `Row`.
+### Exactly one row is asked for as exactly one row
 
+**Why:** `.first()` hides a broken query behind a plausible answer — a second certificate for one
+enrollment is silently ignored. `.one()` and `.one_or_none()` on `session.scalars(...)`, or
+`.scalar_one()` on `session.execute(...)`, raise when the assumption breaks.
+
+**Example:**
 ```python
-# WRONG — each element is a one-element Row, not a User
-users = session.execute(select(User).where(User.is_active)).all()
+# WRONG — a duplicate certificate goes unnoticed
+def certificate_for(session: Session, enrollment_id: int) -> Certificate | None:
+    statement = select(Certificate).where(Certificate.enrollment_id == enrollment_id)
+    return session.scalars(statement).first()
 
-# CORRECT — scalars() unwraps the entity
-users = session.scalars(select(User).where(User.is_active)).all()
+
+# CORRECT — anything but zero or one row raises
+def certificate_for(session: Session, enrollment_id: int) -> Certificate | None:
+    statement = select(Certificate).where(Certificate.enrollment_id == enrollment_id)
+    return session.scalars(statement).one_or_none()
 ```
 
-- **`session.get(User, user_id)` for a primary-key lookup** — it checks the identity map first and
-  skips the query when the object is already loaded.
+## Models
 
+### A model is typed with `Mapped[...]`, and a loose annotation gets its column type stated
+
+**Why:** `Mapped` and `mapped_column` give the type checker the shape the ORM sees, and the
+annotation carries the nullability — `Mapped[str | None]` is nullable. A bare `Column` gives up
+both. The annotation alone picks a loose column: `Mapped[datetime]` becomes a naive `DateTime()`,
+`Mapped[Decimal]` a `Numeric()` with no scale — so the column says `DateTime(timezone=True)` and
+`Numeric(12, 2)`, or the base's `type_annotation_map` says it once. `Mapped[uuid.UUID]` already maps
+to the native `Uuid`.
+
+**Example:**
 ```python
-# WRONG — a round trip every time, even for a user this session already holds
-user = session.scalars(select(User).where(User.id == user_id)).one_or_none()
-
-# CORRECT — the identity map answers first
-user = session.get(User, user_id)
-```
-
-- **Exactly one row is asked for as exactly one row**: `.one()` / `.one_or_none()` on the result of
-  `session.scalars(...)`, `.scalar_one()` / `.scalar_one_or_none()` on `session.execute(...)`.
-  `.first()` hides a broken query behind a plausible answer; `one()` raises when the assumption
-  breaks.
-
-```python
-# WRONG — a second invoice for the order is silently ignored
-invoice = session.scalars(select(Invoice).where(Invoice.order_id == order_id)).first()
-
-# CORRECT — one() on scalars(), scalar_one() on execute(): anything but one row raises
-invoice = session.scalars(select(Invoice).where(Invoice.order_id == order_id)).one()
-```
-
-## Declarative Models
-
-- **`Mapped[...]` and `mapped_column(...)`**, so the model is typed and the type checker sees the
-  same shape the ORM does. A bare `Column` gives up both.
-- **Optionality is in the annotation**: `Mapped[str]` is `NOT NULL`, `Mapped[str | None]` is
-  nullable. Do not restate it with `nullable=` unless overriding.
-
-```python
-# WRONG — the checker sees Column[str] on every row, and never that nickname can be None
+# WRONG — the checker sees Column on every attribute, and the timestamp is naive
 @final
-class User(Base):
-    __tablename__ = "users"
+class Course(Base):
+    __tablename__ = "courses"
     id = Column(Integer, primary_key=True)
-    email = Column(String, nullable=False)
-    nickname = Column(String)
+    title = Column(String, nullable=False)
+    published_at = Column(DateTime)
+    price = Column(Numeric)
 
-# CORRECT — the annotation is the type and the nullability, for the checker and the ORM alike
+
+# CORRECT — typed for the checker, with the time zone and the scale stated
 @final
-class User(Base):
-    __tablename__ = "users"
+class Course(Base):
+    __tablename__ = "courses"
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str]
-    nickname: Mapped[str | None]
-```
-
-- **The annotation alone picks the loose column type.** `Mapped[datetime]` becomes a naive
-  `DateTime()` and `Mapped[Decimal]` a `Numeric()` with no scale. Spell
-  `mapped_column(DateTime(timezone=True))` and `Numeric(12, 2)`, or set them once in the base's
-  `type_annotation_map`. `Mapped[uuid.UUID]` already maps to the native `Uuid`; `Float` is never
-  money.
-
-```python
-# WRONG — TIMESTAMP WITHOUT TIME ZONE and a NUMERIC that keeps whatever scale it is given
-created_at: Mapped[datetime]
-total: Mapped[Decimal]
-
-# CORRECT — the column states the time zone and the scale
-created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-total: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
-```
-
-## Loading — Make N+1 Impossible, Not Unlikely
-
-- **Set `lazy="raise"` on relationships.** Then an unloaded access raises `InvalidRequestError`
-  naming the relationship, instead of a page that is quietly a hundred queries. This is the single
-  highest-value setting in the library.
-
-```python
-# WRONG — one extra query per order, invisible until production
-items: Mapped[list[OrderItem]] = relationship()
-...
-orders = session.scalars(select(Order)).all()
-totals = [order_total(order.items) for order in orders]
-# CORRECT — unloaded access raises; the query states what it loads
-items: Mapped[list[OrderItem]] = relationship(lazy="raise")
-...
-orders = session.scalars(select(Order).options(selectinload(Order.items))).all()
-totals = [order_total(order.items) for order in orders]
-```
-
-- **Load explicitly at the query**: `selectinload` for collections (a second `IN` query),
-  `joinedload` for many-to-one (one join). `subqueryload` is the older shape and rarely the right
-  answer now.
-
-```python
-# WRONG — joining a collection multiplies rows, and 2.0 refuses the result without .unique()
-orders = session.scalars(
-    select(Order).options(joinedload(Order.items), selectinload(Order.customer))
-).all()
-
-# CORRECT — the collection is a second IN query; the many-to-one rides the join
-orders = session.scalars(
-    select(Order).options(selectinload(Order.items), joinedload(Order.customer))
-).all()
-```
-
-- **`contains_eager` when you have already joined** and want the ORM to populate from those columns
-  rather than issuing another query.
-
-```python
-# WRONG — joinedload adds a second, aliased join to the table the query already joined
-orders = session.scalars(
-    select(Order)
-    .join(Order.customer)
-    .where(Customer.country == country)
-    .options(joinedload(Order.customer))
-).all()
-
-# CORRECT — the customer is populated from the join the query already has
-orders = session.scalars(
-    select(Order)
-    .join(Order.customer)
-    .where(Customer.country == country)
-    .options(contains_eager(Order.customer))
-).all()
-```
-
-- Async sessions refuse implicit lazy loads anyway — design as if they always do, and the sync path
-  stays correct for free.
-- **Count statements with a `before_cursor_execute` listener** in a fixture, and assert the count
-  per use case (`python-persistence`): `lazy="raise"` stops the implicit N+1, the count stops the
-  explicit one.
-
-```python
-@pytest.fixture
-def statements(engine: Engine) -> Iterator[list[str]]:
-    executed: list[str] = []
-
-    def record(
-        connection: Connection,
-        cursor: object,
-        statement: str,
-        parameters: object,
-        context: object,
-        executemany: bool,
-    ) -> None:
-        executed.append(statement)
-
-    event.listen(engine, "before_cursor_execute", record)
-    yield executed
-    event.remove(engine, "before_cursor_execute", record)
-
-
-def test_order_page_runs_one_statement(orders: OrderRepository, statements: list[str]) -> None:
-    orders.list_page(after_order_id=None)
-
-    assert len(statements) == _ORDER_PAGE_STATEMENTS
+    title: Mapped[str]
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    price: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
 ```
 
 ## Engine and Sessions
 
-- **The engine is built once** in the composition root: explicit `pool_size`, `pool_pre_ping=True`
-  so a connection dropped by a database restart is replaced at checkout instead of failing the
-  request, and a statement timeout passed through the driver's `connect_args` — SQLAlchemy has no
-  portable one.
-- **`postgresql+asyncpg` uses asyncpg as the dialect's driver**: the engine owns the pool and the
-  rules here apply, not `python-asyncpg`'s. asyncpg takes no `options`, so the timeout goes in
-  `connect_args={"server_settings": {"statement_timeout": str(statement_timeout_ms)}}`.
+### The engine is built once, with a sized pool, `pool_pre_ping` and a statement timeout
 
+**Why:** `pool_pre_ping=True` replaces a connection dropped by a database restart at checkout
+instead of failing the request; SQLAlchemy has no portable statement timeout, so it goes through
+the driver's `connect_args`. With `postgresql+asyncpg` the engine owns asyncpg's pool and these
+rules apply, not `python-asyncpg`'s; asyncpg takes no `options`, so the timeout is
+`connect_args={"server_settings": {"statement_timeout": "5000"}}`.
+
+**Example:**
 ```python
 # WRONG — default pool size, dead connections handed out after a restart, no statement limit
 def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int) -> Engine:
     return create_engine(database_url)
+
 
 # CORRECT — a sized pool checked at checkout, and the timeout in the driver's (psycopg) options
 def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int) -> Engine:
@@ -221,126 +125,97 @@ def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int
     )
 ```
 
-- **One `sessionmaker` next to the engine**; the Unit of Work opens a session per use case with
-  `with session_factory.begin() as session:`, which commits on clean exit and rolls back on error.
+### A unit of work opens its session with `session_factory.begin()`
 
+**Why:** `begin()` commits on a clean exit, rolls back on an error and closes the session either
+way; a session opened and committed by hand leaves the transaction open on its connection when the
+use case raises.
+
+**Example:**
 ```python
-# WRONG — an error in the use case skips commit and leaves the transaction open on its connection
+# WRONG — an error in the use case skips commit and leaves the transaction open
 @contextmanager
 def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOfWork]:
     session = session_factory()
-    yield UnitOfWork(orders=SqlAlchemyOrderRepository(session))
+    yield UnitOfWork(courses=SqlCourseRepository(session=session))
     session.commit()
 
-# CORRECT — begin() commits on clean exit, rolls back on error and closes the session either way
+
+# CORRECT — commit on a clean exit, rollback on an error, close either way
 @contextmanager
 def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOfWork]:
     with session_factory.begin() as session:
-        yield UnitOfWork(orders=SqlAlchemyOrderRepository(session))
+        yield UnitOfWork(courses=SqlCourseRepository(session=session))
 ```
 
-- **`expire_on_commit=False`** for async and for any code that reads attributes after commit;
-  otherwise the first attribute access after `commit()` triggers a refresh — which, on an async
-  session, raises. With `lazy="raise"` it is not only async: a relationship loaded by
-  `selectinload` is expired at `commit()` like any attribute, and the next read of it raises
-  `InvalidRequestError` (*measured* on 2.1.4). A sync session whose ORM rows outlive the commit
-  sets `expire_on_commit=False` too — or, better, the repository maps them to domain objects
-  before the exit (`python-persistence`).
+### A session whose rows are read after commit sets `expire_on_commit=False`
 
+**Why:** `commit()` expires every attribute, and the next read triggers a refresh — which raises
+on an async session. With `lazy="raise"` it is not only async: a relationship loaded by
+`selectinload` is expired at `commit()` like any attribute, and the next read raises
+`InvalidRequestError` (*measured* on 2.1.4). Better still, the repository maps rows to domain
+objects before the unit of work exits (`python-persistence`).
+
+**Example:**
 ```python
-# WRONG — commit expires every attribute, and reading one afterwards on an async session raises
-session_factory = async_sessionmaker(engine)
+# WRONG — reading an attribute after commit on an async session raises
+def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine)
+
 
 # CORRECT — attributes keep the values they had at commit
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
+def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)
 ```
 
-- **`session.flush()` when a repository needs the generated id** inside the transaction — never
-  `commit()`, which ends the Unit of Work's transaction from inside it.
+### A repository that needs a generated id flushes; it never commits
 
+**Why:** `commit()` ends the unit of work's transaction from inside one repository; `flush()`
+sends the `INSERT`, fills the primary key, and leaves the transaction open.
+
+**Example:**
 ```python
 # WRONG — commit ends the unit of work's transaction from inside one repository
-@override
-def add(self, order: Order) -> OrderId:
-    row = OrderRow(customer_id=order.customer_id, total=order.total)
-    self._session.add(row)
-    self._session.commit()
-    return OrderId(row.id)
+@final
+class SqlEnrollmentRepository(EnrollmentRepository):
+    def __init__(self, *, session: Session) -> None:
+        self._session = session
+
+    @override
+    def add(self, enrollment: Enrollment) -> EnrollmentId:
+        row = EnrollmentRow(course_id=enrollment.course_id, student_id=enrollment.student_id)
+        self._session.add(row)
+        self._session.commit()
+        return EnrollmentId(row.id)
+
 
 # CORRECT — flush sends the INSERT and fills row.id; the transaction stays open
-@override
-def add(self, order: Order) -> OrderId:
-    row = OrderRow(customer_id=order.customer_id, total=order.total)
-    self._session.add(row)
-    self._session.flush()
-    return OrderId(row.id)
-```
-
-## Writing
-
-- **Bulk insert is `session.execute(insert(Order), rows)`** with a list of dicts. A loop of
-  `session.add()` pays an ORM object, an identity-map entry and change tracking per row, and may
-  send one INSERT per row. **A set-based change is one `update(Order).where(...).values(...)`**,
-  never a loop over loaded rows, which reads every row first and then writes each one back.
-
-```python
-# WRONG — loads every expired order to change one column, then writes each row back
-for order in session.scalars(select(Order).where(Order.expires_at < now)):
-    order.status = OrderStatus.EXPIRED
-
-# CORRECT — one UPDATE; the rows change where they are
-session.execute(update(Order).where(Order.expires_at < now).values(status=OrderStatus.EXPIRED))
-```
-
-- **Upsert through the dialect's `insert(...).on_conflict_do_update(...)`** (PostgreSQL, SQLite;
-  `on_duplicate_key_update` on MySQL) rather than a select-then-insert race.
-
-```python
-# WRONG — two requests both find no row, and the second INSERT fails on the unique key
-stock = session.scalars(select(StockLevel).where(StockLevel.sku == sku)).one_or_none()
-if stock is None:
-    session.add(StockLevel(sku=sku, quantity=quantity))
-else:
-    stock.quantity = quantity
-
-# CORRECT — one statement; the database settles the conflict atomically
-statement = insert(StockLevel).values(sku=sku, quantity=quantity)
-session.execute(
-    statement.on_conflict_do_update(
-        index_elements=[StockLevel.sku], set_={"quantity": statement.excluded.quantity}
-    )
-)
-```
-
-- **`.returning(...)`** to get the written rows back in the same round trip.
-- **Optimistic locking is `__mapper_args__ = {"version_id_col": version}`** after
-  `version: Mapped[int] = mapped_column()` — the assignment is what binds the name the mapper
-  arguments refer to. Every ORM update then carries the version check and increment, and
-  a stale write raises `StaleDataError`, which the repository translates into the domain's conflict
-  error (`python-persistence`). It covers ORM flushes only — a bulk `update()` checks nothing
-  unless it states the version in its own `where`.
-
-```python
-# WRONG — an annotation alone binds no name, so the class body raises NameError
 @final
-class Order(Base):
-    __tablename__ = "orders"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    version: Mapped[int]
-    __mapper_args__ = {"version_id_col": version}
+class SqlEnrollmentRepository(EnrollmentRepository):
+    def __init__(self, *, session: Session) -> None:
+        self._session = session
 
-# CORRECT — the assignment binds the column the mapper arguments name
-@final
-class Order(Base):
-    __tablename__ = "orders"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    version: Mapped[int] = mapped_column()
-    __mapper_args__ = {"version_id_col": version}
+    @override
+    def add(self, enrollment: Enrollment) -> EnrollmentId:
+        row = EnrollmentRow(course_id=enrollment.course_id, student_id=enrollment.student_id)
+        self._session.add(row)
+        self._session.flush()
+        return EnrollmentId(row.id)
 ```
+
+## Relationships
+
+**Before declaring a `relationship()`, loading one, or asserting how many statements a use case
+runs, read [relationships.md](relationships.md)** — `lazy="raise"`, `selectinload` against
+`joinedload`, `contains_eager`, a statement-counting fixture.
+
+## Writes
+
+**Before writing many rows, changing rows by a condition, upserting, or adding a version column,
+read [writes.md](writes.md)** — `insert()` with a list, one `update()`, the dialect's
+`on_conflict_do_update`, `version_id_col` and `StaleDataError`.
 
 ## Raw SQL
 
-- **`text()` with bound parameters, always.** Never an f-string into query text — including
-  `ORDER BY` and table names, which are chosen from a whitelist of constants.
-- Raw SQL is for reports and migrations. A raw query in a repository is a query the type checker
-  cannot see.
+**Before writing a query as text, read [raw-sql.md](raw-sql.md)** — `text()` with bound
+parameters, and identifiers from an allowlist.
