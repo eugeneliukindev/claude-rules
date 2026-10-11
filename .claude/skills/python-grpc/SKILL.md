@@ -4,13 +4,14 @@ description: >-
   gRPC in Python with grpcio's asyncio API: grpc.aio servers and channels, stubs from grpcio-tools
   typed by mypy-protobuf and types-grpcio, protobuf messages kept at the edge behind explicit
   converters, proto3 presence and HasField, the UNSPECIFIED enum zero, Timestamp to an aware
-  datetime, domain errors mapped to status codes in one interceptor and everything else INTERNAL,
-  a deadline on every call, retryPolicy in the service config, the server built and drained by the
-  composition root in FastAPI's lifespan or its own process, health checking, reflection, message
-  size, TLS and call credentials, grpcio-observability and OpenTelemetry, streaming cancellation,
-  tests on an in-process server, reserved field numbers and buf breaking, and which protobuf and
-  pydantic bridges exist. Use when Python code imports grpc, grpc.aio, grpc_tools or a _pb2 or
-  _pb2_grpc module, implements a servicer, calls a gRPC service, or edits a .proto file.
+  datetime, domain errors mapped to status codes in one interceptor and everything else INTERNAL, a
+  deadline on every call, retryPolicy in the service config, the server built and drained in
+  FastAPI's lifespan or its own process, health checking, reflection, message size, TLS and call
+  credentials, grpcio-observability and OpenTelemetry, streaming cancellation, tests on an
+  in-process server, reserved field numbers and buf breaking, and which protobuf and pydantic
+  bridges exist. The composition root and shutdown design is in python-wiring and python-async. Use
+  when Python code imports grpc, grpc.aio, grpc_tools or a _pb2 or _pb2_grpc module, implements a
+  servicer, calls a gRPC service, or edits a .proto file.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -89,7 +90,9 @@ async def GetOrder(
 
 - **A converter names every field, in one function per direction** — the splat rule in
   `python-boundaries` holds for messages too. The servicer inherits the generated
-  `OrderServiceServicer`, an ABC, so `@override` and `@final` apply as to any implementation.
+  `OrderServiceServicer` — an ABC to mypy-protobuf, a plain class at runtime whose unimplemented
+  methods answer `UNIMPLEMENTED` — so `@override` and `@final` apply as to any implementation, and
+  the checker is what catches a missing method.
 
 What proto3 does with a value is not what Python does:
 
@@ -164,8 +167,8 @@ _ORDER_SERVICE_NAME: Final = orders_pb2.DESCRIPTOR.services_by_name["OrderServic
 
 @asynccontextmanager
 async def managed_grpc_server(
-    orders: OrderService,
     *,
+    orders: OrderService,
     address: str,
     credentials: grpc.ServerCredentials,
     grace_seconds: float,
@@ -233,7 +236,7 @@ def create_app(settings: Settings) -> FastAPI:
         async with managed_engine(settings.database_url) as engine:
             orders = OrderService(PostgresOrderRepository(engine), PostgresOrderFeed(engine))
             async with managed_grpc_server(
-                orders,
+                orders=orders,
                 address=settings.grpc_address,
                 credentials=grpc_credentials,
                 grace_seconds=settings.grpc_grace_seconds,

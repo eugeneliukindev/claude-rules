@@ -98,9 +98,10 @@ await self._cache.set(_order_key(order.order_id), _order_to_payload(order), expi
 - **`pickle_type="json"`** hands back dicts where the function returned objects, and a value json
   cannot encode raises `TypeError` out of the decorated call itself (*measured*), so the cache's
   failure becomes the caller's.
-- **`register_type(cls, encoder, decoder)`** works with the null pickler, but the registry is
-  process-wide and keyed by the bare class name: two `Order` classes in two modules collide. If it
-  is used, the root registers before `setup()`.
+- **`cashews.serialize.register_type(klass, encoder, decoder)`** — the classmethod
+  `Serializer.register_type` under a module name — works with the null pickler, but the registry is
+  a class attribute, process-wide, keyed by the bare class name: two `Order` classes in two
+  modules collide. If it is used, the root registers before `setup()`.
 
 ## The Default Shape: `CashewsCache`
 
@@ -207,11 +208,11 @@ async def _count_failures_as_misses[T](
 ```python
 # WRONG — the key names the page, not the user: one user's orders are served to everyone
 @orders_cache(ttl=_RECENT_ORDERS_TTL, key="recent-orders:v1", condition=NOT_NONE)
-async def fetch_recent_orders_payload(orders: OrderReader, user_id: UserId) -> bytes: ...
+async def fetch_recent_orders_payload(user_id: UserId, *, orders: OrderReader) -> bytes: ...
 
 # CORRECT — the user is in the key, the repository is not
 @orders_cache(ttl=_RECENT_ORDERS_TTL, key="recent-orders:v1:{user_id}", condition=NOT_NONE)
-async def fetch_recent_orders_payload(orders: OrderReader, user_id: UserId) -> bytes: ...
+async def fetch_recent_orders_payload(user_id: UserId, *, orders: OrderReader) -> bytes: ...
 ```
 
 - **`condition=NOT_NONE` unless absence is cached on purpose.** The default condition stores every
@@ -220,13 +221,13 @@ async def fetch_recent_orders_payload(orders: OrderReader, user_id: UserId) -> b
 ```python
 # WRONG — "not found" is cached for ten minutes: an order created a second later stays missing
 @orders_cache(ttl=_ORDER_TTL, key="orders:v3:{order_id}")
-async def fetch_order_payload(orders: OrderReader, order_id: OrderId) -> bytes | None:
+async def fetch_order_payload(order_id: OrderId, *, orders: OrderReader) -> bytes | None:
     order = await orders.find(order_id)
     return None if order is None else _order_to_payload(order)
 
 # CORRECT — only a found order is cached
 @orders_cache(ttl=_ORDER_TTL, key="orders:v3:{order_id}", condition=NOT_NONE)
-async def fetch_order_payload(orders: OrderReader, order_id: OrderId) -> bytes | None:
+async def fetch_order_payload(order_id: OrderId, *, orders: OrderReader) -> bytes | None:
     order = await orders.find(order_id)
     return None if order is None else _order_to_payload(order)
 ```

@@ -5,12 +5,14 @@ paths:
 
 # Python — Control Flow
 
-- **Extract any condition with more than two operands into a named predicate.** The linter measures
-  the complexity but cannot name the concept:
+- **Extract a condition into a named predicate when its operands together name a concept the reader
+  would otherwise reconstruct**, whatever their count; one that already reads as what it means stays
+  inline — `if user is None or user.is_blocked`. The linter counts operands, it cannot name them:
 
   ```python
   if order.is_delivered and not order.is_disputed and order.paid_at > cutoff: ...  # WRONG
   if _is_eligible_for_refund(order, cutoff=cutoff): ...  # CORRECT — the name says what they meant
+  if user is None or user.is_blocked: ...  # CORRECT — inline: it already reads as what it means
   ```
 - **`match` is structural pattern matching, not a `switch`.** Use it to destructure a closed union
   of variants or nested data; not to compare one scalar against constants, and not for two branches.

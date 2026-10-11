@@ -3,10 +3,11 @@ name: python-pydantic
 description: >-
   pydantic v2 practice: models at process boundaries only and never in the domain, the
   model_-prefixed methods that replace the deprecated v1 names, strict ConfigDict with extra
-  forbidden, Annotated field constraints named once and reused, field and model validators that
-  stay pure, serialization and exclude_unset as contract decisions, TypeAdapter built once,
-  discriminated unions, and BaseSettings validated at startup. Use when Python code imports
-  pydantic, defines a BaseModel or BaseSettings, or validates an external payload.
+  forbidden, Annotated field constraints named once and reused, field and model validators that stay
+  pure, serialization and exclude_unset as contract decisions, TypeAdapter built once, discriminated
+  unions, and BaseSettings validated at startup. The boundary design — validate once at the edge,
+  map into frozen domain objects — is in python-boundaries. Use when Python code imports pydantic,
+  defines a BaseModel or BaseSettings, or validates an external payload.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,7 +15,7 @@ paths:
 
 # pydantic
 
-Assumes v2.11 or later; everything below is checked against the 2.13 source.
+Assumes v2.11 or later; everything below is checked against 2.14.
 
 ## Where pydantic Belongs
 
@@ -24,7 +25,8 @@ Assumes v2.11 or later; everything below is checked against the 2.13 source.
   A model that has stopped validating anything and is only carrying fields around should have been a
   dataclass — it is paying validation cost on every construction for nothing.
 - Validate once, strictly, at the edge, and map into a frozen domain object through an explicit
-  `to_domain()` / `from_domain()` (why: `python-boundaries`); what follows is how pydantic spells it.
+  `to_domain()` / `from_domain()` (why: `python-boundaries`); what follows is how pydantic spells
+  it.
 - strawberry's experimental pydantic integration — a boundary model reused as a GraphQL input — is
   `python-strawberry`.
 
@@ -50,11 +52,16 @@ collide with a field name is a bug waiting for the field to be added.
 ## Configuration
 
 - **`model_config = ConfigDict(...)`**, not the v1 inner `class Config`.
+- **mypy runs with `plugins = ["pydantic.mypy"]`.** Without it every `Settings()` built from the
+  environment is `Missing named argument` for each required field, and the checker's view of a
+  model's `__init__` is the dataclass one, not pydantic's.
 - **Strict boundary models**: `strict=True` stops `"1"` becoming `1`; `extra="forbid"` stops
-  unknown fields being dropped in silence; `frozen=True` makes the parsed object safe to pass on.
-  Two kinds of model take `extra="ignore"` instead: a stored or queued payload, read by code older
-  or newer than its writer (`python-boundaries`), and the claims of a token, whose set the identity
-  provider owns (`python-auth`).
+  unknown fields being dropped in silence; `frozen=True` makes the parsed object safe to pass on;
+  `allow_inf_nan=False`, because strict still lets a `float` field take `NaN` and `Infinity` from
+  JSON (why they are refused: `python-boundaries`). Two kinds of model take `extra="ignore"`
+  instead: a stored or queued payload, read by code older or newer than its writer
+  (`python-boundaries`), and the claims of a token, whose set the identity provider owns
+  (`python-auth`).
 
 ```python
 # WRONG — lax defaults: "3" becomes 3, and an unknown field is dropped in silence
@@ -65,7 +72,7 @@ class OrderLine(BaseModel):
 
 # CORRECT — strict, closed and frozen, configured once on the base every boundary model shares
 class BoundaryModel(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True, allow_inf_nan=False)
 
 @final
 class OrderLine(BoundaryModel):

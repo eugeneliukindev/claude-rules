@@ -19,30 +19,23 @@ shadowing, single letters, length and the filler-word blacklist are the linters'
 - **One concept — one word, everywhere.** `fetch` *or* `retrieve`, `remove` *or* `delete`,
   `customer` *or* `client` — never both.
 - **Domain vocabulary**, not programmer words (`record`, `entry`, `node`), unless the domain is.
-
-### Look at the Family Before You Name
-
-Two existing names of the same shape for the same kind of job make that shape a rule: the third
-must match it, and any outlier gets renamed. Checkable mechanically — group by signature and return
-kind, then see whether the names share a shape; the shapes worth copying are in
-`python-packaging`.
-
-A codebase with twelve `duration_in(text)`-shaped names and three `find_duration`-shaped ones has
-one concept and two vocabularies. Rename the three now: a library that waited renamed thirteen —
-`isnot` to `is_not`, `notin_` to `not_in` — and still carries every old name as an alias.
+- **Look at the family before you name.** Two names of one shape for one kind of job make the shape
+  a rule — group by signature and return kind to see it; the shapes worth copying are in
+  `python-packaging`. The third matches, and an outlier is renamed now: a library that waited
+  renamed `isnot` to `is_not` and still carries every old name as an alias.
 
 ## Functions and Methods
 
 - **One name, one action.** Needing "and" to describe it (`validate_and_save_user`) means the
   function does two things — split it.
-- **Commands are verbs; pure queries may be nouns; participles are banned.** A function that *does*
-  something starts with a verb: `normalize_profile`, `send_invoice`. A side-effect-free query may
-  be named after **what it returns** — `sqlalchemy`'s `Select.subquery()`, the stdlib's
-  `math.hypot()`; a noun promises no side effect the way a verb promises one. **Never a past
-  participle**: `matched(posting)`, `collapsed(text)`, `grouped(rows)` — the reader cannot tell a
-  predicate from a builder. Write the one you mean: `is_matched` or `match_posting`. This is about
-  **callables only**: a type alias or a variable may be a participle, because neither can be
-  mistaken for an action — `Compared`, `Generated`, `discounted_price` all read as what they are.
+- **Commands are verbs; pure queries may be nouns.** A function that *does* something starts with a
+  verb: `normalize_profile`, `send_invoice`. A side-effect-free query may be named after **what it
+  returns** — `sqlalchemy`'s `Select.subquery()`, the stdlib's `math.hypot()`, and a participle
+  naming the transformed value, as `sorted()` and `normalized(text)` do; a noun promises no side
+  effect the way a verb promises one. **Never a participle that reads as a predicate**:
+  `matched(posting)`, `validated(order)` — the reader cannot tell a question from a builder. Write
+  the one you mean: `is_matched` or `match_posting`. This is about **callables only**: a type alias
+  or a variable may be any participle — `Compared`, `discounted_price` read as what they are.
 - **The verb names the outcome, not the machinery.** `find_shortest_route`, not `run_dijkstra`.
   Implementation changes, intent does not.
 - **A generic verb is a design signal, not a naming problem.** `process`, `handle`, `manage`, `do`
@@ -70,7 +63,7 @@ one concept and two vocabularies. Rename the three now: a library that waited re
 - **Private helpers are still full names**: `_normalize_header`, not `_helper` / `_impl`.
 
 ```python
-# WRONG — generic verb, hidden side effect, negated predicate, machinery, participle
+# WRONG — generic verb, hidden side effect, negated predicate, machinery, predicate-like participle
 def process_user_profile(profile: UserProfile) -> UserProfile: ...
 def fetch_report(report_id: ReportId) -> Report: ...      # also writes to the audit log
 def is_not_ready(job: Job) -> bool: ...
@@ -83,7 +76,8 @@ def fetch_report(report_id: ReportId) -> Report: ...
 def record_report_access(report_id: ReportId, user_id: UserId) -> None: ...
 def is_ready(job: Job) -> bool: ...
 def edit_distance(left: str, right: str) -> int: ...    # pure query: a noun naming the result
-def match_order(order: Order) -> MatchedFields: ...     # a verb, not a participle
+def match_order(order: Order) -> MatchedFields: ...     # a verb, not a predicate-like participle
+def normalized(text: str) -> str: ...                     # a pure query naming its result
 ```
 
 ## Variables and Parameters

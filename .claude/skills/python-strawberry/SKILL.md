@@ -6,9 +6,10 @@ description: >-
   context_getter over what the lifespan built, a DataLoader per request against N+1, depth, token
   and alias limits passed as factories, introspection, GraphiQL and field suggestions turned off,
   bounded list fields, domain errors as union results through exception_handlers, MaskErrors and
-  error logging done once, permission classes as a coarse gate, sync resolvers that block the
-  event loop, subscriptions, testing with schema.execute and through the app, and the exported SDL
-  checked for breaking changes. Use when Python code imports strawberry, defines a strawberry.type,
+  error logging done once, permission classes as a coarse gate, sync resolvers that block the event
+  loop, subscriptions, testing with schema.execute and through the app, and the exported SDL checked
+  for breaking changes. The factory, the lifespan and Depends are in python-fastapi, construction
+  and lifetime in python-wiring. Use when Python code imports strawberry, defines a strawberry.type,
   a resolver, a DataLoader, a GraphQLRouter or a schema extension, or serves or tests GraphQL.
 paths:
   - "**/*.py"
@@ -17,7 +18,7 @@ paths:
 
 # Strawberry GraphQL
 
-Checked against strawberry-graphql 0.332, graphql-core 3.3, FastAPI 0.143, Starlette 1.7 and
+Checked against strawberry-graphql 0.333, graphql-core 3.3, FastAPI 0.143, Starlette 1.7 and
 pydantic 2.14, by reading the installed source and running every `CORRECT` below. Strawberry is
 0.x and renames and deprecates between minor versions — check the source of the version you pin.
 The factory, the lifespan and `Depends` are `python-fastapi`; construction and lifetime
@@ -63,9 +64,9 @@ class OrderObject:
     total: Decimal
     customer_id: strawberry.Private[CustomerId]
 
-    @staticmethod
-    def from_domain(order: Order) -> "OrderObject":
-        return OrderObject(id=order.order_id, total=order.total, customer_id=order.customer_id)
+    @classmethod
+    def from_domain(cls, order: Order) -> Self:
+        return cls(id=order.order_id, total=order.total, customer_id=order.customer_id)
 ```
 
 - **`name=` pins the published name.** The schema takes type names from Python class names and
@@ -78,7 +79,7 @@ class OrderObject:
 
 ### The pydantic Integration Is Still `experimental`
 
-In 0.332 it is `strawberry.experimental.pydantic` — `type`, `input`, `interface`, `error_type` —
+In 0.333 it is `strawberry.experimental.pydantic` — `type`, `input`, `interface`, `error_type` —
 with no stable module beside it. It earns its place for **an input whose pydantic boundary model
 already exists**, shared with a REST route or a queue: `to_pydantic()` runs that model's validators,
 so the constraints live once (`python-pydantic`). For output, build strawberry types from the
@@ -216,7 +217,7 @@ async def _load_customers(
 
 A client writes the query, so the server bounds it before running it: depth, size, aliases and the
 length of every list. All are schema extensions, and **extensions are passed as classes or
-factories** — in 0.332 an instance in `extensions=[...]` raises a `DeprecationWarning`, which
+factories** — in 0.333 an instance in `extensions=[...]` raises a `DeprecationWarning`, which
 `filterwarnings = ["error"]` turns into a failing suite, and `mypy` already rejects. A list built
 apart from the call is annotated — unannotated, a class beside a `partial` is `list[object]`.
 
@@ -264,7 +265,7 @@ def build_schema(*, is_introspection_enabled: bool) -> strawberry.Schema:
   `Did you mean 'refundOrder'?`, and the field names come out one guess at a time.
 - **Batching is off by default.** Enabled with `batching_config={"max_operations": n}`, every
   operation in the batch pays the limits on its own, so `n` multiplies them.
-- **No persisted-query or operation-allowlist extension ships in 0.332.** An allowlist is a
+- **No persisted-query or operation-allowlist extension ships in 0.333.** An allowlist is a
   `SchemaExtension` of your own or the gateway's job.
 - **GET runs queries and refuses mutations** (400) by default; `allow_queries_via_get=False`
   where nothing caches GET responses.
@@ -426,7 +427,9 @@ class Subscription:
         self, info: GraphQLInfo, order_id: UUID
     ) -> AsyncGenerator[OrderStatusChanged]:
         events = follow_order(
-            info.context.order_feed, OrderId(order_id), lifetime_seconds=_STREAM_LIFETIME_SECONDS
+            OrderId(order_id),
+            feed=info.context.order_feed,
+            lifetime_seconds=_STREAM_LIFETIME_SECONDS,
         )
         async with aclosing(events) as order_events:
             async for event in order_events:

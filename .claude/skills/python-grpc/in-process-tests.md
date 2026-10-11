@@ -122,7 +122,7 @@ async def _serving(
 ) -> AsyncIterator[grpc.aio.Channel]:
     async with (
         managed_grpc_server(
-            orders,
+            orders=orders,
             address="127.0.0.1:0",
             credentials=grpc.local_server_credentials(grpc.LocalConnectionType.LOCAL_TCP),
             grace_seconds=grace_seconds,
@@ -234,7 +234,7 @@ async def _call_in_flight_during_stop(
     ) as channel:
         lookup = GrpcOrderLookup(channel, timeout_seconds=_TIMEOUT_SECONDS)
         async with managed_grpc_server(
-            _service(slow),
+            orders=_service(slow),
             address=address,
             credentials=grpc.local_server_credentials(grpc.LocalConnectionType.UDS),
             grace_seconds=grace_seconds,

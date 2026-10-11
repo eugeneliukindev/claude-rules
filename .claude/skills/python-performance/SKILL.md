@@ -21,7 +21,18 @@ operation below — needs no measurement; everything else here does.
 
 - **Measure before optimizing.** Any performance change references a measurement — a profile for
   CPU, an allocation profile for memory, a benchmark to pin the improvement. An optimization
-  without a before-and-after number is refactoring risk with no proven benefit.
+  without a before-and-after number is refactoring risk with no proven benefit. CPU:
+  `python -m cProfile -o before.prof -m package.module`, read with `pstats` or `snakeviz`, or
+  `py-spy top --pid` on a process already running; memory: two `tracemalloc` snapshots compared;
+  the number to pin: `timeit` or `pytest-benchmark`. The profile goes with the change.
+
+```bash
+# WRONG — one wall-clock reading of one run: noise, and nothing says where the time went
+time python -m shop.import_prices
+
+# CORRECT — where the time goes, saved to compare against the run after the change
+python -m cProfile -o before.prof -m shop.import_prices
+```
 - **Optimize the algorithm, then the constants.** A quadratic membership scan beats any
   micro-tuning: set and dict lookups, precomputed indexes, and batching are where real wins live.
   N+1 query patterns are bugs, not tuning opportunities.
@@ -61,6 +72,16 @@ operation below — needs no measurement; everything else here does.
   | a position in sorted data — a tier, a bucket | `bisect.bisect_right` over a sorted tuple | a scan of the thresholds | 10k lookups in 1k: 550 ms → 3 ms |
   | count by key | `Counter(iterable)`, which counts in C | a dict and `if key in` | 1M items: 2× |
   | fixed-size groups from a stream | `itertools.batched(iterable, n)` (3.12+) | slicing a list, which must exist first | — |
+
+  `deque(maxlen=n)` discards from the other end when full, without an error: it fits a window
+  where losing the oldest is the stated policy, never a queue of work that must not be lost.
+
+  ```python
+  # WRONG — a work queue with maxlen: the 1,001st pending order silently drops the oldest
+  pending_order_ids: deque[OrderId] = deque(maxlen=1_000)
+  # CORRECT — a window of recent samples, where dropping the oldest is the point
+  recent_latencies_ns: deque[int] = deque(maxlen=1_000)
+  ```
 
   ```python
   # WRONG — a scan of every threshold for every order

@@ -85,6 +85,12 @@ dev = ["mypy>=2.4", "pytest>=9.0"]
 
 ## A Starting `pyproject.toml`
 
+**This is an example of how to lay the configuration out, not a contract.** The tool versions,
+the rule selection and the ignores are a starting point for an empty directory; the project's
+owner adapts them, and in an existing repository the owner's files win. What carries over is the
+shape: a floor stated once, strict mypy with extra error codes, `select = ["ALL"]` with every
+ignore argued on its line.
+
 ```toml
 [project]
 name = "shop"
@@ -110,6 +116,7 @@ dev = [
 [tool.mypy]
 python_version = "3.12"   # the floor: mypy does not read requires-python
 strict = true
+plugins = ["pydantic.mypy"]   # with pydantic: BaseSettings() type-checks without every field
 warn_unreachable = true
 strict_equality_for_none = true
 enable_error_code = [
@@ -133,7 +140,7 @@ line-length = 100
 select = ["ALL"]
 ignore = [
   "COM812",   # conflicts with the formatter
-  "CPY001",   # no copyright header in this project
+  "CPY001",   # preview rule; ignored so enabling preview does not demand a header
   "D203",     # incompatible with D211, which is kept
   "D213",     # incompatible with D212, which is kept
 ]
@@ -179,7 +186,10 @@ Kept the build backend `uv init` wrote above it, the file is complete. What each
 
 - **`select = ["ALL"]`, then ignore by code with a reason.** A rule turned off is visible and
   argued once; a rule never turned on is invisible. The ignores above are the ones ruff itself
-  reports as conflicting, plus a project decision; a new one carries its reason on its line.
+  reports as conflicting, plus a project decision; a new one carries its reason on its line. A lint
+  rule that disagrees with these files — `EM102` or `TRY003` against the f-string messages
+  `errors.md` asks for, `TD002` against an ownerless `TODO` — is the owner's call, made the same
+  way.
 - **`strict = true` in `[tool.pytest]`** (pytest 9) turns on strict markers, strict config, strict
   `xfail` and strict parametrization ids together. `filterwarnings = ["error"]` makes a
   deprecation warning fail the run the day it appears, not the day the API is removed.
@@ -190,7 +200,9 @@ Kept the build backend `uv init` wrote above it, the file is complete. What each
 - **`runtime-evaluated-*` keeps ruff's `TC` rules from moving an import under `TYPE_CHECKING`**
   when pydantic or FastAPI reads the annotation at runtime; without it, the suggested fix breaks
   the model or the route on import. Add a decorator there for every router method the project
-  uses, and a base class for every model base it defines.
+  uses, and a base class for every model base it defines. The `TC` rules move an import only when
+  annotations are not evaluated at definition — a `from __future__ import annotations` module, or
+  a 3.14 floor; on 3.12 or 3.13 without either nothing moves, and the table waits for that day.
 - **Coverage measures branches** (`testing.md`); the floor (`--cov-fail-under`) is added when there
   is a suite to hold it, and only ratchets up. `exclude_also` drops the lines no test can or should
   reach — type-checking blocks, overloads, exhaustiveness guards — so the number measures code.

@@ -8,9 +8,10 @@ description: >-
   more, authentication declared once on the protected router, only classified domain errors answered
   as 4xx and everything else as a bare 500, explicit response models, sync def versus async def
   routes, BackgroundTasks limits, and testing with the lifespan running — through TestClient, or an
-  async client and LifespanManager in async tests. Use when Python code imports fastapi or
-  starlette, defines a route, a router, a dependency, a lifespan or an exception handler, or tests
-  an ASGI app.
+  async client and LifespanManager in async tests. Construction and lifetime design is in
+  python-wiring; request and response models in python-pydantic. Use when Python code imports
+  fastapi or starlette, defines a route, a router, a dependency, a lifespan or an exception handler,
+  or tests an ASGI app.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

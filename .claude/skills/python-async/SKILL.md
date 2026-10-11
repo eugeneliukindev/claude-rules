@@ -56,7 +56,7 @@ async def render_report(report_id: ReportId) -> bytes:
         return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
 
 # CORRECT — one pool, sized and built by the composition root, passed in
-async def render_report(pool: Executor, report_id: ReportId) -> bytes:
+async def render_report(report_id: ReportId, *, pool: Executor) -> bytes:
     return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
 ```
 
@@ -82,12 +82,12 @@ async def read_frame(reader: asyncio.StreamReader) -> bytes:
 
 ```python
 # WRONG — the caller gets TimeoutError, and the hung call keeps its worker thread regardless
-async def fetch_invoice(client: BillingClient, invoice_id: InvoiceId) -> Invoice:
+async def fetch_invoice(invoice_id: InvoiceId, *, client: BillingClient) -> Invoice:
     async with asyncio.timeout(_FETCH_TIMEOUT_SECONDS):
         return await asyncio.to_thread(client.fetch_invoice, invoice_id)
 
 # CORRECT — the blocking client enforces the deadline, so the thread itself gives up
-async def fetch_invoice(client: BillingClient, invoice_id: InvoiceId) -> Invoice:
+async def fetch_invoice(invoice_id: InvoiceId, *, client: BillingClient) -> Invoice:
     return await asyncio.to_thread(
         client.fetch_invoice, invoice_id, timeout_seconds=_FETCH_TIMEOUT_SECONDS
     )
@@ -100,12 +100,12 @@ async def fetch_invoice(client: BillingClient, invoice_id: InvoiceId) -> Invoice
 
 ```python
 # WRONG — nothing holds either task, and the caller never learns that one failed
-async def complete_order(order: Order, mailer: Mailer, audit: AuditLog) -> None:
+async def complete_order(order: Order, *, mailer: Mailer, audit: AuditLog) -> None:
     asyncio.create_task(mailer.send_receipt(order))
     asyncio.create_task(audit.record(order))
 
 # CORRECT — the group holds both, waits for both, and raises their failures together
-async def complete_order(order: Order, mailer: Mailer, audit: AuditLog) -> None:
+async def complete_order(order: Order, *, mailer: Mailer, audit: AuditLog) -> None:
     async with asyncio.TaskGroup() as group:
         group.create_task(mailer.send_receipt(order))
         group.create_task(audit.record(order))
@@ -116,7 +116,7 @@ async def complete_order(order: Order, mailer: Mailer, audit: AuditLog) -> None:
 
 ```python
 # WRONG — swallowed: an enclosing timeout or TaskGroup sees a normal return and carries on
-async def wait_until_finished(client: StatusClient, job_id: JobId) -> None:
+async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
     try:
         while not await client.is_finished(job_id):
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
@@ -124,7 +124,7 @@ async def wait_until_finished(client: StatusClient, job_id: JobId) -> None:
         logger.info("polling stopped", extra={"job_id": job_id})
 
 # CORRECT — the stop is recorded, and the cancellation travels on to whoever asked for it
-async def wait_until_finished(client: StatusClient, job_id: JobId) -> None:
+async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
     try:
         while not await client.is_finished(job_id):
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
@@ -139,13 +139,13 @@ async def wait_until_finished(client: StatusClient, job_id: JobId) -> None:
 
 ```python
 # WRONG — ten thousand SKUs open ten thousand requests at once
-async def fetch_prices(catalog: CatalogClient, skus: Sequence[Sku]) -> list[Price]:
+async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
     async with asyncio.TaskGroup() as group:
         tasks = [group.create_task(catalog.fetch_price(sku)) for sku in skus]
     return [task.result() for task in tasks]
 
 # CORRECT — at most _MAX_CONCURRENT_FETCHES requests are in flight at any moment
-async def fetch_prices(catalog: CatalogClient, skus: Sequence[Sku]) -> list[Price]:
+async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
     request_slots = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
 
     async def fetch_one(sku: Sku) -> Price:
@@ -183,18 +183,20 @@ async def main() -> None:
 ```
 
 - **Async generators are closed deterministically** — consume with `aclosing(...)` when the loop
-  may break early, or cleanup runs at GC time on a dead loop.
+  may break early. Left open, a generator is closed when it is collected, or at `asyncio.run`'s
+  shutdown if something still holds it — a moment nothing controls, and its file or cursor stays
+  open until then.
 
 ```python
 # WRONG — returning mid-loop leaves the generator open; its finally waits for the collector
-async def find_first_disputed(invoices: InvoiceRepository) -> Invoice | None:
+async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
     async for invoice in invoices.stream_unpaid():
         if invoice.is_disputed:
             return invoice
     return None
 
 # CORRECT — aclosing closes the generator on the way out, so its cursor is released here
-async def find_first_disputed(invoices: InvoiceRepository) -> Invoice | None:
+async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
     async with aclosing(invoices.stream_unpaid()) as unpaid:
         async for invoice in unpaid:
             if invoice.is_disputed:
@@ -211,7 +213,7 @@ async def find_first_disputed(invoices: InvoiceRepository) -> Invoice | None:
 
 ```python
 # WRONG — a TaskGroup raises ExceptionGroup, so this clause never matches and the failure escapes
-async def refresh_rates(feeds: Sequence[RateFeed], cache: RateCache) -> None:
+async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
     try:
         async with asyncio.TaskGroup() as group:
             for feed in feeds:
@@ -220,7 +222,7 @@ async def refresh_rates(feeds: Sequence[RateFeed], cache: RateCache) -> None:
         logger.warning("rate refresh incomplete")
 
 # CORRECT — except* matches inside the group, however many feeds failed
-async def refresh_rates(feeds: Sequence[RateFeed], cache: RateCache) -> None:
+async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
     try:
         async with asyncio.TaskGroup() as group:
             for feed in feeds:
@@ -228,6 +230,55 @@ async def refresh_rates(feeds: Sequence[RateFeed], cache: RateCache) -> None:
     except* FeedUnavailableError as failures:
         logger.warning("rate refresh incomplete", extra={"failed_feeds": len(failures.exceptions)})
 ```
+
+## Cancellation, `gather` and Threads Calling In
+
+- **`TaskGroup`, not `asyncio.gather`.** With its default `return_exceptions=False`, `gather` raises
+  the first failure and leaves the siblings running with nobody awaiting them — their results and
+  errors go nowhere. `gather(..., return_exceptions=True)` is right only where a partial result is
+  the contract, and then every element is checked for an exception before it is used. Measured:
+  after `gather` raised, the sibling ran to the end and printed with nobody awaiting it.
+
+```python
+# WRONG — the first failure is raised, and the other fetch runs on with nobody awaiting it
+async def load_dashboard(*, orders: OrderService, stock: StockService) -> Dashboard:
+    recent, low = await asyncio.gather(orders.recent(), stock.running_low())
+    return Dashboard(recent=recent, low=low)
+
+# CORRECT — a failure cancels the sibling, and both are finished when the block exits
+async def load_dashboard(*, orders: OrderService, stock: StockService) -> Dashboard:
+    async with asyncio.TaskGroup() as group:
+        recent = group.create_task(orders.recent())
+        low = group.create_task(stock.running_low())
+    return Dashboard(recent=recent.result(), low=low.result())
+```
+
+- **`CancelledError` is a `BaseException`**, so `except Exception` lets it through, by design.
+  `except BaseException` "for resilience" swallows cancellation exactly like the WRONG above.
+- **Cancelling the task that owns a `TaskGroup` cancels the children and raises `CancelledError`**,
+  not an `ExceptionGroup`; an `except*` for the children's failures does not see it.
+- **`asyncio.to_thread` copies the caller's `contextvars` into the thread; `run_in_executor` does
+  not**, and every log line the thread writes loses its correlation id (`python-observability`).
+  On a thread pool, submit `functools.partial(contextvars.copy_context().run, func, *args)`.
+
+```python
+# WRONG — the thread sees the variable's default: the report's log lines carry no request id
+report = await loop.run_in_executor(self._executor, render_report, order_ids)
+
+# CORRECT — the caller's context travels with the call
+report = await loop.run_in_executor(
+    self._executor, functools.partial(contextvars.copy_context().run, render_report, order_ids)
+)
+```
+
+- **A thread reaches the loop only through `asyncio.run_coroutine_threadsafe(coroutine, loop)` or
+  `loop.call_soon_threadsafe(...)`.** Every other loop, `Future` and `asyncio.Queue` method is
+  unsafe from another thread; only debug mode reports it — `Non-thread-safe operation invoked`.
+- **`async with asyncio.timeout(...)` over `asyncio.wait_for`**: one deadline bounds every await in
+  the block, where two `wait_for` calls in sequence each get the whole budget.
+- **`asyncio.Queue.shutdown()` (3.13) ends a producer–consumer pair**: `put` raises
+  `QueueShutDown` at once, `get` once the queue is drained, and `shutdown(immediate=True)` drops
+  what is queued. On a 3.12 floor the producer enqueues a sentinel instead.
 
 ## Threads, Processes, and the GIL
 
@@ -240,6 +291,7 @@ overhead is real:
 | A blocking library with no async API | threads |
 | CPU-bound Python | processes |
 | CPU-bound inside a C extension that releases the GIL | threads |
+| CPU-bound Python on 3.14, measured against processes | `InterpreterPoolExecutor`, or threads on a free-threaded `3.14t` build — if every C extension supports it |
 
 - **Executors are shared and injected**, sized by a named constant, and closed on shutdown.
 - **Process pools receive picklable, small arguments** and return small results; pass ids and

@@ -41,6 +41,25 @@ def run(*, invoices: InvoiceService, due_before: date) -> int:
     return EXIT_SUCCESS
 ```
 
+- **With click or typer the decorated command is `main()`**: it receives the parsed options, builds,
+  calls `run()` and turns the returned code into `raise typer.Exit(code)` (click: `sys.exit`).
+  `CliRunner` then tests the argument layer, and `run()` is still tested directly — the work never
+  lives in the decorated function, where only argv strings can reach it.
+
+```python
+# WRONG — the work is in the command: a test must spell it as argv and parse stdout back
+@app.command()
+def list_overdue(days: int = 30) -> None:
+    for invoice_id in _load_overdue(days):
+        print(invoice_id)
+
+# CORRECT — the command builds and calls run(); its code becomes the exit status
+@app.command()
+def list_overdue(days: int = 30) -> None:
+    exit_code = run(_load_overdue(days), days=days, out=sys.stdout)
+    raise typer.Exit(exit_code)
+```
+
 - **stdout is the product, stderr is the conversation**: results go to stdout so they can be piped;
   logs, progress and errors go to stderr.
 
@@ -115,6 +134,27 @@ def main() -> None:
             exit_code = run(invoices=invoices, due_before=due_before)
     except KeyboardInterrupt:
         exit_code = EXIT_INTERRUPTED
+    sys.exit(exit_code)
+```
+
+- **A closed pipe is not an error.** `list-overdue | head` closes stdout early; the next write
+  raises `BrokenPipeError`, and Python prints a traceback and a second "Exception ignored" at exit,
+  status 120. `main()` points stdout at `/dev/null` and exits as if the reader had read everything.
+
+```python
+# WRONG — piped into head, the run ends in two tracebacks and status 120
+def main() -> None:
+    exit_code = run(out=sys.stdout)
+    sys.exit(exit_code)
+
+# CORRECT — the reader left; the rest of the output goes nowhere, and the exit is clean
+def main() -> None:
+    try:
+        exit_code = run(out=sys.stdout)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        exit_code = EXIT_SUCCESS
     sys.exit(exit_code)
 ```
 

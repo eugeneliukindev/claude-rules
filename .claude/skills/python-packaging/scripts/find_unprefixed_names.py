@@ -261,7 +261,9 @@ def _used_names(tree: ast.Module) -> frozenset[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
         match node:
-            case ast.Name(id=name) | ast.Attribute(attr=name):
+            # A bare name assigned here is this module's own binding, not a use of another's; an
+            # attribute counts in every context, since `orders.TIMEOUT = 5` needs the name public.
+            case ast.Name(id=name, ctx=ast.Load()) | ast.Attribute(attr=name):
                 names.add(name)
             case ast.alias(name=dotted_name):
                 names.update(dotted_name.split("."))

@@ -36,7 +36,20 @@ print(receipt.status)
   An example is a file — a docs page includes it, a test imports or runs it — so the linter and the
   type checker cover it like any module, and the output a page shows is the output a run produced,
   never one typed by hand. Inline snippets get the same through `pytest-examples`, which runs each
-  block and compares what it prints with the `#>` comments under it.
+  block and compares what it prints with the `#>` comments under it. A `>>>` example in a docstring
+  runs under `pytest --doctest-modules`, in its module's namespace: the module's own constants are
+  there, and what the example needs from elsewhere — a fixed clock, a fake — it builds itself.
+
+```toml
+# WRONG — the >>> examples are never collected, and their outputs drift unseen
+[tool.pytest]
+testpaths = ["tests"]
+
+# CORRECT — every docstring example runs with the suite
+[tool.pytest]
+testpaths = ["tests", "src"]
+addopts = ["--doctest-modules"]
+```
 - **Start from the caller's goal, not the API surface.** Order examples by frequency of use.
 - **Realistic data, no filler.** Never `foo`, `bar`, `test123`. Use reserved example values
   (`example.com`, RFC 5737 addresses) so an example can never hit a real host. Never a real key,

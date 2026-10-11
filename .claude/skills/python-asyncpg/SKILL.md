@@ -1,15 +1,15 @@
 ---
 name: python-asyncpg
 description: >-
-  asyncpg practice for PostgreSQL without an ORM: one asyncpg pool with explicit min_size,
-  max_size and command_timeout owned by the composition root, asyncpg-stubs for mypy,
-  pool.acquire() and connection.transaction() per unit of work, Records converted to domain
-  objects at the repository and fetchrow's None handled, $1 parameters and = ANY($1) with a list
-  instead of N+1, executemany versus copy_records_to_table, asyncpg.exceptions caught by class and
-  constraint name, JSONB codecs in the pool's init, PgBouncer and statement_cache_size, per-call
-  timeout versus command_timeout versus statement_timeout, and cancellation. Use when Python code
-  imports asyncpg, creates an asyncpg pool or connection, or runs raw SQL on PostgreSQL from async
-  code.
+  asyncpg practice for PostgreSQL without an ORM: one asyncpg pool with explicit min_size, max_size
+  and command_timeout owned by the composition root, asyncpg-stubs for mypy, pool.acquire() and
+  connection.transaction() per unit of work, Records converted to domain objects at the repository
+  and fetchrow's None handled, $1 parameters and = ANY($1) with a list instead of N+1, executemany
+  versus copy_records_to_table, asyncpg.exceptions caught by class and constraint name, JSONB codecs
+  in the pool's init, PgBouncer and statement_cache_size, per-call timeout versus command_timeout
+  versus statement_timeout, and cancellation. Transaction and repository design is in
+  python-persistence. Use when Python code imports asyncpg, creates an asyncpg pool or connection,
+  or runs raw SQL on PostgreSQL from async code.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

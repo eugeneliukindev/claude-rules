@@ -4,8 +4,9 @@ description: >-
   tenacity retry policies: keying retry= on a translated exception type rather than a status code,
   always setting stop= with a total time budget and reraise=True, choosing jitter in proportion to
   the backoff instead of the one-second default, before_sleep_log for visibility, and testing a
-  policy through retry_with(wait=wait_none()). Use when Python code imports tenacity or applies the
-  @retry decorator.
+  policy through retry_with(wait=wait_none()). The retry design — what is transient, at which level,
+  within which budget — is in python-boundaries. Use when Python code imports tenacity or applies
+  the @retry decorator.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -25,7 +26,7 @@ Four decisions, all explicit, none left to a default:
 # WRONG — the README shape: retries every exception, bugs included, and hides the cause in
 # RetryError
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
-async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
+async def _fetch_page(url: str, *, session: AsyncSession) -> Page: ...
 
 # CORRECT
 @retry(
@@ -34,7 +35,7 @@ async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
     stop=stop_after_attempt(3) | stop_after_delay(_FETCH_BUDGET_SECONDS),
     reraise=True,
 )
-async def _fetch_page(session: AsyncSession, url: str) -> Page: ...
+async def _fetch_page(url: str, *, session: AsyncSession) -> Page: ...
 ```
 
 - **`retry=` keys on an exception type, never on a status code.** Translate the upstream failure

@@ -16,11 +16,11 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 | `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
 | `python-async`, `python-streaming` | `async def`, threads, processes; an SSE or WebSocket endpoint, a streamed response |
 | `python-persistence` | a transaction boundary, a repository |
-| `python-migrations` | a schema change, a backfill |
+| `python-migrations` | a schema change, planning a backfill |
 | `python-workers`, `python-caching` | a queue consumer or a background job; a cache in front of a database or an API |
 | `python-packaging` | a package other code imports: `__all__`, facade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
 | `python-project`, `python-container` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration; a Dockerfile, an image |
-| `python-scripts` | a one-off script, a notebook, a backfill — what relaxes there and what never does |
+| `python-scripts` | a one-off script, a notebook, the backfill script itself — what relaxes there |
 | `python-cli` | an entry point with an argument parser |
 | `python-security`, `python-auth` | input from outside: a body, a filename, a URL, a subprocess argument, a credential; a bearer token, a JWT, a session cookie, a permission or ownership check |
 | `python-observability` | metrics, tracing, correlation ids, where logging is configured |
@@ -43,8 +43,8 @@ and this file gets a PR. Two things do belong here:
 
 1. An explicit instruction from the person you are working with, for this task.
 2. A rule these files state without qualification.
-3. How `pydantic` or `sqlalchemy` shape the same thing in their public API — not their internals.
-4. Consistency with the surrounding code of the same package — for a *prefer*, never against (2).
+3. Consistency with the surrounding code of the same package — for a *prefer*, never against (2).
+4. How `pydantic` or `sqlalchemy` shape the same thing in their public API — not their internals.
 5. The default (*prefer*) in these files.
 6. Your own judgement — and say so, rather than letting it read as a rule.
 

@@ -100,6 +100,7 @@ class InvoiceService:
 # WRONG — self-wiring class, module-level singleton, import-time side effect
 engine = create_engine(os.environ["DATABASE_URL"])
 
+@final
 class OrderService:
     def __init__(self) -> None:
         self._repository = PostgresOrderRepository(engine)
@@ -110,7 +111,7 @@ def main() -> None:
     with managed_engine(settings.database_url) as engine:
         order_service = OrderService(
             repository=PostgresOrderRepository(engine),
-            now=lambda: datetime.now(UTC),
+            clock=SystemClock(),
         )
         run_consumer(order_service, batch_size=settings.consumer_batch_size)
 ```
@@ -168,6 +169,28 @@ def main() -> None:
         run_import(orders=PostgresOrderRepository(engine), catalog=HttpCatalog(client))
 ```
 
+- **An async root has the same shape**: `asyncio.run(main())` once, `async with` an item per
+  resource, `AsyncExitStack` only when the count is known at runtime. A pool or a client created
+  with a bare `await` and never entered is closed by nobody: the process exits with its connections
+  open and the server logs them as dropped. In an ASGI service the lifespan is this root
+  (`python-fastapi`).
+
+```python
+# WRONG — the pool is created and never closed; shutdown drops its connections mid-protocol
+async def main() -> None:
+    settings = Settings()
+    pool = await asyncpg.create_pool(settings.database_url)
+    orders = OrderService(repository=AsyncpgOrderRepository(pool), clock=SystemClock())
+    await run_consumer(orders)
+
+# CORRECT — entered like any resource, and closed on the way out whatever happened
+async def main() -> None:
+    settings = Settings()
+    async with asyncpg.create_pool(settings.database_url) as pool:
+        orders = OrderService(repository=AsyncpgOrderRepository(pool), clock=SystemClock())
+        await run_consumer(orders)
+```
+
 - **`__exit__` propagates by default.** Cleanup must not raise over the original error; if it can
   fail, catch and log its failure separately. A failed two-phase commit once tried to roll back, a
   state guard refused the rollback, and the guard's error was all the caller ever saw — the
@@ -209,7 +232,26 @@ def managed_lock(locks: LockService, name: str) -> Iterator[Lock]:
 - **Configuration is not constants.** Anything that varies by environment comes from a single typed
   settings object, constructed once at the composition root and **passed in** — never read from the
   environment scattered through the code, never a module-level settings instance imported
-  everywhere.
+  everywhere — and never a cached `get_settings()`, which is that instance by another name: the
+  `@lru_cache` getter FastAPI's documentation teaches makes it global, and a test changes it only
+  through `cache_clear()` and the environment (the FastAPI form: `python-fastapi`).
+
+```python
+# WRONG — a global behind a function: every caller reaches it, and no test can hand in another
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+# CORRECT — built once by the root, which unpacks the fields each part needs
+def main() -> None:
+    settings = Settings()
+    run(timeout_seconds=settings.timeout_seconds)
+```
+
+- **Tests never build `Settings`; they pass fields.** The test root builds the graph from literals.
+  `Settings` itself is tested alone, with `monkeypatch.setenv`/`delenv`: `_env_file=None` skips the
+  `.env` file but still reads the environment — measured on pydantic-settings 2.15, a variable left
+  in the shell filled a field the test never set.
 - **Pass fields, never the configuration root.** Middleware that kept the configuration object it
   was given changed behaviour when someone edited that object after startup; fields copied at
   construction cannot. A function takes `timeout_seconds: float`, not the
@@ -222,10 +264,10 @@ def managed_lock(locks: LockService, name: str) -> Iterator[Lock]:
 
 ```python
 # WRONG — the signature hides what is read, and a test builds every settings group for one call
-def fetch_rates(client: HttpClient, settings: Settings) -> RateTable: ...
+def fetch_rates(*, client: HttpClient, settings: Settings) -> RateTable: ...
 
 # CORRECT — the signature is the dependency list; the root unpacks the settings
-def fetch_rates(client: HttpClient, *, base_url: str, timeout_seconds: float) -> RateTable: ...
+def fetch_rates(*, client: HttpClient, base_url: str, timeout_seconds: float) -> RateTable: ...
 ```
 
 - **A cohesive group of parameters passed as one frozen value is a different thing, and it is

@@ -3,11 +3,12 @@ name: python-packaging
 description: >-
   The public surface of a Python package: the three levels of visibility, when a name belongs in the
   __init__.py facade, in a public module or in an internal _module, __all__ and the flat facade,
-  _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability
-  tiers as directories, semantic-versioning and deprecation rules, and keeping an optional
-  dependency inside the one implementation module that uses it. Use when building a Python package
-  other code imports — a library, an SDK, a shared kernel — or when working with __init__.py,
-  optional extras, a facade or a deprecation, or deciding whether to import from a.b or name it a._b.
+  _internal subpackages, lazy exports through TYPE_CHECKING plus __getattr__, stability tiers as
+  directories, semantic-versioning and deprecation rules, keeping an optional dependency inside the
+  one implementation module that uses it, and the find_unprefixed_names.py check for top-level
+  names that should take the _ prefix. Use when building a Python package other code imports — a
+  library, an SDK, a shared kernel — or when working with __init__.py, optional extras, a facade or
+  a deprecation, deciding whether to import from a.b or name it a._b, or running the prefix check.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -181,7 +182,10 @@ objection — that a name arriving through `__getattr__` is invisible to the typ
 answered by declaring the imports a second time under `TYPE_CHECKING`:
 
 ```python
-# yourpackage/__init__.py
+# yourpackage/__init__.py — the whole file, imports included: they are the pattern
+from importlib import import_module
+from typing import TYPE_CHECKING, Final
+
 if TYPE_CHECKING:
     # Everything is served lazily by __getattr__ below; these are what the type
     # checker and the IDE read.
@@ -399,5 +403,7 @@ A module name that reaches `sys.path` directly must not shadow a standard-librar
 `json`, `logging`, `io`, `abc`. This bites for a top-level module of a distribution, a loose script,
 or a scheduler DAG file: `import json` anywhere in the process then gets yours. Nested inside a
 package the name is only ever visible as `mypackage.json`, so there is nothing to shadow, and the
-module is named after its contents — `internal/json.py` is right. ruff `A005` fires on both, so a
-package that names modules after their contents turns `A005` off once, with the reason written down.
+module is named after its contents — `internal/json.py` is right. ruff `A005` agrees by default:
+it compares the full dotted path, so it fires on a top-level `src/json.py` and not on
+`shop/internal/json.py` — measured on ruff 0.17. Leave `flake8-builtins.strict-checking` off; on,
+it reports every nested module too, and the package then needs a suppression it has no reason for.

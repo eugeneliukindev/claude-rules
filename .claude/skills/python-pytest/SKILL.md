@@ -15,10 +15,10 @@ paths:
 
 # pytest
 
-Checked against pytest 9.1, pytest-asyncio 1.4, hypothesis 6.168, pytest-httpserver 1.2 and
-testcontainers 4.15. What to test, the three levels, fakes over mocks and the shape of a test are
-in `testing.md`; this file is how the libraries do it. Configuration lives in `[tool.pytest]`
-(`python-project`).
+Checked against pytest 9.1, pytest-asyncio 1.4, hypothesis 6.168, pytest-httpserver 1.2, respx
+0.23 and testcontainers 4.15. What to test, the three levels, fakes over mocks and the shape of a
+test are in `testing.md`; this file is how the libraries do it. Configuration lives in
+`[tool.pytest]` (`python-project`).
 
 ## Async Tests
 
@@ -151,8 +151,9 @@ def test_fetch_order_translates_missing_order(httpserver: HTTPServer) -> None:
     assert excinfo.value.order_id == OrderId(42)
 ```
 
-- **`respx` patches `httpx`'s transport**, and only `httpx`'s; a codebase on `httpx` may use it.
-  It does not see `niquests`.
+- **`respx` patches `httpx` and `httpcore`, and only those** — not `httpx2`, which Starlette's
+  `TestClient` now wants (plain `httpx` there is a deprecation warning), and not `niquests`. An
+  adapter on `httpx2` or `niquests` is tested against `pytest-httpserver`.
 
 ## Integration Tests on Containers
 
@@ -160,7 +161,8 @@ def test_fetch_order_translates_missing_order(httpserver: HTTPServer) -> None:
   production runs: `from testcontainers.community.postgres import PostgresContainer` in 4.x — the
   top-level `testcontainers.postgres` is deprecated. The same holds for a broker:
   `testcontainers.community.rabbitmq.RabbitMqContainer`, not `testcontainers.rabbitmq`
-  (`python-faststream`).
+  (`python-faststream`). Each module needs its extra — `testcontainers[rabbitmq]` pulls `pika`,
+  `testcontainers[redis]` the redis client — or its import fails with `ModuleNotFoundError`.
 - **`get_connection_url()` returns a `postgresql+psycopg2://` URL** unless told otherwise:
   `driver=None` for a plain URL that asyncpg accepts (`python-asyncpg`), `driver="asyncpg"` for
   SQLAlchemy's async engine.

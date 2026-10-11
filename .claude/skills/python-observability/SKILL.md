@@ -165,7 +165,19 @@ def capture_payment(order: Order) -> None:
 ```
 
 - **The id travels on outbound calls** as a header, so the next service logs the same one. With
-  OpenTelemetry, the trace id is that id and its propagator sends it; do not mint a second one.
+  OpenTelemetry, the trace id is that id and its propagator sends it; do not mint a second one —
+  the filter reads it from the current span, so a log line and its span share one id to search by.
+
+```python
+# WRONG — a request id of its own beside the trace: logs and spans cannot be joined
+record.request_id = request_id.get()
+
+# CORRECT — the current span's trace id, written as the 32 hex digits tracing backends show
+span_context = trace.get_current_span().get_span_context()
+record.trace_id = (
+    format(span_context.trace_id, "032x") if span_context.is_valid else _UNKNOWN_TRACE_ID
+)
+```
 
 - **Recording a signal never fails the work it observes.** A log line, a metric or a span that
   raises — a body that will not serialise, an exporter that is down — is caught and dropped inside

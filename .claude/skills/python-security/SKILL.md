@@ -34,8 +34,11 @@ reset_token = secrets.token_hex(_RESET_TOKEN_BYTES)
 
 - **Passwords are hashed with Argon2id** — `argon2.PasswordHasher` from `argon2-cffi`, whose
   `verify` raises on a mismatch and whose `check_needs_rehash` upgrades old hashes at the next
-  login — or `hashlib.scrypt` where no dependency is allowed. Never a fast hash such as `sha256`,
-  never a hand-rolled scheme.
+  login — or `hashlib.scrypt` where no dependency is allowed, with every parameter stated:
+  `hashlib.scrypt(password, salt=secrets.token_bytes(16), n=2**15, r=8, p=1, dklen=32,
+  maxmem=64 * 1024 * 1024)`, the salt stored beside the hash. Without `maxmem` those parameters
+  fail with `memory limit exceeded` — OpenSSL's default ceiling is 32 MiB. Never a fast hash such
+  as `sha256`, never a hand-rolled scheme.
 
 ```python
 # WRONG — a fast hash: a leaked table is tested at billions of guesses a second
@@ -149,6 +152,21 @@ payload: object = yaml.load(document, Loader=yaml.Loader)
 payload: object = yaml.safe_load(document)
 ```
 
+- **HTML is rendered by an auto-escaping template engine** — `jinja2.Environment(...,
+  autoescape=select_autoescape())`, built once by the root; `markupsafe.Markup` only for a value
+  already escaped. Never an f-string into a page: a display name holding `<script>` runs in every
+  browser that renders it.
+
+```python
+# WRONG — the name goes into the page as markup, and a <script> in it runs
+def render_orders_page(user: User, *, templates: jinja2.Environment) -> str:
+    return f"<h1>Orders of {user.display_name}</h1>"
+
+# CORRECT — the engine escapes every value it is given unless it was marked safe
+def render_orders_page(user: User, *, templates: jinja2.Environment) -> str:
+    return templates.get_template("orders.html").render(user=user)
+```
+
 ## Paths and Archives
 
 - **A path derived from external input is resolved and checked to be contained within its base.**
@@ -195,16 +213,37 @@ with tarfile.open(archive_path) as archive:
 - **Server-side request forgery**: URLs from users are validated against an allowlist of schemes
   and hosts before fetching; redirects are re-validated, because the allowlist you checked before
   the request is worthless otherwise; internal metadata ranges and loopback are blocked by default.
+- **The check is on the addresses the name resolves to, not on the name.** A public hostname
+  whose DNS answers `169.254.169.254` passes every check of the string. Resolve it and refuse any
+  address that is not global; the request should then go to the address that was checked, since a
+  second lookup can answer differently — an egress proxy enforcing the same rule closes that gap.
+
+```python
+# WRONG — the name is checked, and a name that resolves to the metadata service passes
+def _require_allowed_url(url: str) -> None:
+    host = urlsplit(url).hostname
+    if host is None or host in _BLOCKED_HOSTS:
+        raise ForbiddenUrlError(url)
+
+# CORRECT — every address the name resolves to must be a public one
+def _require_allowed_url(url: str) -> None:
+    host = urlsplit(url).hostname
+    if host is None:
+        raise ForbiddenUrlError(url)
+    for *_, socket_address in socket.getaddrinfo(host, None):
+        if not ipaddress.ip_address(socket_address[0]).is_global:
+            raise ForbiddenUrlError(url)
+```
 
 ```python
 # WRONG — only the first URL is checked; a redirect to 169.254.169.254 is followed unchecked
-def fetch_preview(session: niquests.Session, url: str) -> niquests.Response:
+def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
     _require_allowed_url(url)
     response = session.get(url, timeout=_PREVIEW_TIMEOUT_SECONDS)
     return response.raise_for_status()
 
 # CORRECT — redirects are followed by hand, and every hop is checked before it is requested
-def fetch_preview(session: niquests.Session, url: str) -> niquests.Response:
+def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
     for _ in range(_MAX_REDIRECTS):
         _require_allowed_url(url)
         response = session.get(url, timeout=_PREVIEW_TIMEOUT_SECONDS, allow_redirects=False)
@@ -226,7 +265,12 @@ inflater = zlib.decompressobj(wbits=_GZIP_WBITS)
 document = inflater.decompress(payload, _MAX_DOCUMENT_BYTES + 1)
 if len(document) > _MAX_DOCUMENT_BYTES:
     raise PayloadTooLargeError(_MAX_DOCUMENT_BYTES)
+if not inflater.eof:
+    raise MalformedPayloadError("compressed stream is truncated")
 ```
+
+A stream cut short inflates without an error: half a gzip payload returned 4 bytes of 10,023 and
+`eof` stayed `False`. Without the last check that prefix is handed on as the whole document.
 
 - **Fail closed**: authorization lives in the service layer, not only at the transport edge; it
   denies by default, and an error inside the check denies rather than allows. At the edge the same

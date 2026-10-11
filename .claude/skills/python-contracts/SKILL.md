@@ -35,14 +35,15 @@ inheritance is free — and it buys two things structural typing cannot:
 **`@abstractmethod` alone gets the static guarantee; `ABC` adds a runtime one, and a metaclass.**
 The type checker reports `Cannot instantiate abstract class "X" with abstract attribute "y"` from
 the decorators alone — inheriting `abc.ABC` is not what makes that work. What `ABCMeta` adds is the
-refusal at construction time, and what it costs is a metaclass: it conflicts with Django's model
-metaclass, with mypyc compilation, and with any other library that wants that slot.
+refusal at construction time, and what it costs is a metaclass: a class that already has a
+library's metaclass — an ORM model, a framework base — cannot also be an `ABC`. Compiled with
+mypyc an `ABC` builds and keeps `ABCMeta`, but the runtime refusal is gone — measured on mypy 2.4,
+the abstract class instantiated without an error that the interpreted module raised.
 
-- **Default to `ABC`** in an application that compiles nothing and inherits no foreign metaclass.
-  The runtime refusal is free there, and it catches the implementation built through a path the
-  checker does not see.
-- **Drop to a plain base class with `@abstractmethod`** when a metaclass is already spoken for, or
-  the code is compiled. Neither guarantee the checker gives is lost.
+- **Default to `ABC`** in an application that inherits no foreign metaclass. The runtime refusal
+  is free there, and it catches the implementation built through a path the checker does not see.
+- **Drop to a plain base class with `@abstractmethod`** when a metaclass is already spoken for.
+  Neither guarantee the checker gives is lost; under mypyc the checker's is the only one either way.
 - **Decide once per project and say which**, rather than mixing both shapes in one tree.
 
 Hooking the creation of subclasses itself — keywords in the class statement, a subclass registry,
@@ -128,6 +129,32 @@ class Notifier(ABC):
     def send(self, recipient: UserId, message: Message) -> None: ...
 ```
 
+## The Shapes a Contract Method Takes
+
+- **A method that yields asynchronously is declared with plain `def`**, returning
+  `AsyncIterator[T]`. Declared `async def`, it promises a coroutine that returns an iterator, and
+  every implementation written as an async generator fails the override check.
+
+```python
+# WRONG — async def promises a coroutine: the async-generator implementation is an [override] error
+class OrderFeed(ABC):
+    @abstractmethod
+    async def follow(self) -> AsyncIterator[Order]: ...
+
+# CORRECT — plain def returning AsyncIterator; implementations write `async def … yield`
+class OrderFeed(ABC):
+    @abstractmethod
+    def follow(self) -> AsyncIterator[Order]: ...
+```
+
+- **An abstract property is `@property` above `@abstractmethod`.** The other order fails when the
+  class is defined: `attribute '__isabstractmethod__' of 'property' objects is not writable`.
+- **A generic contract is `class Repository[T](ABC)`**; an implementation binds the parameter —
+  `class PostgresOrderRepository(Repository[Order])` — and never stays generic by accident.
+- **A template method — the base's skeleton calling abstract steps — is `@final`**, so a subclass
+  fills in the steps and cannot replace the skeleton; mypy reports `Cannot override final
+  attribute`.
+
 ## A Contract Is as Small as Its Consumer
 
 **A contract holds the methods its consumer calls, and nothing it does not** — interface
@@ -139,7 +166,7 @@ implement several contracts; the split is in what the consumer is given, not in 
 
 ```python
 # WRONG — the report receives writes it never makes, and its fake must implement them
-def build_shipping_report(orders: OrderRepository, day: date) -> ShippingReport:
+def build_shipping_report(day: date, *, orders: OrderRepository) -> ShippingReport:
     return ShippingReport(shipped_count=len(orders.list_shipped(day)))
 
 # CORRECT — the report depends on the one capability it uses
@@ -148,11 +175,12 @@ class ShippedOrders(ABC):
     def list_shipped(self, day: date) -> list[Order]: ...
 
 
-def build_shipping_report(orders: ShippedOrders, day: date) -> ShippingReport:
+def build_shipping_report(day: date, *, orders: ShippedOrders) -> ShippingReport:
     return ShippingReport(shipped_count=len(orders.list_shipped(day)))
 ```
 
-The implementation inherits both — `class PostgresOrders(OrderRepository, ShippedOrders)` — and
+The implementation inherits both —
+`class PostgresOrderRepository(OrderRepository, ShippedOrders)` — and
 the composition root passes the same object to the service that writes and to the report that
 reads.
 
@@ -228,11 +256,11 @@ frozen structure, couples to nothing that behaves, and stays as it is.
 
 ```python
 # WRONG — typed as the implementation, so the service can reach the session behind the repository
-def cancel_order(orders: PostgresOrderRepository, order_id: OrderId) -> None:
+def cancel_order(order_id: OrderId, *, orders: PostgresOrderRepository) -> None:
     orders.session.execute(_CANCEL_ORDER, {"order_id": order_id})
 
 # CORRECT — typed as the contract: the call it declares is the only one there is
-def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+def cancel_order(order_id: OrderId, *, orders: OrderRepository) -> None:
     orders.cancel(order_id)
 ```
 

@@ -4,7 +4,8 @@ description: >-
   Library-agnostic Python persistence design: one use case per transaction, a Unit of Work owning
   the boundary, nothing slow or irreversible inside a transaction, ORM rows converted to domain
   objects at the repository boundary, N+1 treated as an error, keyset pagination instead of offset,
-  optimistic locking with a version column. Use when deciding where a transaction begins and ends,
+  optimistic locking with a version column, the isolation level a retry needs, session timeouts,
+  INSERT ON CONFLICT and SKIP LOCKED. Use when deciding where a transaction begins and ends,
   designing a repository, paginating a query or guarding against lost updates, whatever the ORM;
   the SQLAlchemy API is in python-sqlalchemy, the asyncpg API in python-asyncpg, schema changes in
   python-migrations.
@@ -79,16 +80,29 @@ def place_order(self, command: PlaceOrder) -> OrderId:
     with self._unit_of_work() as unit:
         for attempt in _RETRY_ON_CONFLICT:
             with attempt:
-                order_id = unit.orders.add(Order.create(command))
-    return order_id
+                return unit.orders.add(Order.create(command))
+    raise AssertionError("unreachable: the last attempt's error propagates from the loop")
 
 # CORRECT — each attempt opens a fresh unit of work and re-runs the use case from the start
 def place_order(self, command: PlaceOrder) -> OrderId:
     for attempt in _RETRY_ON_CONFLICT:
         with attempt, self._unit_of_work() as unit:
-            order_id = unit.orders.add(Order.create(command))
-    return order_id
+            return unit.orders.add(Order.create(command))
+    raise AssertionError("unreachable: the last attempt's error propagates from the loop")
 ```
+
+The `return` sits inside the loop: a value assigned there and returned after it is what mypy's
+`possibly-undefined` reports, because the checker cannot see that the loop only ends by raising.
+
+- **A serialization failure exists only under `REPEATABLE READ` or `SERIALIZABLE`.** Under the
+  default `READ COMMITTED`, the second of two transactions that read a row and then update it
+  overwrites the first without an error, and the retry above never fires. A use case that relies
+  on it opens its unit of work at the stricter level; a deadlock is raised at any level.
+- **Every session carries server-side timeouts**, set once on the engine, the pool or the role:
+  `statement_timeout` bounds a query, `lock_timeout` a wait for a lock, and
+  `idle_in_transaction_session_timeout` a transaction the application opened and abandoned — which
+  otherwise holds its locks until someone kills it. The spelling is in `python-sqlalchemy` and
+  `python-asyncpg`; the client-side half is in `python-boundaries`.
 
 - **Domain objects do not hold sessions**; a detached entity passed outward never lazy-loads.
 
@@ -109,7 +123,7 @@ def find(self, order_id: OrderId) -> Order | None:
     row = self._session.get(OrderRow, order_id)
     if row is None:
         return None
-    return Order(id=OrderId(row.id), status=row.status, total=row.total)
+    return Order(order_id=OrderId(row.id), status=row.status, total=row.total)
 ```
 
 - **Repositories accept and return domain objects** and contain query construction only — no
@@ -128,6 +142,32 @@ def find(self, order_id: OrderId) -> Order | None:
   goes through a DataLoader built per request (`python-strawberry`).
 - **Bulk operations are bulk**: one statement per batch, not one per row. Looping single-row
   writes over thousands of rows is a bug, not a style choice.
+- **An idempotent insert is one statement: `INSERT … ON CONFLICT` on the unique key.** A `SELECT`
+  for the key followed by an `INSERT` is passed by two concurrent deliveries alike, and the second
+  then fails on what was a harmless repeat. `DO NOTHING RETURNING` returns no row for a duplicate,
+  which is how the caller tells the two apart (why the write must be idempotent:
+  `python-boundaries`; the dialect spelling: `python-sqlalchemy`).
+
+```sql
+-- WRONG — both deliveries find no row; the second INSERT then fails on the primary key
+SELECT 1 FROM payments WHERE payment_id = :payment_id;
+
+-- CORRECT — the unique key decides atomically; an empty result means "already recorded"
+INSERT INTO payments (payment_id, amount) VALUES (:payment_id, :amount)
+ON CONFLICT (payment_id) DO NOTHING RETURNING payment_id;
+```
+
+- **A table used as a queue is claimed with `FOR UPDATE SKIP LOCKED`.** Without it every worker
+  waits on the rows the first one locked, and ten workers process one batch at a time.
+
+```sql
+-- WRONG — the second worker blocks on the first worker's rows until that transaction ends
+SELECT id FROM jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE;
+
+-- CORRECT — each worker takes rows nobody holds, and none of them waits
+SELECT id FROM jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE SKIP LOCKED;
+```
+
 - **Pages are keyset, not offset.** `OFFSET 100000` reads and throws away a hundred thousand rows
   for every page, so the last page costs the most and the cost grows with the table — and a row
   inserted between two requests shifts every later page, showing one row twice or skipping one.

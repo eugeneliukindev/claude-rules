@@ -47,43 +47,25 @@ and presentation follows from it and does not replace it. The data stays one fro
 actor gets a module of functions over it, or a class of its own when it has dependencies.
 
 ```python
-# WRONG — one module, two actors: finance changes _regular_hours for pay, HR's report moves too
+# WRONG — one module, two actors: a pay fix finance asks for ships with HR's hours report
 def _regular_hours(timesheet: Timesheet) -> Decimal: ...
 def calculate_pay(timesheet: Timesheet) -> Money: ...        # finance
 def report_hours(timesheet: Timesheet) -> HoursReport: ...   # HR
 
-# CORRECT — payroll.py and hours_report.py, each with its own private _regular_hours
-
-# WRONG — one class answers to finance and HR, and both edit _regular_hours for their own reasons
+# CORRECT — what counts as regular hours is one rule, on the data; each actor's module calls it
 @final
-class EmployeeService:
-    def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables,
-                 calendar: WorkCalendar) -> None: ...
-    def gross_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...     # finance
-    def net_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...       # finance
-    def payslip(self, employee_id: EmployeeId, month: Month) -> Payslip: ...     # finance
-    def hours_report(self, month: Month) -> HoursReport: ...                     # HR
-    def overtime_report(self, month: Month) -> OvertimeReport: ...               # HR
-    def absence_report(self, month: Month) -> AbsenceReport: ...                 # HR
-    def _regular_hours(self, timesheet: Timesheet) -> Decimal: ...
-
-# CORRECT — one class per actor, each with its own dependencies and its own _regular_hours
-@final
-class Payroll:
-    def __init__(self, timesheets: TimesheetRepository, tax_tables: TaxTables) -> None: ...
-    def gross_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
-    def net_pay(self, employee_id: EmployeeId, month: Month) -> Money: ...
-    def payslip(self, employee_id: EmployeeId, month: Month) -> Payslip: ...
-
-@final
-class HoursReporting:
-    def __init__(self, timesheets: TimesheetRepository, calendar: WorkCalendar) -> None: ...
-    def hours_report(self, month: Month) -> HoursReport: ...
-    def overtime_report(self, month: Month) -> OvertimeReport: ...
-    def absence_report(self, month: Month) -> AbsenceReport: ...
+@dataclass(frozen=True, kw_only=True)
+class Timesheet:                                              # timesheet.py
+    def regular_hours(self) -> Decimal: ...
+def calculate_pay(timesheet: Timesheet) -> Money: ...         # payroll.py, finance
+def report_hours(timesheet: Timesheet) -> HoursReport: ...    # hours_report.py, HR
 ```
 
-A layer split passes both wrong versions; the two `_regular_hours` are duplication DRY keeps.
+A class splits the same way: an `EmployeeService` holding pay and report methods becomes `Payroll`
+and `HoursReporting`, each built with only its own actor's dependencies; a layer split fixes
+neither. What counts as regular hours is one fact with one owner, so DRY (`core.md`) keeps it once,
+on the data; if finance and HR come to mean different hours, those are two rules with two names,
+each in its own actor's module.
 
 **A contract is a base class with `@abstractmethod` that implementations inherit** — a missing
 method fails where the class is defined, not at a distant call site. `Protocol` is for code you

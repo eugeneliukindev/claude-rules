@@ -14,9 +14,10 @@ paths:
 
 # SQLAlchemy
 
-Assumes 2.0 style. One use case is one transaction, opened by the service and never committed by a
-repository, and a repository returns frozen domain objects, never ORM rows (why and how:
-`python-persistence`); revisions are in `python-alembic`. This file is how to spell those rules here.
+Checked against SQLAlchemy 2.1; the 2.0-style API below is unchanged in 2.1. One use case is one
+transaction, opened by the service and never committed by a repository, and a repository returns
+frozen domain objects, never ORM rows (why and how: `python-persistence`); revisions are in
+`python-alembic`. This file is how to spell those rules here.
 
 ## The 2.0 API — `Query` Is Legacy
 
@@ -240,7 +241,11 @@ def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOf
 
 - **`expire_on_commit=False`** for async and for any code that reads attributes after commit;
   otherwise the first attribute access after `commit()` triggers a refresh — which, on an async
-  session, raises.
+  session, raises. With `lazy="raise"` it is not only async: a relationship loaded by
+  `selectinload` is expired at `commit()` like any attribute, and the next read of it raises
+  `InvalidRequestError` (*measured* on 2.1.4). A sync session whose ORM rows outlive the commit
+  sets `expire_on_commit=False` too — or, better, the repository maps them to domain objects
+  before the exit (`python-persistence`).
 
 ```python
 # WRONG — commit expires every attribute, and reading one afterwards on an async session raises
@@ -255,6 +260,7 @@ session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 ```python
 # WRONG — commit ends the unit of work's transaction from inside one repository
+@override
 def add(self, order: Order) -> OrderId:
     row = OrderRow(customer_id=order.customer_id, total=order.total)
     self._session.add(row)
@@ -262,6 +268,7 @@ def add(self, order: Order) -> OrderId:
     return OrderId(row.id)
 
 # CORRECT — flush sends the INSERT and fills row.id; the transaction stays open
+@override
 def add(self, order: Order) -> OrderId:
     row = OrderRow(customer_id=order.customer_id, total=order.total)
     self._session.add(row)

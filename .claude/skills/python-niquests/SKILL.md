@@ -1,11 +1,12 @@
 ---
 name: python-niquests
 description: >-
-  niquests HTTP client practice, which transfers to httpx almost unchanged: one session owned by
-  the composition root instead of module-level calls, a timeout on every request, raise_for_status
+  niquests HTTP client practice, which transfers to httpx almost unchanged: one session owned by the
+  composition root instead of module-level calls, a timeout on every request, raise_for_status
   rather than assuming success, transport and status errors translated at the adapter, deliberate
-  redirect handling, TLS verification left on, and where retries belong. Use when Python code
-  imports niquests or httpx, builds a session, or makes an outbound HTTP request.
+  redirect handling, TLS verification left on, and where retries belong. The timeout and retry
+  design is in python-boundaries. Use when Python code imports niquests or httpx, builds a session,
+  or makes an outbound HTTP request.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -59,12 +60,12 @@ named constant (why: `python-boundaries`). The niquests mechanics:
 
 ```python
 # WRONG — a 404's JSON error body comes back as the order, a timeout as niquests' own exception
-async def fetch_order(session: niquests.AsyncSession, order_id: OrderId) -> object:
+async def fetch_order(order_id: OrderId, *, session: niquests.AsyncSession) -> object:
     response = await session.get(f"/orders/{order_id}")
     return response.json()
 
 # CORRECT — transport failures and the listed statuses are transient, any other error permanent
-async def fetch_order(session: niquests.AsyncSession, order_id: OrderId) -> object:
+async def fetch_order(order_id: OrderId, *, session: niquests.AsyncSession) -> object:
     try:
         response = await session.get(f"/orders/{order_id}")
     except (niquests.ConnectionError, niquests.Timeout) as error:
@@ -89,12 +90,12 @@ async def fetch_order(session: niquests.AsyncSession, order_id: OrderId) -> obje
 
 ```python
 # WRONG — the allowlist saw only the first URL; every redirect after it is followed unchecked
-def fetch_preview(session: niquests.Session, url: str) -> niquests.Response:
+def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
     _ensure_allowed(url)
     return session.get(url)
 
 # CORRECT — redirects are off, and every Location is checked before it is requested
-def fetch_preview(session: niquests.Session, url: str) -> niquests.Response:
+def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
     for _ in range(_MAX_REDIRECTS + 1):
         _ensure_allowed(url)
         response = session.get(url, allow_redirects=False)

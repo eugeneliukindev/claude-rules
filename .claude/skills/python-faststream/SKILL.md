@@ -58,8 +58,10 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- **`faststream run module:app` wants a module-level `app`.** Where the CLI is required — the
-  `faststream[cli]` extra — `--factory`
+- **`RabbitBroker` lives behind the `faststream[rabbit]` extra** (`aio-pika`); without it
+  `from faststream.rabbit import RabbitBroker` raises `ImportError`. The CLI is the
+  `faststream[cli]` extra.
+- **`faststream run module:app` wants a module-level `app`.** Where the CLI is required, `--factory`
   names a function that builds it, and the resources open in the app's `lifespan`, which wraps
   startup, the run and shutdown. `on_startup` hooks run before the broker connects and
   `after_startup` hooks after the subscribers are already consuming — neither is where a resource
@@ -181,8 +183,7 @@ arrives as a `str`, `is_instance_of` fails, and nothing is handled. Take the raw
 # WRONG — validated in Python mode: the UUID arrives as a str, and every message fails
 @router.subscriber(_ORDERS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
 async def on_order_placed_message(message: OrderPlacedV1) -> None:
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await reserve_stock(warehouse, message.to_domain())
+    await reserve_stock(message.to_domain(), warehouse=warehouse)
 
 # CORRECT — the raw body reaches the handler, which validates it in JSON mode
 @router.subscriber(_ORDERS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
@@ -198,6 +199,25 @@ delivery (measured).
 Give every handler a deadline inside the ack deadline, and the drain inside the orchestrator's
 grace period (why: `python-workers`). FastStream has no handler timeout of its own — the handler's
 `asyncio.timeout` is the deadline.
+
+- **The subscriber sets a prefetch.** `Channel(prefetch_count=None)` is the default, and FastStream
+  then sends no `basic.qos` at all (`helpers/channel_manager.py` sets it only when the count is
+  given): RabbitMQ pushes the queue into the first worker, and every delivery's ack deadline starts
+  running at once (why the bound: `python-workers`).
+
+```python
+# WRONG — no prefetch: the whole queue lands in this worker while the others idle
+@router.subscriber(_ORDERS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+async def on_order_placed_message(message: RabbitMessage) -> None: ...
+
+# CORRECT — at most _PREFETCH_COUNT deliveries held at once; the rest wait for a free worker
+@router.subscriber(
+    _ORDERS_QUEUE,
+    ack_policy=AckPolicy.REJECT_ON_ERROR,
+    channel=Channel(prefetch_count=_PREFETCH_COUNT),
+)
+async def on_order_placed_message(message: RabbitMessage) -> None: ...
+```
 
 - **`FastStream.run()` handles `SIGTERM` and `SIGINT`**, and the broker's `graceful_timeout` bounds
   the wait for handlers in flight: **15 seconds by default, and `None` is not "wait forever" but no

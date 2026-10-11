@@ -87,22 +87,14 @@ async def _drain(events: asyncio.Queue[OrderEvent]) -> AsyncIterator[OrderEvent]
     while True:
         try:
             yield await events.get()
-        except asyncio.QueueShutDown:
-            raise OrderEventChannelLostError("dropped by the test") from None
+        except asyncio.QueueShutDown as error:
+            raise OrderEventChannelLostError("dropped by the test") from error
 ```
 
+The `channel` fixture parametrizes over the fake and every real implementation, as every contract
+suite does (`python-contracts`); the tests are written once against the contract:
+
 ```python
-@pytest.fixture(
-    params=[
-        pytest.param("memory", id="memory"),
-        pytest.param("redis", id="redis", marks=pytest.mark.integration),
-    ]
-)
-def channel(request: pytest.FixtureRequest) -> OrderEventChannel:
-    channel: OrderEventChannel = request.getfixturevalue(f"{request.param}_channel")
-    return channel
-
-
 async def test_published_event_reaches_a_live_subscription(channel: OrderEventChannel) -> None:
     async with channel.subscribe() as events:
         await channel.publish(_SHIPPED)

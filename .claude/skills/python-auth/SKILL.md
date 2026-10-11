@@ -237,6 +237,36 @@ Prefer an identity provider; this file is about verifying. Where a service issue
 - **Signing keys rotate through the key set**: publish the new public key, wait at least the
   verifiers' cache lifetime, then sign with it; remove the old key once its last token has expired.
 
+- **A password, reset or token endpoint is rate-limited per account and per source**, by a
+  counter in the shared cache with the window as its TTL (`python-caching`) — never a dict in the
+  process, which every worker and every restart starts afresh. A reset token is single-use and
+  short-lived like a refresh token: stored hashed, consumed in the same transaction that changes
+  the password.
+
+```python
+# WRONG — counted in this process: each of four workers grants its own five attempts per account
+_attempts_by_email: Counter[str] = Counter()
+
+async def log_in(credentials: Credentials, *, passwords: PasswordChecker) -> UserId:
+    _attempts_by_email[credentials.email] += 1
+    if _attempts_by_email[credentials.email] > _LOGIN_ATTEMPTS:
+        raise TooManyAttemptsError(credentials.email)
+    return await passwords.check(credentials)
+
+# CORRECT — one shared count per account and one per source, each expiring with its window
+async def log_in(
+    credentials: Credentials,
+    *,
+    source: IPv4Address | IPv6Address,
+    limiter: RateLimiter,
+    passwords: PasswordChecker,
+) -> UserId:
+    account_key = f"login:account:{credentials.email}"
+    await limiter.consume(account_key, limit=_LOGIN_ATTEMPTS, window=_LOGIN_WINDOW)
+    await limiter.consume(f"login:source:{source}", limit=_SOURCE_ATTEMPTS, window=_LOGIN_WINDOW)
+    return await passwords.check(credentials)
+```
+
 ## Service-to-Service Credentials
 
 - **Each service has its own credential** — a client-credentials token from the identity provider,

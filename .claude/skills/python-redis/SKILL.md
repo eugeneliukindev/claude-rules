@@ -231,6 +231,8 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[OrderEve
                     logger.warning("order event dropped", extra={"payload_size": len(payload)})
                     continue
                 yield decoded.to_domain()
+            case _:
+                continue  # unsubscribe confirmations and pattern messages carry no event
 
 
 # CORRECT — a second confirmation is a gap, and the contract says so
@@ -246,11 +248,14 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[OrderEve
                     logger.warning("order event dropped", extra={"payload_size": len(payload)})
                     continue
                 yield decoded.to_domain()
+            case _:
+                continue  # unsubscribe confirmations and pattern messages carry no event
 ```
 
-The whole implementation, in `order_events/redis_pubsub.py` — named for its mechanism, so a Redis
-Streams implementation, which would also replay what a dropped subscriber missed, is a second file
-beside it. `subscribe` reads the first confirmation before it yields, so the relay ends its streams
+The pair is the `match` alone; the whole function, with the `except RedisConnectionError` around
+its loop, is below. The whole implementation, in `order_events/redis_pubsub.py` — named for its
+mechanism, so a Redis Streams implementation, which would also replay what a dropped subscriber
+missed, is a second file beside it. `subscribe` reads the first confirmation before it yields, so the relay ends its streams
 only once the subscription is live; the wire model is a queued payload, so it ignores fields a
 newer worker adds (`python-pydantic`), and a payload that fails is logged and skipped, never a
 reason to drop the subscription.
@@ -311,6 +316,8 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[OrderEve
                         logger.warning("order event dropped", extra={"payload_size": len(payload)})
                         continue
                     yield decoded.to_domain()
+                case _:
+                    continue  # unsubscribe confirmations and pattern messages carry no event
     except RedisConnectionError as error:
         raise OrderEventChannelLostError(_ORDER_EVENTS_CHANNEL) from error
 ```

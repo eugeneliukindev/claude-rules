@@ -112,12 +112,12 @@ def _raise_for_status(status_code: int, order_id: OrderId) -> None:
 ```python
 # WRONG — every attempt mints a new key, so the server sees three different charges
 @_RETRY_TRANSIENT
-async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
+async def _charge(payment: Payment, *, gateway: PaymentGateway) -> Receipt:
     return await gateway.charge(payment.amount, idempotency_key=str(uuid.uuid4()))
 
 # CORRECT — the payment's own id, minted when the payment was created, is the key
 @_RETRY_TRANSIENT
-async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
+async def _charge(payment: Payment, *, gateway: PaymentGateway) -> Receipt:
     return await gateway.charge(payment.amount, idempotency_key=str(payment.payment_id))
 ```
 
@@ -127,12 +127,12 @@ async def _charge(gateway: PaymentGateway, payment: Payment) -> Receipt:
 
 ```python
 # WRONG — a redelivered message credits the account a second time
-def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
+def credit_payment(message: PaymentReceived, *, unit_of_work: UnitOfWork) -> None:
     with unit_of_work:
         unit_of_work.accounts.credit(message.account_id, message.amount)
 
 # CORRECT — the event id is recorded in the same transaction, and a repeat is skipped
-def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
+def credit_payment(message: PaymentReceived, *, unit_of_work: UnitOfWork) -> None:
     with unit_of_work:
         if unit_of_work.processed_events.contains(message.event_id):
             return
@@ -149,7 +149,7 @@ def credit_payment(unit_of_work: UnitOfWork, message: PaymentReceived) -> None:
 
 ```python
 # WRONG — a retried cancel fails on the order the first attempt already cancelled
-def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+def cancel_order(order_id: OrderId, *, orders: OrderRepository) -> None:
     order = orders.get(order_id)
     if order.status is OrderStatus.CANCELLED:
         raise OrderAlreadyCancelledError(order_id)
@@ -158,7 +158,7 @@ def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
     orders.save(replace(order, status=OrderStatus.CANCELLED))
 
 # CORRECT — "cancelled afterwards" holds after a repeat too; only the unreachable state raises
-def cancel_order(orders: OrderRepository, order_id: OrderId) -> None:
+def cancel_order(order_id: OrderId, *, orders: OrderRepository) -> None:
     order = orders.get(order_id)
     if order.status is OrderStatus.CANCELLED:
         return
@@ -196,6 +196,20 @@ def to_payload(user: User) -> dict[str, object]:
 
 - **Round-trip is a contract**: `from_dict(to_dict(x)) == x`, covered by a test for every
   serialized type.
+- **`NaN` and `Infinity` are refused at the edge.** They are not JSON, yet `json.loads` turns them
+  into floats, and a pydantic `float` accepts them even in strict mode — `allow_inf_nan=False`
+  refuses them there. One bad number then poisons every sum it joins.
+
+```python
+# WRONG — json.loads returns nan and inf for constants no JSON document may contain
+payload = json.loads(body)
+
+# CORRECT — a non-standard constant is a malformed payload, refused where it arrives
+def _reject_constant(name: str) -> Never:
+    raise MalformedPayloadError(f"{name} is not a JSON number")
+
+payload = json.loads(body, parse_constant=_reject_constant)
+```
 - **Untrusted data is never unpickled** — it executes code on load. Do not use pickle for
   persistence or cross-service messages at all, being version-fragile; it is acceptable only inside
   a single process tree.
@@ -282,12 +296,18 @@ with path.open(encoding="utf-8", newline="") as file:
 
 ```python
 # WRONG — naive host-local time: shifts with the server's zone, cannot be ordered against aware
-def _system_clock() -> datetime:
-    return datetime.now()
+@final
+class SystemClock(Clock):
+    @override
+    def now(self) -> datetime:
+        return datetime.now()
 
 # CORRECT — aware UTC; this is the clock the composition root injects
-def _system_clock() -> datetime:
-    return datetime.now(UTC)
+@final
+class SystemClock(Clock):
+    @override
+    def now(self) -> datetime:
+        return datetime.now(UTC)
 ```
 
 - Naive datetimes are rejected at the boundary: a schema accepting a datetime requires an offset.
@@ -317,9 +337,15 @@ expires_at = issued_at.astimezone(UTC) + _TOKEN_LIFETIME
 
 - **`date` for calendar concepts, `datetime` for instants** — a birthday is a `date`, and storing
   it as midnight `datetime` invents a timezone bug.
-- **Time is a dependency.** Any code that needs "now" takes a clock (`now: Callable[[], datetime]`
-  or a tiny `Clock` protocol) injected from the composition root; `datetime.now(UTC)` appears only
-  in the default wiring, and tests use a fixed clock.
+- **Time is a dependency.** Any code that needs "now" takes a `Clock` — one abstract `now()`,
+  `SystemClock` above in production, a fixed clock in tests — injected from the composition root
+  (`python-wiring`); `datetime.now(UTC)` appears only in `SystemClock`.
+
+```python
+class Clock(ABC):
+    @abstractmethod
+    def now(self) -> datetime: ...
+```
 
 ```python
 # WRONG — "now" is read inside, so no test can say when it is
@@ -327,8 +353,24 @@ def issue_invitation(email: str) -> Invitation:
     return Invitation(email=email, expires_at=datetime.now(UTC) + _INVITATION_LIFETIME)
 
 # CORRECT — the clock is a parameter: the system clock in production, a fixed one in tests
-def issue_invitation(now: Callable[[], datetime], email: str) -> Invitation:
-    return Invitation(email=email, expires_at=now() + _INVITATION_LIFETIME)
+def issue_invitation(email: str, *, clock: Clock) -> Invitation:
+    return Invitation(email=email, expires_at=clock.now() + _INVITATION_LIFETIME)
+```
+
+- **A deadline or an elapsed time is measured on `time.monotonic()`** — `loop.time()` in async
+  code — never on the wall clock, which NTP steps and an operator sets: a step back stretches the
+  wait, a step forward ends it early. `datetime` is for the instants a person or a record reads.
+
+```python
+# WRONG — the wall clock: a clock step moves the deadline under the running loop
+deadline = datetime.now(UTC) + _POLL_BUDGET
+while datetime.now(UTC) < deadline:
+    ...
+
+# CORRECT — the monotonic clock only moves forward
+deadline_seconds = time.monotonic() + _POLL_BUDGET_SECONDS
+while time.monotonic() < deadline_seconds:
+    ...
 ```
 
 - **Durations are `timedelta`**, and a duration or a size stored as a number is an integer of an
@@ -345,6 +387,19 @@ def issue_invitation(now: Callable[[], datetime], email: str) -> Invitation:
 price = Decimal(19.99)
 # CORRECT — built from the string the amount was written as
 price = Decimal("19.99")
+```
+
+- **On the wire an amount is a string** — `"19.90"`, never `19.9` — because the reader's JSON
+  parser turns a number into a float before anyone can stop it, and the trailing zero is lost.
+
+```python
+# WRONG — the consumer's parser makes a float of it, and 19.90 arrives as 19.9
+def to_payload(amount: Decimal) -> dict[str, object]:
+    return {"amount": float(amount), "currency": "EUR"}
+
+# CORRECT — the exact digits travel, and the consumer builds its Decimal from them
+def to_payload(amount: Decimal) -> dict[str, object]:
+    return {"amount": str(amount), "currency": "EUR"}
 ```
 
 ## Identifiers

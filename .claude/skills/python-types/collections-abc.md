@@ -68,7 +68,9 @@ in annotations, at runtime instead of `hasattr`, and instead of hand-rolled prot
   `__iter__`, `__len__`; get all set algebra.
 - **Never subclass `dict`, `list`, `set` to customise behaviour** — their C-level methods bypass
   your overrides (`dict.update` does not call `__setitem__`). Subclass `collections.UserDict` /
-  `UserList` / `UserString`, or the ABC.
+  `UserList` / `UserString`, or the ABC. **The one carve-out is a metaclass `__prepare__`
+  namespace**: the class body stores every name with `STORE_NAME`, which does call an overridden
+  `__setitem__`, so a `dict` subclass is correct there (`python-metaclasses`).
 - `NotImplementedError` in an ABC method is a bug: `@abstractmethod` so instantiation fails early.
 
 ```python

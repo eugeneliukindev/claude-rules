@@ -6,8 +6,9 @@ description: >-
   orjson — and which never do — timeouts, secrets, encodings, Decimal money, aware datetimes, narrow
   excepts, subprocess lists, parameterized SQL; PEP 723 inline metadata run with uv run; dry-run by
   default for a data fix; and the point where a script stops being one. Use when writing a
-  standalone .py script, a notebook, a backfill or one-off data migration, a file with a
-  "# /// script" block, or anything run by hand with uv run or python script.py.
+  standalone .py script, a notebook, the backfill script itself or a one-off data fix, a file with
+  a "# /// script" block, or anything run by hand with uv run or python script.py; planning a
+  backfill is python-migrations.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -69,6 +70,8 @@ if __name__ == "__main__":
 - **Tests are optional.** A script is verified by running it — on a copy of the data, or in dry-run
   first. A function in it that is subtle enough to need a test is the first sign of a promotion.
 - **One-line docstring for the module**: what it does and how it is run.
+- **Plain-text logging.** `basicConfig` is enough, and it prints no `extra=` field — so the name
+  of a skipped item goes in the message, and the counts the reader must see go to stderr.
 
 ## What Never Relaxes
 
@@ -139,22 +142,33 @@ def main() -> None:
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 
-    renames = planned_renames(arguments.directory)
+    renames, skipped_count = planned_renames(arguments.directory)
     for source, target in renames:
         print(f"{source.name} -> {target.name}")
     failed_count = apply_renames(renames) if arguments.apply else 0
-    logger.info("renames planned", extra={"planned": len(renames), "failed": failed_count})
-    sys.exit(EXIT_FAILURE if failed_count else EXIT_SUCCESS)
+    verb = "renamed" if arguments.apply else "would rename"
+    print(
+        f"{verb} {len(renames) - failed_count} of {len(renames)}, "
+        f"{skipped_count} skipped, {failed_count} failed",
+        file=sys.stderr,
+    )
+    sys.exit(EXIT_FAILURE if failed_count or skipped_count else EXIT_SUCCESS)
 
 
-def planned_renames(directory: Path) -> list[tuple[Path, Path]]:
+def planned_renames(directory: Path) -> tuple[list[tuple[Path, Path]], int]:
     renames = []
+    skipped_count = 0
     for source in sorted(directory.iterdir()):
         target = source.with_name(source.name.lower())
+        if target == source:
+            continue
         # rename() replaces an existing target without asking
-        if target != source and not target.exists():
-            renames.append((source, target))
-    return renames
+        if target.exists():
+            logger.warning("target exists, skipped: %s", source.name)
+            skipped_count += 1
+            continue
+        renames.append((source, target))
+    return renames, skipped_count
 
 
 def apply_renames(renames: Sequence[tuple[Path, Path]]) -> int:
@@ -163,7 +177,7 @@ def apply_renames(renames: Sequence[tuple[Path, Path]]) -> int:
         try:
             source.rename(target)
         except OSError:
-            logger.exception("rename failed", extra={"source": str(source)})
+            logger.exception("rename failed: %s", source.name)
             failed_count += 1
     return failed_count
 

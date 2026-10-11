@@ -13,9 +13,16 @@ the guarded lines, a driver's error translated with `raise … from`, and never 
   — and all its own exceptions inherit it, so one clause catches "anything from billing".
 - **A leaf class is earned by a caller who catches it on its own**; until then raise the nearest
   category with the identifying values. A leaf names the failure without the prefix (`naming.md`)
-  and inherits the closest stdlib type too — `InvoiceNotFoundError(BillingError, LookupError)` —
-  so stdlib code catches it: a missing key from a `Mapping`'s `__getitem__` must be a `KeyError`,
-  or `in` and `.get()` break. Exceptions **carry data as attributes**, not only text.
+  and inherits the closest stdlib type its callers catch — `LookupError`, `ValueError`, `TypeError`:
+  `InvoiceNotFoundError(BillingError, LookupError)`; a missing key from a `Mapping`'s `__getitem__`
+  must be a `KeyError`, or `in` and `.get()` break. **Never an `OSError` subtype** — not
+  `PermissionError`, `TimeoutError` or `FileNotFoundError`: they carry errno semantics, and an
+  `except OSError` around a socket swallows the domain failure. Exceptions **carry data as
+  attributes**, not only text.
+  ```python
+  class AccessDeniedError(BillingError, PermissionError): ...  # WRONG — `except OSError` takes it
+  class AccessDeniedError(BillingError): ...  # CORRECT — the errno family stays the OS's
+  ```
 - **`None` is for lookups where absence is normal**, and `-> User | None` says so; a signature that
   promises a value raises instead of returning `None`, `False`, `-1` or an empty list.
 - **An outcome the caller would treat as success is not an error**: `cancel` on a cancelled order
@@ -28,7 +35,7 @@ the guarded lines, a driver's error translated with `raise … from`, and never 
 
 ```python
 # WRONG — broad catch, swallowed cause, a try around everything, the error returned as None
-def load_user(client: Client, user_id: UserId) -> User | None:
+def load_user(user_id: UserId, *, client: Client) -> User | None:
     try:
         response = client.get(f"/users/{user_id}")
         response.raise_for_status()
@@ -38,7 +45,7 @@ def load_user(client: Client, user_id: UserId) -> User | None:
         return None
 
 # CORRECT — narrow try, translated with its cause, an error is never a return value
-def load_user(client: Client, user_id: UserId) -> User:
+def load_user(user_id: UserId, *, client: Client) -> User:
     try:
         response = client.get(f"/users/{user_id}")
         response.raise_for_status()

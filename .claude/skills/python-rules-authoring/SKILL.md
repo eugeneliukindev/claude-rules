@@ -54,7 +54,9 @@ audits that turned up examples teaching the opposite of the rule above them
   disagree, the model has two instructions and picks one arbitrarily.
 - **A `CORRECT` is real code**: it parses, it passes `mypy --strict`, and its library calls exist in
   the version the skill names. Run it before committing — `def f(...)` is a syntax error, and an
-  API claim from memory is how a skill came to say `orjson` serialises `Decimal`.
+  API claim from memory is how a skill came to say `orjson` serialises `Decimal`. Examples omit
+  their imports and the declarations of the names they use, in every file — the scratch file that
+  runs `mypy --strict` supplies both.
 
 **A rule says whether it holds in a script.** These files are written for code that lives, and the
 model applies them to a forty-line one-off as readily as to a service. `python-scripts` lists what

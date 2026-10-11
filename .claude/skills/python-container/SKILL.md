@@ -214,6 +214,35 @@ def main() -> None:
         consumer.run_until(stop)
 ```
 
+- **The HTTP server's drain is bounded below the orchestrator's grace period.** On `SIGTERM`
+  uvicorn stops accepting and waits for open requests — with no bound unless
+  `--timeout-graceful-shutdown` is given, so one stream or slow client runs the 30 seconds
+  Kubernetes allows by default into a `SIGKILL`, the lifespan's shutdown never running. Set it a
+  few seconds under the grace period.
+
+```dockerfile
+# WRONG — the drain waits for every open request; a stream outlives the grace period
+CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+
+# CORRECT — open requests get 25 seconds, inside the default 30, then the lifespan closes
+CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
+     "--timeout-graceful-shutdown", "25"]
+```
+
+- **Behind a proxy, uvicorn trusts `X-Forwarded-*` only from the addresses it is told.** The
+  default `--forwarded-allow-ips` is `127.0.0.1,::1`, so behind an ingress every request appears to
+  come from the ingress — rate limits and audit logs see one client. Name the proxy's network;
+  `*` lets any caller forge its address.
+
+```dockerfile
+# WRONG — the ingress is not 127.0.0.1: its X-Forwarded-For is ignored, every client is the ingress
+CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+
+# CORRECT — the forwarded address is believed from the ingress network, and from nowhere else
+CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
+     "--forwarded-allow-ips", "10.0.0.0/8"]
+```
+
 - **No `uv run` at runtime.** It does forward `SIGTERM`. But it syncs the environment again at
   every start: it reinstalled the project, as editable, over the `--no-editable` build. It needs uv
   in the image and a writable cache, and on a read-only root it fails with "Failed to initialize

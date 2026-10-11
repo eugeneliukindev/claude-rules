@@ -297,6 +297,9 @@ def load_settings(path: Path) -> Settings:
   on it is a lie.
 - **Parameters take `Sequence`/`Mapping`, returns are concrete** — that handles variance without
   ever writing `covariant=`.
+- **A default for a type parameter (PEP 696, 3.13+)**: `class Repository[T = Entity]` lets a bare
+  `Repository` mean `Repository[Entity]`, where strict mypy otherwise demands the argument. On a
+  3.12 floor it is a syntax error, and mypy reports it against `python_version`.
 - **`ParamSpec` + `Concatenate` for decorators**: `def logged[**P, R](func: Callable[P, R]) ->
   Callable[P, R]`. A decorator returning `Callable[..., Any]` erases type safety for every
   function it wraps.
@@ -341,16 +344,22 @@ def _(notification: SmsNotification) -> str: ...
 
 ## Further Constructs
 
-- **`Never` / `NoReturn` for functions that never return normally** — the checker then knows the
-  code after the call is unreachable. `Never` is also the type of the impossible branch, which is
-  why `assert_never(value)` works.
+- **`Never` for functions that never return normally** — the checker then knows the code after the
+  call is unreachable. `NoReturn` is the older spelling of the same type; `Never` is also the type
+  of the impossible branch, which is why `assert_never(value)` works.
 - **`LiteralString` (PEP 675) for parameters that must not receive interpolated input**: a query
   builder, a shell helper, a template loader. pyright accepts literals and concatenations of
   literals and rejects anything that passed through user input; mypy treats `LiteralString` as
   plain `str` and accepts every string, so under mypy the annotation documents intent and checks
   nothing.
 - **A recursive alias instead of `Any` for free-form JSON**: `type Json = str | int | float | bool
-  | None | list[Json] | dict[str, Json]`. Only where the shape is genuinely unknown.
+  | None | list[Json] | dict[str, Json]`. Only where the shape is genuinely unknown. A `type`
+  statement is evaluated lazily, so the recursion and a class defined further down need no quotes.
+- **`isinstance` against a `@runtime_checkable` `Protocol` checks only that the names exist** —
+  not their signatures or types: a `close()` missing the protocol's parameter passes, and the call
+  fails later. Where the check must mean it, narrow on the ABC the implementation inherits.
+- **`@deprecated` (PEP 702) on a name that is going away**: with mypy's `deprecated` code every use
+  is an error, not a runtime warning (when, and the message it carries: `python-packaging`).
 - **`Protocol` with `__call__` instead of a multi-parameter `Callable`.** `Callable[[str, int,
   datetime], None]` names nothing — the reader cannot tell which argument is which, and keyword
   arguments cannot be expressed at all. One parameter and an obvious return → `Callable`; two or
@@ -369,7 +378,8 @@ def _(notification: SmsNotification) -> str: ...
   distinguish "not provided" from "explicitly null". JSON Merge Patch (RFC 7396) made that choice
   for a whole format: `null` there means "remove the key", so a merge patch can never set a value
   to null. Make the sentinel a one-member `Enum`: mypy narrows `is UNSET` on an enum member in
-  every branch, but on a plain-class instance only in the `if` branch, leaving the `else` wide.
+  every branch, but on a plain-class instance only in the `if` branch, leaving the `else` wide. Its
+  type is public, because a caller that forwards the parameter has to name it.
 - **No `Result` / `Either` types.** Python signals failure with exceptions; a wrapper duplicates
   that, defeats `raise … from`, and forces every caller into manual unwrapping. The one acceptable
   use is a batch operation whose *normal output* is a mix of successes and failures — and then it
@@ -395,12 +405,12 @@ def register(handler: EventHandler) -> None: ...
 def update_user(user_id: UserId, nickname: str | None = None) -> None: ...
 
 # CORRECT — absence has its own value, and None keeps its one meaning
-class _Unset(Enum):
+class Unset(Enum):
     UNSET = auto()
 
-UNSET: Final = _Unset.UNSET
+UNSET: Final = Unset.UNSET
 
-def update_user(user_id: UserId, nickname: str | None | _Unset = UNSET) -> None:
+def update_user(user_id: UserId, nickname: str | None | Unset = UNSET) -> None:
     if nickname is UNSET:
         ...        # leave unchanged
     elif nickname is None:

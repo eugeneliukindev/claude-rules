@@ -2,9 +2,10 @@
 name: python-orjson
 description: >-
   orjson practice: dumps returns bytes and loads accepts bytes directly, explicit options for
-  non-string keys and sorted output, the default= escape hatch that must raise TypeError on
-  anything it does not know, and the boundary rules serialization still follows. Use when Python
-  code imports orjson or serializes a payload with it.
+  non-string keys and sorted output, the default= escape hatch that must raise TypeError on anything
+  it does not know, NaN and infinity written as null, and the boundary rules serialization still
+  follows. The serialization design is in python-boundaries. Use when Python code imports orjson or
+  serializes a payload with it.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -12,7 +13,7 @@ paths:
 
 # orjson
 
-Checked against orjson 3.12.
+Checked against orjson 3.13.
 
 ## Why It Is Here
 
@@ -38,6 +39,27 @@ payload = orjson.loads(message.body.decode())
 # CORRECT — bytes out, bytes in
 broker.publish(_ORDER_EVENTS_TOPIC, orjson.dumps(event.to_dict()))
 payload = orjson.loads(message.body)
+```
+
+## `NaN` and Infinity Become `null`
+
+- **`orjson.dumps(float("nan"))` is `b"null"`, and so is infinity** — no error, where the standard
+  `json` writes `NaN`. A bad number then ships as "no value", and the consumer cannot tell the two
+  apart. `float()` accepts `"nan"` and `"inf"`, so a parsed number is checked where it is parsed;
+  orjson will not refuse it.
+
+```python
+# WRONG — a "nan" in the sensor feed ships as null, and the consumer reads "no reading"
+def encode_reading(raw_celsius: str) -> bytes:
+    temperature_celsius = float(raw_celsius)
+    return orjson.dumps({"temperature_celsius": temperature_celsius})
+
+# CORRECT — the number is checked where it is parsed; orjson would not refuse it
+def encode_reading(raw_celsius: str) -> bytes:
+    temperature_celsius = float(raw_celsius)
+    if not math.isfinite(temperature_celsius):
+        raise InvalidReadingError(raw_celsius)
+    return orjson.dumps({"temperature_celsius": temperature_celsius})
 ```
 
 ## Options Are Explicit

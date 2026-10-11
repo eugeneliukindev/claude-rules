@@ -1,17 +1,14 @@
 ---
 name: python-streaming
 description: >-
-  Long-lived and streaming responses in ASGI services — Server-Sent Events, WebSockets and large
-  downloads with StreamingResponse, FastAPI's EventSourceResponse, sse-starlette and Starlette's
-  WebSocket: noticing the client is gone and releasing in finally, producer and connection in one
-  TaskGroup, a bounded queue per connection with a lagging client cut off, heartbeats and proxy
-  buffering, event ids and Last-Event-ID resume, a maximum lifetime per connection, no timeout
-  across a yield, per-message validation, handshake authentication and Origin checks, no database
-  session held by a stream, fan-out across worker processes behind a channel contract whatever the
-  broker (redis in python-redis), shutdown and close codes, and testing with websocket_connect and
-  a finite SSE stream. Use when Python code returns a StreamingResponse or EventSourceResponse, yields
-  from a route, imports sse_starlette, accepts a WebSocket, streams an export or a file to a
-  client, or syncs WebSocket rooms between processes.
+  Server-Sent Events, WebSockets and streamed downloads in ASGI services — StreamingResponse,
+  EventSourceResponse from FastAPI or sse-starlette, Starlette's WebSocket: the client leaving,
+  producer and reader in one TaskGroup, a bounded queue per connection, heartbeats and proxy
+  buffering, Last-Event-ID resume, a lifetime per connection, handshake authentication and Origin,
+  fan-out between worker processes behind a channel contract (redis: python-redis), close codes and
+  tests. Use when code returns a StreamingResponse or EventSourceResponse, yields from a route,
+  imports sse_starlette, accepts a WebSocket, streams a file, or syncs WebSocket rooms between
+  processes.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -31,9 +28,10 @@ not serve connections.
 and resumes by itself. Both sides — a WebSocket. A finite body too large to build in memory —
 `StreamingResponse` over a generator, or `FileResponse` for a file already on disk, which also
 answers range requests. For SSE, FastAPI's own `response_class=EventSourceResponse` on a generator
-route sends a `: ping` comment after 15 idle seconds and sets `X-Accel-Buffering: no`, with neither
-configurable; `sse_starlette.EventSourceResponse` takes `ping=` seconds and `send_timeout=`, and ends
-its streams when uvicorn begins shutting down. A plain `StreamingResponse` does none of this.
+route sends a `: ping` comment after 15 idle seconds and sets `X-Accel-Buffering: no` and
+`Cache-Control: no-cache`, none of it configurable; `sse_starlette.EventSourceResponse` takes
+`ping=` seconds and `send_timeout=`, and ends its streams when uvicorn begins shutting down. A
+plain `StreamingResponse` does none of this.
 
 ## The Client Leaves Without Saying So
 
@@ -44,7 +42,7 @@ its streams when uvicorn begins shutting down. A plain `StreamingResponse` does 
 
 ```python
 # WRONG — on disconnect the generator is cancelled inside get(), and the queue stays registered
-async def follow_order(feed: OrderFeed, order_id: OrderId) -> AsyncGenerator[OrderEvent]:
+async def follow_order(order_id: OrderId, *, feed: OrderFeed) -> AsyncGenerator[OrderEvent]:
     events = feed.add_subscriber(order_id)
     while True:
         try:
@@ -55,7 +53,7 @@ async def follow_order(feed: OrderFeed, order_id: OrderId) -> AsyncGenerator[Ord
     feed.remove_subscriber(order_id, events)
 
 # CORRECT — the context manager removes the queue however the stream ends
-async def follow_order(feed: OrderFeed, order_id: OrderId) -> AsyncGenerator[OrderEvent]:
+async def follow_order(order_id: OrderId, *, feed: OrderFeed) -> AsyncGenerator[OrderEvent]:
     async with feed.subscribe(order_id) as events:
         while True:
             try:
@@ -102,6 +100,26 @@ async def follow_order_live(websocket: WebSocket, order_id: OrderId, feed: Order
 The `WRONG` does cancel on a clean close; any other exception out of the reader — a bug, a
 malformed frame — skips the `cancel`, and the pusher is left behind.
 
+- **`WebSocketDisconnect` ends the reader; it is never caught to keep reading.** After the
+  disconnect message every further `receive` raises `RuntimeError: Cannot call "receive" once a
+  disconnect message has been received` — the handler that logged the close and looped turns a
+  normal goodbye into an error.
+
+```python
+# WRONG — the close is logged and the loop goes on: the next receive raises RuntimeError
+async def _read_client_messages(websocket: WebSocket) -> None:
+    while True:
+        try:
+            await websocket.receive_text()
+        except WebSocketDisconnect:
+            logger.info("client left")
+
+# CORRECT — the disconnect leaves the loop, and the TaskGroup above ends the connection
+async def _read_client_messages(websocket: WebSocket) -> None:
+    while True:
+        await websocket.receive_text()
+```
+
 ## A Slow Client Is Cut Off, Not Buffered
 
 - **Every connection gets a bounded queue, and the publisher never waits on one.** `put_nowait`;
@@ -134,6 +152,11 @@ def publish(self, event: OrderEvent) -> None:
 
 ## Heartbeats, Proxies, Resume
 
+- **A browser opens about six HTTP/1.1 connections to one origin, and every open `EventSource`
+  holds one.** The seventh tab's stream, and its ordinary requests, wait until another closes.
+  HTTP/2 multiplexes them over one connection — serve SSE behind a proxy that speaks it to the
+  browser — or share one stream between tabs.
+
 - **An idle stream sends something below the shortest idle timeout on the path** — proxies and
   load balancers commonly cut a silent connection after about a minute, and a dead client is
   discovered only by a send that fails. SSE: a comment line (`: ping`), which `EventSource`
@@ -164,7 +187,7 @@ def publish(self, event: OrderEvent) -> None:
 ```python
 # WRONG — the scope spans the yield: at the deadline it cancels the response, not this loop
 async def follow_order(
-    feed: OrderFeed, order_id: OrderId, *, lifetime_seconds: float
+    order_id: OrderId, *, feed: OrderFeed, lifetime_seconds: float
 ) -> AsyncGenerator[OrderEvent]:
     async with feed.subscribe(order_id) as events:
         try:
@@ -176,7 +199,7 @@ async def follow_order(
 
 # CORRECT — one deadline, and each wait for an event runs under it; the yield is outside
 async def follow_order(
-    feed: OrderFeed, order_id: OrderId, *, lifetime_seconds: float
+    order_id: OrderId, *, feed: OrderFeed, lifetime_seconds: float
 ) -> AsyncGenerator[OrderEvent]:
     deadline = asyncio.get_running_loop().time() + lifetime_seconds
     async with feed.subscribe(order_id) as events:
@@ -248,17 +271,17 @@ live_router = APIRouter(dependencies=[Depends(require_allowed_origin), Depends(r
 
 - **Every incoming message is validated at the edge, one by one**, into a strict discriminated
   union built once as a `TypeAdapter` (`python-pydantic`); a message that fails closes the
-  socket with 1003, as the handler above does. `receive_json()` returns `Any`, and a dict passed inward is the unvalidated payload
-  `python-boundaries` forbids.
+  socket with 1003, as the handler above does. `receive_json()` returns `Any`, and a dict passed
+  inward is the unvalidated payload `python-boundaries` forbids.
 
 ```python
 # WRONG — whatever JSON arrives is handed to the service as a dict
-async def _read_client_messages(websocket: WebSocket, orders: OrderService) -> None:
+async def _read_client_messages(websocket: WebSocket, *, orders: OrderService) -> None:
     while True:
         await orders.apply_client_message(await websocket.receive_json())
 
 # CORRECT — each frame becomes a typed message or a validation error, here
-async def _read_client_messages(websocket: WebSocket, orders: OrderService) -> None:
+async def _read_client_messages(websocket: WebSocket, *, orders: OrderService) -> None:
     while True:
         message = _CLIENT_MESSAGE.validate_json(await websocket.receive_text())
         await orders.apply_client_message(message.to_domain())
@@ -293,7 +316,7 @@ async def _read_client_messages(websocket: WebSocket, orders: OrderService) -> N
   instead of carrying on**.
 
 ```python
-class OrderEventChannelLostError(Exception):
+class OrderEventChannelLostError(ShopError):
     """The subscription ended, and an event published meanwhile may never arrive."""
 
 
@@ -305,8 +328,7 @@ class OrderEventChannel(ABC):
 
     @abstractmethod
     def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[OrderEvent]]:
-        """Enter once the subscription is live; iterating raises OrderEventChannelLostError
-        as soon as an event may have been missed."""
+        """Enter once live; iterating raises OrderEventChannelLostError if an event is lost."""
 ```
 
 - **Every time a subscription goes live, the relay ends the worker's streams.** A stream opened
@@ -403,7 +425,7 @@ def test_follow_order_live_refuses_foreign_origin(app: FastAPI) -> None:
 ```python
 async def test_follow_order_releases_subscription_when_closed() -> None:
     feed = OrderFeed()
-    events = follow_order(feed, _ORDER_ID, lifetime_seconds=_LIFETIME_SECONDS)
+    events = follow_order(_ORDER_ID, feed=feed, lifetime_seconds=_LIFETIME_SECONDS)
     first_event = asyncio.create_task(anext(events))
     await _wait_for_subscriber(feed, _ORDER_ID)
     feed.publish(_SHIPPED)

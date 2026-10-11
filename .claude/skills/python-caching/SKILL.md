@@ -140,6 +140,23 @@ def _recent_orders_key(user_id: UserId) -> str:
 - **A key built from free text — a search query — hashes it** with `hashlib.sha256`, so its length
   is bounded and its content does not leak into a key listing.
 
+- **The key function keeps every key inside the store's limit.** Measured on memcached 1.6: a
+  key over 250 bytes is refused by the client, a value over 1 MiB by the server — and the adapter,
+  treating a failure as a miss, then misses on that entry forever without anyone seeing an error.
+  A free-form part — a search phrase, a filter — is hashed into the key; a payload that can grow
+  past the value limit is not cached whole.
+
+```python
+# WRONG — a long search phrase makes a key memcached refuses, and the search is never cached
+def search_key(user_id: UserId, phrase: str) -> str:
+    return f"search:v{_SEARCH_PAYLOAD_VERSION}:{user_id}:{phrase}"
+
+# CORRECT — the free-form part is hashed: every key has the same short length
+def search_key(user_id: UserId, phrase: str) -> str:
+    digest = hashlib.sha256(phrase.encode()).hexdigest()
+    return f"search:v{_SEARCH_PAYLOAD_VERSION}:{user_id}:{digest}"
+```
+
 ## Every Key Expires
 
 - **The TTL is a required parameter of the contract, so no call can forget it.** It is the

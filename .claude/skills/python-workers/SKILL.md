@@ -32,13 +32,13 @@ calls the use case. The library's wrapper passes the body in and nothing more, w
 rule below testable without a broker and the same on every broker.
 
 ```python
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await reserve_stock(warehouse, event)
+        await reserve_stock(event, warehouse=warehouse)
 
 
-async def reserve_stock(warehouse: Warehouse, event: OrderPlaced) -> None:
+async def reserve_stock(event: OrderPlaced, *, warehouse: Warehouse) -> None:
     await warehouse.reserve(event.order_id, idempotency_key=str(event.event_id))
 ```
 
@@ -54,9 +54,9 @@ Every handler will one day run twice for the same event: a worker killed before 
 that republishes after a timeout, a dead-letter queue replayed by hand. That consumers are
 idempotent, with its example, is in `python-boundaries`; what a worker decides is how.
 
-- **The cheapest mechanism that holds.** An absolute write — "set the status to shipped", an
-  upsert on a natural key — is idempotent already. A relative write — credit, decrement, send — needs
-  the processed event's id recorded in the same transaction as the write. A call out of the process
+- **The cheapest mechanism that holds.** An absolute write — "set the status to shipped", an upsert
+  on a natural key — is idempotent already. A relative write — credit, decrement, send — needs the
+  processed event's id recorded in the same transaction as the write. A call out of the process
   carries the id as the downstream idempotency key.
 - **The key is the event's own id, minted when the event was recorded** — in the outbox row — and
   carried in the payload. Never the broker's message id, delivery tag or offset: a relay that
@@ -86,15 +86,17 @@ acknowledge when the handler returns (the table at the end).
 
 ```python
 # WRONG — returns before the reservation is made: the ack follows, and a crash loses the order
-async def on_order_placed(body: bytes, *, warehouse: Warehouse, tasks: asyncio.TaskGroup) -> None:
+async def on_order_placed(
+    body: bytes, /, *, warehouse: Warehouse, tasks: asyncio.TaskGroup
+) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
-    tasks.create_task(reserve_stock(warehouse, event))
+    tasks.create_task(reserve_stock(event, warehouse=warehouse))
 
 # CORRECT — returns once the reservation is made, so the ack that follows is true
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await reserve_stock(warehouse, event)
+        await reserve_stock(event, warehouse=warehouse)
 ```
 
 ## A Poison Message Ends in a Dead-Letter Queue
@@ -114,19 +116,19 @@ number of attempts, then lands in a dead-letter queue whose depth is a metric wi
 
 ```python
 # WRONG — the error is logged and swallowed: the handler returns, and the ack drops the order
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
     try:
         async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-            await reserve_stock(warehouse, event)
+            await reserve_stock(event, warehouse=warehouse)
     except WarehouseError:
         logger.exception("stock reservation failed", extra={"order_id": str(event.order_id)})
 
 # CORRECT — the error escapes: a failed delivery, counted toward the dead-letter queue
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await reserve_stock(warehouse, event)
+        await reserve_stock(event, warehouse=warehouse)
 ```
 
 - **Where the library has no dead-letter queue, the handler records the failure** — a
@@ -142,8 +144,9 @@ failure is retried by exactly one of them**. Both together multiply: three attem
 under a delivery limit of five is fifteen calls to a dependency that is already struggling.
 
 - **A redelivery comes at once, with no backoff** — a requeued RabbitMQ message is back in the
-  handler within milliseconds. A retry with backoff that fits inside the handler's deadline lives in the adapter
-  (`python-tenacity`), and the handler lets the final error escape to the dead-letter queue.
+  handler within milliseconds. A retry with backoff that fits inside the handler's deadline lives in
+  the adapter (`python-tenacity`), and the handler lets the final error escape to the dead-letter
+  queue.
 - **A wait longer than the handler's deadline is the broker's**: Celery's
   `self.retry(countdown=...)`, taskiq's `SmartRetryMiddleware`, a delayed retry queue. The adapter
   then does not retry at all.
@@ -197,6 +200,11 @@ Three numbers, each inside the next, all named constants:
   once, which idempotency survives and the dependency pays for.
 - **The deadline fits inside the shutdown grace** (below), or every deploy abandons the work in
   flight.
+- **Deliveries held at once are bounded**, and the bound is set, not inherited. Prefetch is how
+  many messages a worker holds before it acks any; each holds its ack deadline open, so `prefetch ×
+  handler deadline` must fit inside it, and an unbounded prefetch pulls the whole queue into one
+  worker while the others idle. The parameter per library is the last column of the table at the
+  end; FastStream's default is no limit at all (`python-faststream`).
 
 | broker | where the ack deadline lives | default |
 |---|---|---|
@@ -207,14 +215,14 @@ Three numbers, each inside the next, all named constants:
 
 ```python
 # WRONG — a warehouse that stops answering holds the delivery until the broker takes it back
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
-    await reserve_stock(warehouse, event)
+    await reserve_stock(event, warehouse=warehouse)
 # CORRECT — the handler gives up at its own deadline, well inside the broker's
-async def on_order_placed(body: bytes, *, warehouse: Warehouse) -> None:
+async def on_order_placed(body: bytes, /, *, warehouse: Warehouse) -> None:
     event = OrderPlacedV1.model_validate_json(body).to_domain()
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await reserve_stock(warehouse, event)
+        await reserve_stock(event, warehouse=warehouse)
 ```
 
 ## Graceful Shutdown
@@ -304,10 +312,10 @@ async def test_on_order_placed_redelivered_message_reserves_once() -> None:
 
 ## The Same Rules Elsewhere
 
-| | ack after the work | bounded attempts | dead letters | handler deadline |
-|---|---|---|---|---|
-| FastStream on RabbitMQ (`python-faststream`) | `AckPolicy.REJECT_ON_ERROR` | queue's `x-delivery-limit` | queue's `x-dead-letter-exchange` | `asyncio.timeout` |
-| Celery | `acks_late=True` and `task_reject_on_worker_lost=True`; the default acks before running | `max_retries` (3) | none built in: a failed task is acked | `soft_time_limit`, `time_limit` |
-| taskiq | `--ack-type` `when_saved` (default) or `when_executed` | `SmartRetryMiddleware(default_retry_count=…)` | none built in | `timeout` label |
-| aiokafka | `enable_auto_commit=False`, `commit()` after; the default commits every 5 s whatever happened | your own counter | a dead-letter topic | `asyncio.timeout` |
-| arq | — | `max_tries` (5) | none built in | `job_timeout` (300 s) |
+| | ack after the work | bounded attempts | dead letters | handler deadline | in flight |
+|---|---|---|---|---|---|
+| FastStream on RabbitMQ (`python-faststream`) | `AckPolicy.REJECT_ON_ERROR` | queue's `x-delivery-limit` | queue's `x-dead-letter-exchange` | `asyncio.timeout` | `Channel(prefetch_count=…)`; none by default |
+| Celery | `acks_late=True` and `task_reject_on_worker_lost=True`; the default acks before running | `max_retries` (3) | none built in: a failed task is acked | `soft_time_limit`, `time_limit` | `worker_prefetch_multiplier` × concurrency (4) |
+| taskiq | `--ack-type` `when_saved` (default) or `when_executed` | `SmartRetryMiddleware(default_retry_count=…)` | none built in | `timeout` label | `--max-async-tasks` (100) |
+| aiokafka | `enable_auto_commit=False`, `commit()` after; the default commits every 5 s whatever happened | your own counter | a dead-letter topic | `asyncio.timeout` | `max_poll_records`; none by default |
+| arq | — | `max_tries` (5) | none built in | `job_timeout` (300 s) | `max_jobs` (10) |
