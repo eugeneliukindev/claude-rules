@@ -1,15 +1,10 @@
 ---
 name: python-container
 description: >-
-  Packaging a uv-managed Python service into a container image: a multi-stage Dockerfile with uv in
-  the builder and only the virtual environment in the runtime, uv sync --locked
-  --no-install-project in its own layer with a cache mount, UV_COMPILE_BYTECODE, UV_LINK_MODE and
-  UV_PYTHON_DOWNLOADS=never, base images pinned by tag and digest, a numeric non-root user, an
-  exec-form CMD so SIGTERM reaches Python, no uv run at runtime, the worker count against the CPU
-  limit, migrations as a deploy step, build secrets through secret mounts, an allowlist
-  .dockerignore, liveness versus readiness, a read-only root filesystem and image scanning. Use
-  when writing or reviewing a Dockerfile, Containerfile, .dockerignore, compose file or health
-  probe for a Python service, or deciding how a Python process starts and stops in a container.
+  Packages a uv-managed Python service into a container image and runs it: a multi-stage
+  Dockerfile, layers and caches, pinned base images, a non-root user, signals, workers, probes,
+  secrets. Use when writing or reviewing a Dockerfile, Containerfile, .dockerignore, compose file
+  or health probe for a Python service.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -24,9 +19,10 @@ paths:
 
 Checked against uv 0.13.0 and Docker 29 with BuildKit. The project inside the image is
 `python-project`'s; how the process shuts down is `python-async`, and how a consumer drains within
-the grace period is `python-workers`; settings are `python-wiring`; secrets in code are
-`python-security`. This file covers what the image and its start command add. A one-off job runs
-from the service's own image with a different command, so nothing here relaxes for a script.
+the grace period is `python-workers`; settings are `python-wiring`; the schema change a deploy runs
+is `python-migrations`, with alembic's command in `python-alembic`; a gRPC service's health probe is
+`python-grpc`; uvicorn's own flags are `python-fastapi`. A one-off job runs from the service's own
+image with a different command, so nothing here relaxes for a script.
 
 ## The Image
 
@@ -60,24 +56,20 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER 10001
 WORKDIR /app
 EXPOSE 8000
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-## Two Stages, One Interpreter
+### The builder holds uv and the source; the runtime holds the same interpreter and the environment
 
-- **The builder holds uv, the cache and the source; the runtime holds the interpreter and the
-  virtual environment.** `--no-editable` installs the project into `site-packages` like any other
-  dependency, so the runtime copies `/app/.venv` and nothing else. No source, no uv and no build
-  tool is in the shipped image.
-- **Both stages start from one image, named once.** The environment's `bin/python` is a symlink to
-  the builder's interpreter, `/usr/local/bin/python3`, so the runtime must have the same interpreter
-  at the same path. One `ARG` used by both `FROM` lines makes that structural, not something to
-  remember.
-- **The image's Python is the one CI tests, and it meets `requires-python`.** By default uv
-  downloads a managed interpreter when the image's interpreter is too old. It lands under
-  `/root/.local/share/uv/python` in the builder, the environment links to it, and the runtime never
-  receives it. The build then passes and every start fails.
+**Why:** `--no-editable` installs the project into `site-packages`, so the runtime copies
+`/app/.venv` and nothing else — no source, no uv, no build tool ships. The environment's
+`bin/python` is a symlink to the builder's interpreter, so both stages start from one image named
+once in an `ARG`. By default uv downloads a managed interpreter when the image's is too old; it
+lands in the builder, the environment links to it, the runtime never receives it — the build passes
+and every start fails. `UV_PYTHON_DOWNLOADS=never` turns that into a failed build; a deliberate
+managed interpreter fixes `UV_PYTHON_INSTALL_DIR` and is copied too.
 
+**Example:**
 ```dockerfile
 # WRONG — downloads allowed: with a 3.13 floor on a 3.12 image the build passes, and the container
 # fails with "exec /app/.venv/bin/uvicorn: no such file or directory"
@@ -90,16 +82,17 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 ```
 
-A managed interpreter can be a deliberate choice. In that case fix its location with
-`UV_PYTHON_INSTALL_DIR` and copy that directory into the runtime as well.
+### The lock is synced in a layer of its own, before the source, with `--locked` and `--no-dev`
 
-## Dependencies Before Source
+**Why:** installed after `COPY .`, a one-line edit reinstalls every dependency; with only the lock
+and `pyproject.toml` bind-mounted, the same edit reinstalls the project alone. `--locked` fails when
+the lock no longer matches `pyproject.toml`, where `--frozen` installs the stale lock silently — in
+a workspace the first sync alone uses `--frozen --no-install-workspace`. `--no-dev` keeps the `dev`
+group out, so anything the image runs, the migration tool included, is a runtime dependency. The uv
+cache is a mount, not a layer; it sits on another filesystem, so `UV_LINK_MODE=copy`.
+`UV_COMPILE_BYTECODE=1` compiles once at build time instead of on every start of every replica.
 
-- **The lock is synced in a layer of its own, before the source is copied.** Docker reuses a layer
-  until one of its inputs changes. If the dependencies are installed after `COPY .`, a one-line edit
-  invalidates them. If they are installed with only `uv.lock` and `pyproject.toml` bind-mounted,
-  the same edit reinstalls one package, the project.
-
+**Example:**
 ```dockerfile
 # WRONG — the source is an input of the only sync: any edit reinstalls every dependency
 COPY . /app
@@ -116,26 +109,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 ```
 
-- **`--locked`, never `--frozen`.** `--locked` fails when `uv.lock` no longer matches
-  `pyproject.toml`. `--frozen` installs the stale lock without saying so. The image installs the
-  lock CI tested (`python-project`). In a workspace, the first sync is the exception: it has only
-  the lock and uses `--frozen --no-install-workspace`, and the second sync still checks with
-  `--locked`.
-- **`--no-dev` keeps the `dev` group out.** Anything the image runs is a runtime dependency. That
-  includes the migration tool when migrations are run from this image (below).
-- **The cache is a mount, not a layer.** It survives between builds and never ships. It sits on a
-  different filesystem from `/app`, so uv cannot link from it; `UV_LINK_MODE=copy` makes uv copy
-  instead of warning on every install.
-- **`UV_COMPILE_BYTECODE=1` compiles once, at build time.** Without it, every start of every
-  replica compiles each module it imports. On a read-only filesystem the result cannot be stored,
-  so the work is repeated on every start.
+### A base image is pinned by tag and digest, and a bot keeps the digest current
 
-## Pinned Base Images
+**Why:** a tag can move to another image, a digest cannot; the tag stays for the reader and the
+update bot. The uv image is a build input like the interpreter. A digest nobody updates keeps the
+vulnerabilities it was built with, so a bot rewrites it and the image is rebuilt on its pull
+requests even when the code has not changed.
 
-- **A base image is named by tag and digest.** A tag can be moved to another image; the digest
-  cannot. The tag stays for the reader and for the update bot. Pin the uv image the same way: it is
-  a build input like the interpreter.
-
+**Example:**
 ```dockerfile
 # WRONG — two moving tags: the same commit builds a different image next week
 FROM python:3.12-slim
@@ -146,57 +127,32 @@ FROM python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269
 COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /bin/
 ```
 
-- **A pinned digest is updated by a bot, or it is a pin on old vulnerabilities.** A moving tag at
-  least picked up the base image's security fixes. A digest nobody updates keeps the vulnerabilities
-  it was built with. Use an update bot that rewrites Docker digests, and rebuild on its pull
-  requests even when the code has not changed.
-
-## Running Unprivileged and Read-Only
-
-- **`USER` is numeric, and the application cannot write its own files.** Kubernetes'
-  `runAsNonRoot` can only check a number. For a name, the kubelet refuses to start the container
-  with "image has non-numeric user (app), cannot verify user is non-root". `COPY` without `--chown`
-  leaves the environment owned by root and readable by everyone, so the process runs its code but
-  cannot rewrite it.
-- **The image runs with a read-only root filesystem**, `docker run --read-only --tmpfs /tmp` or
-  `readOnlyRootFilesystem: true` with an `emptyDir` on `/tmp`. Scratch files go through `tempfile`,
-  which writes to `/tmp`. Anything that must outlive the container goes to a mounted volume or an
-  external store. A write anywhere else fails in production on the first request that makes it, so
-  run the image read-only in CI too.
-- **`PYTHONUNBUFFERED=1`**: when stdout is not a terminal, it is block-buffered, and the last lines
-  `print` wrote before a crash or a kill never arrive. Since 3.9, stderr is line-buffered, so
-  `logging`'s default handler survives either way. The setting is for everything else that writes
-  to stdout.
-- **`PYTHONDONTWRITEBYTECODE=1`, in the runtime stage only.** The environment arrives compiled. The
-  official image strips the standard library's `.pyc` files, and the non-root user cannot write to
-  `/usr/local`. Every remaining write attempt would fail or land in a layer that dies with the
-  container. Leave it out of the builder, where the compiling happens.
-
 ## Starting and Stopping
 
-- **`CMD` and `ENTRYPOINT` use the exec form.** In shell form `/bin/sh -c` is PID 1, and `sh`
-  does not forward `SIGTERM`. `docker stop` then waits ten seconds and sends `SIGKILL`. The
-  lifespan never closes, and the graceful shutdown `python-async` designs never runs. The same
-  happens with a single command, a `migrate && serve` chain, and a wrapper script that does not
-  `exec`.
+### `CMD` uses the exec form, so the server is PID 1 and receives `SIGTERM`
 
+**Why:** in shell form `/bin/sh -c` is PID 1 and does not forward `SIGTERM`; `docker stop` waits ten
+seconds and sends `SIGKILL`, the lifespan never closes, and the shutdown `python-async` designs
+never runs — with a single command, a `migrate && serve` chain, or a wrapper script that does not
+`exec`. A wrapper is allowed when its last line is `exec "$@"`.
+
+**Example:**
 ```dockerfile
 # WRONG — /bin/sh is PID 1: the stop takes ten seconds and ends in SIGKILL, exit code 137
-CMD uvicorn --factory shop.api:create_app --host 0.0.0.0 --port 8000
+CMD uvicorn --factory tracker.api:create_app --host 0.0.0.0 --port 8000
 
-# CORRECT — uvicorn is PID 1, receives SIGTERM, closes the lifespan and exits 0
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+# CORRECT — the server is PID 1, receives SIGTERM, closes the lifespan and exits 0
+CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-A wrapper script is allowed when its last line is `exec "$@"` or `exec uvicorn …`. `exec`
-replaces the shell with the server, which then becomes PID 1.
+### A process you write handles `SIGTERM` itself, because PID 1 ignores what it does not handle
 
-- **PID 1 ignores every signal it has no handler for.** uvicorn and gunicorn install a `SIGTERM`
-  handler. A worker you write must install its own, or the stop runs out the grace period and ends
-  in `SIGKILL`. Handling only Ctrl-C is the version that passes on a laptop. `--init` and `tini`
-  forward the signal, but then `SIGTERM`'s default action ends Python at once, without running any
-  `finally`, so they do not replace a handler. The asyncio form is in `python-async`.
+**Why:** uvicorn and gunicorn install a `SIGTERM` handler; a worker you write must install its own,
+or the stop runs out the grace period into `SIGKILL`. Handling only Ctrl-C is the version that
+passes on a laptop. `--init` and `tini` forward the signal, but then `SIGTERM`'s default action ends
+Python without running any `finally`, so they replace no handler.
 
+**Example:**
 ```python
 # WRONG — Ctrl-C is handled and SIGTERM is not: as PID 1 the stop is ignored until SIGKILL
 def main() -> None:
@@ -204,6 +160,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda _signal_number, _frame: stop.set())
     with build_consumer() as consumer:
         consumer.run_until(stop)
+
 
 # CORRECT — both signals set the event; the consumer stops and the with block closes it
 def main() -> None:
@@ -214,169 +171,68 @@ def main() -> None:
         consumer.run_until(stop)
 ```
 
-- **The HTTP server's drain is bounded below the orchestrator's grace period.** On `SIGTERM`
-  uvicorn stops accepting and waits for open requests — with no bound unless
-  `--timeout-graceful-shutdown` is given, so one stream or slow client runs the 30 seconds
-  Kubernetes allows by default into a `SIGKILL`, the lifespan's shutdown never running. Set it a
-  few seconds under the grace period.
+### The server's drain is bounded a few seconds below the orchestrator's grace period
 
+**Why:** on `SIGTERM` an HTTP server stops accepting and waits for open requests — without a bound,
+one stream or slow client runs Kubernetes' default thirty seconds into `SIGKILL`, and the lifespan's
+shutdown never runs. uvicorn's flag for it is `--timeout-graceful-shutdown`.
+
+**Example:**
 ```dockerfile
 # WRONG — the drain waits for every open request; a stream outlives the grace period
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
 
 # CORRECT — open requests get 25 seconds, inside the default 30, then the lifespan closes
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
+CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
      "--timeout-graceful-shutdown", "25"]
 ```
 
-- **Behind a proxy, uvicorn trusts `X-Forwarded-*` only from the addresses it is told.** The
-  default `--forwarded-allow-ips` is `127.0.0.1,::1`, so behind an ingress every request appears to
-  come from the ingress — rate limits and audit logs see one client. Name the proxy's network;
-  `*` lets any caller forge its address.
+### The image starts its server directly, never through `uv run`
 
-```dockerfile
-# WRONG — the ingress is not 127.0.0.1: its X-Forwarded-For is ignored, every client is the ingress
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+**Why:** `uv run` syncs the environment again at every start — it reinstalled the project, as
+editable, over the `--no-editable` build — needs uv in the image and a writable cache, and on a
+read-only root fails with "Failed to initialize cache". The build already resolved everything, and
+`PATH` puts the environment's scripts first.
 
-# CORRECT — the forwarded address is believed from the ingress network, and from nowhere else
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
-     "--forwarded-allow-ips", "10.0.0.0/8"]
-```
-
-- **No `uv run` at runtime.** It does forward `SIGTERM`. But it syncs the environment again at
-  every start: it reinstalled the project, as editable, over the `--no-editable` build. It needs uv
-  in the image and a writable cache, and on a read-only root it fails with "Failed to initialize
-  cache". The build already resolved everything, and `PATH` puts the environment's scripts first.
-  uv's own multi-stage example also starts without uv.
-
+**Example:**
 ```dockerfile
 # WRONG — resolves and installs at start, ships uv, and fails on a read-only root
-CMD ["uv", "run", "uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", \
+     "--port", "8000"]
 
 # CORRECT — the build resolved; the environment's bin directory is first on PATH
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-- **One process per container.** No supervisor, no `&`, and no cron beside the server. Each one
-  hides the others' crashes from the orchestrator. A second process is a second container from the
-  same image, with another command.
-- **The worker count is a number, chosen next to the CPU limit.** `os.cpu_count()`,
-  `os.process_cpu_count()` and `nproc` report the node's CPUs, not the container's limit: a
-  container limited to one CPU on a sixteen-core node reads 16. gunicorn's documented starting point
-  of (2 × cores) + 1 then means 33 processes sharing one CPU. Under an orchestrator, one worker per
-  container and scaling by replicas is the default. Otherwise set `--workers`, or `WEB_CONCURRENCY`,
-  which both uvicorn and gunicorn read. From 3.13, `PYTHON_CPU_COUNT` also overrides what the
-  library defaults see, such as executor sizes.
+## Hardening
 
-## Migrations Are a Deploy Step
+**Before choosing the image's user, its filesystem or its `PYTHON*` variables, read
+[hardening.md](hardening.md)** — a numeric `USER`, a read-only root, `PYTHONUNBUFFERED`,
+`PYTHONDONTWRITEBYTECODE` in the runtime only.
 
-```dockerfile
-# WRONG — every replica migrates at start, concurrently, and a failing migration is a crash loop
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn --factory shop.api:create_app --host 0.0.0.0 --port 8000"]
+## Processes and Workers
 
-# CORRECT — the image only serves; the deploy runs the migration once, from the same image
-CMD ["uvicorn", "--factory", "shop.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
-```
+**Before adding a second process to a container or setting the worker count, read
+[processes.md](processes.md)** — one process per container, the count chosen beside the CPU limit.
 
-The deploy runs the migration once, before the rollout: `docker run --rm IMAGE alembic upgrade
-head`, or a Kubernetes `Job` from the same image and tag. An init container is not that step,
-because it runs once per pod. The old replicas keep serving while the migration runs, which is why
-the migration must be expand-first (`python-migrations`; the alembic mechanics are in
-`python-alembic`).
+## Migrations
+
+**Before deciding where the schema migration runs, read [migrations.md](migrations.md)** — a deploy
+step from the same image, never at start.
 
 ## Configuration and Secrets
 
-- **One image for every environment, configured at start.** Settings come from the environment
-  when the process starts, and are validated before it serves (`python-wiring`). An `ENV
-  DATABASE_URL` or a copied `.env` bakes one environment into the image, and the image then holds a
-  credential in a layer. `ENV` is for facts about the image, such as `PATH` and the `PYTHON*` flags
-  above.
-- **A secret the build needs arrives as a secret mount, never as a build argument.** A build
-  argument used by a `RUN` is recorded in the image history, and `docker history` prints it. A
-  secret mount exists for one `RUN` and is written to no layer and no history. The credential for a
-  private index named `private` is `UV_INDEX_PRIVATE_PASSWORD`. Every sync that resolves against
-  that index needs it, the dependency layer included.
+**Before putting configuration, a credential or a `.dockerignore` into the build, read
+[secrets.md](secrets.md)** — one image for every environment, a secret mount instead of a build
+argument, an allowlist context.
 
-```dockerfile
-# WRONG — the history records "RUN |1 UV_INDEX_PRIVATE_PASSWORD=<the password> ..."
-ARG UV_INDEX_PRIVATE_PASSWORD
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+## Probes
 
-# CORRECT — built with: docker build --secret id=index_password,env=INDEX_PASSWORD .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=secret,id=index_password,env=UV_INDEX_PRIVATE_PASSWORD,required=true \
-    uv sync --locked --no-dev --no-editable
-```
-
-- **`.dockerignore` lists what enters, not what stays out.** The build context is everything the
-  daemon receives. A denylist is right only until someone adds the next `.env`, key file or data
-  dump. An allowlist fails closed. It also keeps out the local `.venv`, which is built for the host
-  platform.
-
-```text
-# WRONG — what to leave out: the .env nobody listed enters the context and the builder's layers
-.venv
-.git
-__pycache__
-
-# CORRECT — nothing enters but what the build reads; README.md because pyproject.toml names it
-*
-!pyproject.toml
-!uv.lock
-!README.md
-!src/
-**/__pycache__
-```
-
-## Liveness and Readiness
-
-When a liveness probe fails, the container is restarted. When a readiness probe fails, the
-container is taken out of the service's endpoints. So the two endpoints ask different questions.
-**Liveness asks only whether the process still answers.** **Readiness asks whether it can serve
-right now**: its database, its cache, its warm-up. If liveness checked a dependency, an outage of
-that dependency would restart every replica, over and over, and none of the restarts would fix the
-dependency.
-
-```python
-# WRONG — liveness asks the database: while it is down, every replica is restarted, over and over
-@health_router.get("/livez", status_code=status.HTTP_204_NO_CONTENT)
-async def report_liveness(database: DatabaseDep) -> None:
-    await database.ping()
-
-# CORRECT — liveness asks only whether the process answers; the database decides readiness
-@health_router.get("/livez", status_code=status.HTTP_204_NO_CONTENT)
-async def report_liveness() -> None:
-    """Answer while the event loop serves requests."""
-
-@health_router.get("/readyz", status_code=status.HTTP_204_NO_CONTENT)
-async def report_readiness(database: DatabaseDep) -> None:
-    try:
-        await database.ping()
-    except DatabaseUnavailableError as error:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE) from error
-```
-
-- **The readiness check runs under a deadline shorter than the probe's timeout.** Otherwise the
-  probe times out first and reports nothing useful (`python-boundaries`). A slow start is a startup
-  probe's job, not a long initial delay on liveness.
-- **A gRPC service answers the kubelet's `grpc:` probe through the gRPC health service**, not an
-  HTTP route (`python-grpc`).
-- **`HEALTHCHECK` is for Docker and compose; Kubernetes runs the probes in the pod spec.** Where it
-  is used, it calls liveness with the interpreter the image already has, under a timeout. Never
-  install `curl` just for the health check:
-
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/livez', timeout=2)"]
-```
+**Before writing a liveness or readiness endpoint, a `HEALTHCHECK` or a probe, read
+[probes.md](probes.md)** — liveness asks only whether the process answers, readiness asks about
+dependencies under a deadline.
 
 ## Scanning
 
-- **The built image is scanned in CI**, with Trivy, Grype or Docker Scout. The build fails on a
-  high or critical finding that has a fix. Scanning the image covers the base image's operating
-  system packages, which `pip-audit` (`python-security`) does not see.
-- **The image is rebuilt on a schedule, not only on a commit.** A base-image fix reaches only
-  images built after it.
-- **The uv image's provenance can be checked** with `gh attestation verify --owner astral-sh
-  oci://ghcr.io/astral-sh/uv:0.13.0` before its digest is pinned.
+**Before setting up the image's CI, read [scanning.md](scanning.md)** — an image scan that fails the
+build, scheduled rebuilds, the uv image's provenance.
