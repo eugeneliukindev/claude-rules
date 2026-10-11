@@ -1,12 +1,9 @@
 ---
 name: python-niquests
 description: >-
-  niquests HTTP client practice, which transfers to httpx almost unchanged: one session owned by the
-  composition root instead of module-level calls, a timeout on every request, raise_for_status
-  rather than assuming success, transport and status errors translated at the adapter, deliberate
-  redirect handling, TLS verification left on, and where retries belong. The timeout and retry
-  design is in python-boundaries. Use when Python code imports niquests or httpx, builds a session,
-  or makes an outbound HTTP request.
+  niquests mechanics for outbound HTTP, which carry over to httpx: one session from the root, a
+  timeout on every request, status and transport errors translated, redirects, TLS. Use when code
+  imports niquests or httpx, builds a session, or makes an outbound HTTP request.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,129 +11,125 @@ paths:
 
 # niquests
 
-Checked against niquests 3.21. The API is `requests`-shaped, so the habits below transfer to
-`httpx` almost unchanged; what does not transfer is called out.
+Checked against niquests 3.21. The API is `requests`-shaped, and the habits below carry over to
+`httpx` almost unchanged — `allow_redirects` here is `follow_redirects` there. One HTTP stack per
+codebase: two mean two places to configure timeouts. Timeouts and retries in general are
+`python-boundaries`; the retry policy is `python-tenacity`; why a user's URL is checked on every
+redirect is `python-security`.
 
-## One Session, Owned by the Composition Root
+### One session is built by the root and closed there, never a module-level call
 
-- **Never a module-level call.** `niquests.get(url)` opens a connection, uses it once and throws it
-  away — no pooling, no shared configuration, and nothing to close on shutdown.
-- **Build one `AsyncSession` (or `Session`) per application**, in the composition root, and pass it
-  down. Connection reuse is most of the performance difference, and one session is also the one
-  place headers, timeouts and TLS settings are configured.
-- **Close it deterministically** — a `with` block in the composition root or the framework's
-  lifespan hook, never `atexit`.
+**Why:** `niquests.get(url)` opens a connection, uses it once and throws it away — no pooling, no
+shared configuration, nothing to close. One `AsyncSession` per application is where headers,
+timeouts and TLS are configured once, and connection reuse is most of the performance difference.
+It is closed by a `with` in the composition root or the lifespan, never `atexit`.
 
+**Example:**
 ```python
 # WRONG — a fresh connection per call, configured by whatever the library defaults to
-response = niquests.get(f"{orders_base_url}/orders/{order_id}")
+async def fetch_shipment(shipment_id: ShipmentId, *, base_url: str) -> object:
+    return niquests.get(f"{base_url}/shipments/{shipment_id}").json()
 
-# CORRECT — built once by the composition root, with the timeouts chosen and named there
-session = niquests.AsyncSession(
-    base_url=orders_base_url,
-    timeout=TimeoutConfiguration(connect=_CONNECT_TIMEOUT_SECONDS, read=_READ_TIMEOUT_SECONDS),
-)
-response = await session.get(f"/orders/{order_id}")
+
+# CORRECT — the root's session, opened once and closed on the way out
+@asynccontextmanager
+async def managed_carrier_session(*, base_url: str) -> AsyncIterator[niquests.AsyncSession]:
+    async with niquests.AsyncSession(base_url=base_url, timeout=_CARRIER_TIMEOUT) as session:
+        yield session
 ```
 
-## Timeouts
+### The session's timeout is chosen, with the connect and the read apart
 
-Every request has an explicit timeout, set once on the session and overridden per call only with a
-named constant (why: `python-boundaries`). The niquests mechanics:
+**Why:** without `timeout=` a request gets 30 seconds to read, or 120 for a write method — numbers
+that fit no dependency. A slow handshake and a slow body are different failures with different
+budgets. A per-call `timeout=` overrides the session's only with a named constant.
 
-- **The library default was chosen for nobody; set yours.** Without a `timeout=` a request gets
-  30 seconds to read, or 120 for a write method — numbers that fit no particular dependency.
-- **`Session(timeout=TimeoutConfiguration(connect=..., read=...))`** sets it once; a per-call
-  `timeout=` overrides it. A slow handshake and a slow body are different failures with different
-  budgets, so give them separate numbers.
-
-## Responses Are Checked, Not Assumed
-
-- **`raise_for_status()`, or an explicit status check.** A `404` has a body and a truthy response
-  object; code that goes straight to `.json()` will parse the error page and carry on.
-- **Translate at the adapter.** The rest of the codebase must never see a library exception: convert
-  transport errors and status errors into your own transient and permanent types, and let the retry
-  policy key on those.
-
+**Example:**
 ```python
-# WRONG — a 404's JSON error body comes back as the order, a timeout as niquests' own exception
-async def fetch_order(order_id: OrderId, *, session: niquests.AsyncSession) -> object:
-    response = await session.get(f"/orders/{order_id}")
+# WRONG — the library's numbers, one for every dependency
+_CARRIER_TIMEOUT: Final = None
+
+
+# CORRECT — this carrier's budgets, the connect and the read stated apart
+_CARRIER_TIMEOUT: Final = TimeoutConfiguration(
+    connect=_CARRIER_CONNECT_TIMEOUT_SECONDS, read=_CARRIER_READ_TIMEOUT_SECONDS
+)
+```
+
+### A response is checked, and its errors translated at the adapter
+
+**Why:** a `404` has a body and a truthy response object; code that goes straight to `.json()`
+parses the error page and carries on. The rest of the codebase never sees a library exception:
+transport failures and the listed statuses become the transient type, any other error the permanent
+one, and the retry policy keys on those. `.json()` is a shape, validated before it travels inward.
+
+**Example:**
+```python
+# WRONG — a 404's JSON error body comes back as the shipment, a timeout as niquests' own error
+async def fetch_shipment(shipment_id: ShipmentId, *, session: niquests.AsyncSession) -> object:
+    response = await session.get(f"/shipments/{shipment_id}")
     return response.json()
+
 
 # CORRECT — transport failures and the listed statuses are transient, any other error permanent
-async def fetch_order(order_id: OrderId, *, session: niquests.AsyncSession) -> object:
+async def fetch_shipment(shipment_id: ShipmentId, *, session: niquests.AsyncSession) -> object:
     try:
-        response = await session.get(f"/orders/{order_id}")
+        response = await session.get(f"/shipments/{shipment_id}")
     except (niquests.ConnectionError, niquests.Timeout) as error:
-        raise TransientUpstreamError(f"Fetching order {order_id} failed") from error
+        raise TransientCarrierError(f"fetching shipment {shipment_id} failed") from error
     if response.status_code in _TRANSIENT_STATUSES:
-        raise TransientUpstreamError(f"Fetching order {order_id} returned {response.status_code}")
+        raise TransientCarrierError(f"shipment {shipment_id}: {response.status_code}")
     if not response.ok:
-        raise PermanentUpstreamError(f"Fetching order {order_id} returned {response.status_code}")
+        raise PermanentCarrierError(f"shipment {shipment_id}: {response.status_code}")
     return response.json()
 ```
 
-- **`.json()` gives you a shape, not a contract.** Validate it at the boundary before it travels
-  inward.
+### The session sends each request once: `retries=` stays at its default of `0`
 
-## Redirects
+**Why:** a retry belongs beside the call, where it sees the translated error type and knows whether
+a write is idempotent; transport retries underneath a policy multiply its budget.
 
-- **Decide about redirects deliberately.** Following them is the default; for anything where the
-  final URL matters — an API that signals with `301`, a preview page that redirects when access is
-  refused — turn it off and read the status.
-- **A URL that came from a user**: pass `allow_redirects=False` and check each `Location` against
-  the allowlist before following it — the reason is the SSRF rule in `python-security`.
-
-```python
-# WRONG — the allowlist saw only the first URL; every redirect after it is followed unchecked
-def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
-    _ensure_allowed(url)
-    return session.get(url)
-
-# CORRECT — redirects are off, and every Location is checked before it is requested
-def fetch_preview(url: str, *, session: niquests.Session) -> niquests.Response:
-    for _ in range(_MAX_REDIRECTS + 1):
-        _ensure_allowed(url)
-        response = session.get(url, allow_redirects=False)
-        if not response.is_redirect:
-            return response
-        url = urljoin(url, response.headers["Location"])
-    raise TooManyRedirectsError(f"{url} redirected more than {_MAX_REDIRECTS} times")
-```
-
-## TLS
-
-- **Leave `verify` at its default**; a private CA goes in as `verify="/path/to/ca.pem"`. Why it
-  stays on is in `python-security`.
-
-```python
-# WRONG — silences one private CA's error by accepting every certificate, an attacker's included
-session = niquests.Session(verify=False)
-
-# CORRECT — the private CA is trusted explicitly, and verification stays on
-session = niquests.Session(verify=ca_bundle_path)
-```
-
-## Retries
-
-- **Leave the session's `retries=` at its default of `0`.** A retry is a policy decision and belongs
-  beside the call, where it can see the translated error type, and it retries only transient
-  failures and a write only when it is idempotent (why: `python-boundaries`; the policy:
-  `python-tenacity`). Transport retries underneath it multiply the budget.
-
+**Example:**
 ```python
 # WRONG — retries inside the session, under a policy that already retries each call
-session = niquests.Session(base_url=orders_base_url, retries=3)
+def build_carrier_session(*, base_url: str) -> niquests.Session:
+    return niquests.Session(base_url=base_url, retries=3)
+
 
 # CORRECT — the session sends each request once; the policy beside the call decides
-session = niquests.Session(base_url=orders_base_url)
+def build_carrier_session(*, base_url: str) -> niquests.Session:
+    return niquests.Session(base_url=base_url)
 ```
 
-## What Differs From `httpx`
+### A redirect is followed by hand where the final URL matters
 
-- **`niquests` is a drop-in for `requests`**, so `session.get(...)` returns a response with
-  `.status_code`, `.text`, `.json()`; `httpx` matches this closely but names some keywords
-  differently — notably `allow_redirects` here versus `follow_redirects` there.
-- Both support HTTP/2 and async. Pick one per codebase and do not mix: two HTTP stacks mean two
-  places to configure timeouts, and one of them will be forgotten.
+**Why:** following is the default; for an API that signals with `301`, or a user's URL whose every
+hop must pass an allowlist, `allow_redirects=False` returns the redirect for the caller to inspect.
+This is the niquests side of the `HttpFetcher` that `python-security` checks hop by hop.
+
+**Example:**
+```python
+# WRONG — the client follows redirects, so the caller never sees a hop to check
+@final
+class NiquestsFetcher(HttpFetcher):
+    def __init__(self, *, session: niquests.Session) -> None:
+        self._session = session
+
+    @override
+    def get(self, url: str, *, follow_redirects: bool) -> HttpResponse:
+        response = self._session.get(url)
+        return HttpResponse(redirect_location=None, body=response.content or b"")
+
+
+# CORRECT — redirects are returned to the caller when it asks to follow them itself
+@final
+class NiquestsFetcher(HttpFetcher):
+    def __init__(self, *, session: niquests.Session) -> None:
+        self._session = session
+
+    @override
+    def get(self, url: str, *, follow_redirects: bool) -> HttpResponse:
+        response = self._session.get(url, allow_redirects=follow_redirects)
+        location = response.headers.get("Location") if response.is_redirect else None
+        return HttpResponse(redirect_location=location, body=response.content or b"")
+```
