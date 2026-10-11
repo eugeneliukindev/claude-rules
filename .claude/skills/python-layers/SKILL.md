@@ -1,13 +1,9 @@
 ---
 name: python-layers
 description: >-
-  Python architecture and layer boundaries — clean or hexagonal architecture, circular imports, a
-  domain importing a framework — enforced by import-linter in pyproject.toml: layers contracts per
-  package with peers on one line and exhaustive = true, independence contracts for the
-  implementations behind one contract, forbidden contracts with include_external_packages keeping
-  an optional dependency in its own module, banned APIs at the linter, and fixing a violation by
-  moving code rather than allowlisting it. Use when adding an import-linter contract, arguing about
-  which layer code belongs to, untangling a circular import, or when a domain module imports a
+  Enforces layer boundaries with import-linter: layers, independence and forbidden contracts, and
+  a violation fixed by moving code. Use when adding an import-linter contract, deciding which
+  layer code belongs to, untangling a circular import, or when a domain module imports a
   framework, a driver or a sibling implementation.
 paths:
   - "**/*.py"
@@ -16,30 +12,32 @@ paths:
 
 # Layers
 
-**Dependency direction is enforced by tooling, not by review vigilance.** Contracts live next to
-the type-checker configuration and run beside it. Three kinds do the work, and most codebases stop
-after the first:
+Dependency direction is enforced by tooling, not by review vigilance: import-linter contracts live
+in `pyproject.toml` beside the type checker's configuration, and `lint-imports` runs in CI beside
+mypy — a contract nobody runs holds nothing up. Three kinds do the work, and most codebases stop
+after the first.
 
-**`layers` — what may depend on what.** Higher layers depend on lower ones; the domain depends on
-nothing in the package.
+## Contracts
 
-- **One contract per package that has an order, not one for the repository.** A top-level contract
-  says how the application is stacked; a subpackage with its own internal order gets its own
-  contract, and the two are checked independently. Without that, everything below the top layer is
-  a free-for-all the moment it has more than three modules.
-- **Peers are declared, not silently allowed.** Two modules at the same height that must not import
-  each other are written on one line — `headers | cookies`, `renderer | stream`. Leaving them on
-  separate lines invents an order nobody meant and that the next edit will violate for no reason.
+### Every package with an order has a `layers` contract: peers on one line, every module placed
 
+**Why:** one contract for the repository leaves everything below the top layer a free-for-all once
+it has more than three modules, so a subpackage with its own order gets its own contract. Two lines
+are two heights — modules at one height that must not import each other share a line,
+`headers | cookies`, or the next edit invents an order nobody meant. Without `exhaustive = true` a
+`retry.py` added next week belongs to no layer and may import anything.
+
+**Example:**
 ```toml
-# WRONG — three lines are three heights: headers may now import cookies, and nothing objects
+# WRONG — three heights where two were meant, and a new module in no layer goes unchecked
 [[tool.importlinter.contracts]]
 name = "HTTP client layers"
 type = "layers"
 containers = ["myapp.http"]
 layers = ["client", "headers", "cookies"]
 
-# CORRECT — peers on one line: both sit below client, and neither may import the other
+
+# CORRECT — peers on one line below client; a module in no layer breaks the contract
 [[tool.importlinter.contracts]]
 name = "HTTP client layers"
 type = "layers"
@@ -48,37 +46,56 @@ layers = ["client", "headers | cookies"]
 exhaustive = true
 ```
 
-- **`exhaustive = true`, or a module in no layer is simply not checked.** A `retry.py` added to
-  `myapp.http` next week belongs to no layer and may import anything; with the flag the contract
-  breaks until it is placed.
+### Implementations behind one contract are independent of each other
 
-**`independence` — siblings behind a contract do not know each other.** This is the check that
-makes "adding the tenth costs what the second cost" true instead of aspirational: every
-implementation of a contract, every plugin, every handler in a registry is independent of the rest,
-and the *only* permitted edge among them is to their shared base.
+**Why:** it is what makes the tenth implementation cost what the second did: when one borrows a
+helper from its sibling, the eleventh is a new file plus an edit to the sibling. Every
+implementation, plugin or registry handler is in an `independence` contract whose only permitted
+edge is to the shared contract — matched by a wildcard, since a listed set misses the next one.
 
+**Example:**
 ```toml
+# WRONG — the implementations are listed, so a third one added later is never checked
+[[tool.importlinter.contracts]]
+name = "Notifier implementations must not know about each other"
+type = "independence"
+modules = ["myapp.notifications.email", "myapp.notifications.sms"]
+
+
+# CORRECT — every module in the package, now and later; only the contract may be shared
 [[tool.importlinter.contracts]]
 name = "Notifier implementations must not know about each other"
 type = "independence"
 modules = ["myapp.notifications.*"]
-# The one edge that is allowed: every implementation inherits the contract.
 ignore_imports = ["myapp.notifications.* -> myapp.notifications.base"]
 ```
 
-Without it, one implementation imports a helper from its sibling, and the eleventh is no longer a
-new file — it is a new file plus an edit to whichever sibling it borrowed from.
+### An optional library is `forbidden` across the package, with every permitted edge listed
 
-**`forbidden` — a dependency that must not appear where it is not wanted.** The rule that an
-optional library lives only in its own implementation module (the `python-packaging` skill) is
-stated in prose everywhere and checked almost nowhere. Ban the library from the whole package
-and list every permitted edge; the exception list then *is* the inventory of where the extra is
-allowed, and it is reviewed whenever it grows.
+**Why:** "an optional dependency lives only in its own implementation module" (`python-packaging`)
+is stated everywhere and checked almost nowhere; the exception list of a `forbidden` contract is
+the inventory of where the extra may appear, reviewed whenever it grows. Only
+`include_external_packages = true` lets the contract see a library — measured on import-linter
+2.15, `myapp.domain.orders -> redis` passed without it, with one warning that the ignored imports
+matched nothing. An API banned outright goes to the linter too: `flake8-tidy-imports.banned-api`
+names the replacement where the import happens, which a contract cannot.
 
+**Example:**
 ```toml
+# WRONG — external packages are invisible, so the contract passes whatever imports redis
 [tool.importlinter]
 root_package = "myapp"
-# Without it a forbidden external package is never seen: the contract passes, saying nothing.
+
+[[tool.importlinter.contracts]]
+name = "Optional dependencies live only in their own implementation"
+type = "forbidden"
+source_modules = ["myapp"]
+forbidden_modules = ["redis", "boto3"]
+
+
+# CORRECT — the contract sees libraries, and each allowed edge carries its extra
+[tool.importlinter]
+root_package = "myapp"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -92,33 +109,61 @@ ignore_imports = [
 ]
 ```
 
-- **`include_external_packages = true` is what lets a `forbidden` contract see a library.**
-  Measured on import-linter 2.15: without it `myapp.domain.orders -> redis` passed, and the only
-  output was a warning that the ignored imports matched nothing.
-- **`lint-imports` runs in CI beside mypy**, from the same `pyproject.toml`; a contract nobody runs
-  holds nothing up.
+## Violations
 
-- A boundary violation is fixed by moving code or inverting the dependency — a contract plus an
-  adapter — **never** by adding the module to an allowlist. A contract exception needs the same
-  justification as a type suppression, and carries its reason on the line above it.
+### A violation is fixed by moving code or inverting the dependency, never by an allowlist entry
 
+**Why:** an exception added to make a contract pass removes the check for the next import too. The
+fix is a contract plus an adapter, with the concrete class chosen at the composition root; an
+exception that remains needs the justification of a type suppression and carries its reason on the
+line above it.
+
+**Example:**
 ```python
-# WRONG — invoicing imports the SMTP implementation, and the contract needs an exception to pass
-from myapp.notifications.smtp import SmtpNotifier
+# WRONG — reservations import the SMS implementation, so the contract needs an exception
+from myapp.notifications.sms import SmsNotifier
 
-def issue_invoice(invoice: Invoice, *, notifier: SmtpNotifier) -> None: ...
 
-# CORRECT — invoicing depends on the contract; the composition root passes the SMTP one in
+def confirm_reservation(reservation: Reservation, *, notifier: SmsNotifier) -> None:
+    notifier.send(Notification(recipient=reservation.guest_phone, text=reservation.summary))
+
+
+# CORRECT — it depends on the contract; the composition root passes the SMS notifier in
 from myapp.notifications.base import Notifier
 
-def issue_invoice(invoice: Invoice, *, notifier: Notifier) -> None: ...
+
+def confirm_reservation(reservation: Reservation, *, notifier: Notifier) -> None:
+    notifier.send(Notification(recipient=reservation.guest_phone, text=reservation.summary))
 ```
 
-- **Domain code imports the standard library and other domain modules only.** Frameworks, drivers
-  and clients enter through adapters.
-- Ban the APIs that must never be used directly at the linter level too, with a message naming the
-  replacement — `flake8-tidy-imports.banned-api` states the substitution where the import happens,
-  which a contract cannot.
+### Domain code imports the standard library and other domain modules only
+
+**Why:** a framework, a driver or a client in the domain ties the rules to one way of storing or
+serving them, and every test of a rule pulls the library in. They enter through adapters; the
+domain's types are frozen dataclasses (`python-boundaries`).
+
+**Example:**
+```python
+# WRONG — a domain entity is a validation-library model
+from pydantic import BaseModel
+
+
+class Loan(BaseModel):
+    book_isbn: str
+    member_id: MemberId
+    due_on: date
+
+
+# CORRECT — the domain owns its type; the boundary maps to it
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Loan:
+    book_isbn: str
+    member_id: MemberId
+    due_on: date
+```
 
 How directories are named and nested is a project decision, not a general rule: it follows the
 domain, the team and the deployment shape, and a layout copied from elsewhere is a layout nobody
