@@ -256,13 +256,13 @@ drops it; `try: import x` turns a missing dependency into a code path nobody tes
 ```python
 # WRONG — the fast parser if it happens to be installed
 try:
-    import orjson as _json
+    from lxml import etree
 except ImportError:
-    import json as _json
+    from xml.etree import ElementTree as etree
 
 
-# CORRECT — orjson is declared in pyproject.toml, with a lower bound, and imported plainly
-import orjson
+# CORRECT — lxml is declared in pyproject.toml, with a lower bound, and imported plainly
+from lxml import etree
 ```
 
 ### Anything acquired is released by a context manager
