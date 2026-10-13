@@ -42,13 +42,14 @@ async def managed_grpc_server(
     address: str,
     credentials: grpc.ServerCredentials,
     grace_seconds: float,
+    max_message_bytes: int = _MAX_MESSAGE_BYTES,
 ) -> AsyncIterator[int]:
     server = grpc.aio.server(
         interceptors=[StatusInterceptor()],
         options=[
             ("grpc.so_reuseport", 0),
-            ("grpc.max_receive_message_length", _MAX_MESSAGE_BYTES),
-            ("grpc.max_send_message_length", _MAX_MESSAGE_BYTES),
+            ("grpc.max_receive_message_length", max_message_bytes),
+            ("grpc.max_send_message_length", max_message_bytes),
         ],
     )
     flights_pb2_grpc.add_FlightServiceServicer_to_server(FlightServicer(flights), server)
