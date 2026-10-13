@@ -275,11 +275,10 @@ async def export_audit_log(audit: AuditLogDep) -> StreamingResponse:
 
 ### uvicorn is started with the limits a long-lived connection needs
 
-**Why:** uvicorn sends 1012 to every WebSocket at shutdown but waits for open HTTP responses —
-forever, unless `--timeout-graceful-shutdown` is set — and runs the lifespan's shutdown only
-afterwards, so an event set there never reaches a stream; the timeout goes below the orchestrator's
-kill grace period. `--ws-max-size` is 16 MiB by default and closes an oversize frame with 1009 —
-set to what the protocol needs. `--ws-ping-interval`, 20 seconds by default, is the WebSocket
+**Why:** uvicorn sends 1012 to every WebSocket at shutdown but runs the lifespan's shutdown only
+after the open HTTP responses end, so an event set there never reaches a stream; their drain is
+bounded as `serving.md` says. `--ws-max-size` is 16 MiB by default and closes an oversize frame with
+1009 — set to what the protocol needs. `--ws-ping-interval`, 20 seconds by default, is the WebSocket
 heartbeat; it stays on.
 
 ### A WebSocket is tested through `websocket_connect`, inside `with TestClient(app)`
