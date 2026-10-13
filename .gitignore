@@ -8,3 +8,6 @@ __pycache__/
 
 # archives of the skills, built for sharing
 *.tar.gz
+
+# eval runs, one file per run
+evals/results/
