@@ -76,13 +76,13 @@ ignore_imports = ["myapp.notifications.* -> myapp.notifications.base"]
 is stated everywhere and checked almost nowhere; the exception list of a `forbidden` contract is
 the inventory of where the extra may appear, reviewed whenever it grows. Only
 `include_external_packages = true` lets the contract see a library — measured on import-linter
-2.15, `myapp.domain.orders -> redis` passed without it, with one warning that the ignored imports
+2.15, `myapp.domain.orders -> stripe` passed without it, with one warning that the ignored imports
 matched nothing. An API banned outright goes to the linter too: `flake8-tidy-imports.banned-api`
 names the replacement where the import happens, which a contract cannot.
 
 **Example:**
 ```toml
-# WRONG — external packages are invisible, so the contract passes whatever imports redis
+# WRONG — external packages are invisible, so the contract passes whatever imports stripe
 [tool.importlinter]
 root_package = "myapp"
 
@@ -90,7 +90,7 @@ root_package = "myapp"
 name = "Optional dependencies live only in their own implementation"
 type = "forbidden"
 source_modules = ["myapp"]
-forbidden_modules = ["redis", "boto3"]
+forbidden_modules = ["stripe", "boto3"]
 
 
 # CORRECT — the contract sees libraries, and each allowed edge carries its extra
@@ -102,10 +102,10 @@ include_external_packages = true
 name = "Optional dependencies live only in their own implementation"
 type = "forbidden"
 source_modules = ["myapp"]
-forbidden_modules = ["redis", "boto3"]
+forbidden_modules = ["stripe", "boto3"]
 ignore_imports = [
   "myapp.storage.s3 -> boto3",    # extra `s3`: the one module that may use its SDK
-  "myapp.cache.redis -> redis",   # extra `redis`: the one module that speaks the protocol
+  "myapp.payments.stripe_gateway -> stripe",   # extra `stripe`: the one gateway that calls it
 ]
 ```
 

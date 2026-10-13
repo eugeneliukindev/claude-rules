@@ -8,7 +8,7 @@ revert of the feature takes the upgrade with it. `uv lock --upgrade-package NAME
 
 ### A lower bound is tested by a CI job that installs every direct dependency at its floor
 
-**Why:** a `pydantic>=2.11` that quietly needs 2.12 passes every run on the locked, newest versions
+**Why:** a `click>=8.1` that quietly needs 8.2 passes every run on the locked, newest versions
 and fails on a user's machine. `--resolution lowest-direct` rewrites `uv.lock` — measured on uv 0.12
 — so the job runs on a checkout it throws away, never before a commit.
 

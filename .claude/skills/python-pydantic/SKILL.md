@@ -39,6 +39,24 @@ each required field. `model_config = ConfigDict(...)` replaces the inner `class 
 
 ## Configuration
 
+### ruff's `runtime-evaluated-base-classes` names every model base
+
+**Why:** ruff's `TC` rules move an import used only in an annotation under `TYPE_CHECKING`; pydantic
+reads a model's annotations at runtime, so the suggested fix breaks the model on import. They move
+it only where annotations are not evaluated at definition — a `from __future__ import annotations`
+module, or a 3.14 floor. Every base the project defines for its models joins the list.
+
+**Example:**
+```toml
+# WRONG — the fix moves a field's type import out of the model's runtime reach
+[tool.ruff.lint]
+select = ["ALL"]
+
+# CORRECT — the annotations pydantic evaluates keep their imports real
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
+```
+
 ### Boundary models share one strict, closed, frozen base
 
 **Why:** lax defaults turn `"3"` into `3` and drop an unknown field in silence. `strict=True`,

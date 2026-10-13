@@ -59,16 +59,16 @@ as long as the cap stood. An application's exact versions come from the lock, no
 
 **Example:**
 ```toml
-# WRONG — the cap refuses pydantic 3 before anything breaks; the pin refuses every other release
+# WRONG — the cap refuses rich 15 before anything breaks; the pin refuses every other release
 dependencies = [
-  "niquests==3.21.0",
-  "pydantic>=2.11,<3",
+  "click==8.2.1",
+  "rich>=14,<15",
 ]
 
 # CORRECT — the oldest version whose API the code uses, and nothing above it
 dependencies = [
-  "niquests>=3.21",
-  "pydantic>=2.11",
+  "click>=8.2",
+  "rich>=14",
 ]
 ```
 
@@ -95,5 +95,4 @@ pointed at the lock.
 
 **Before writing a new project's `pyproject.toml` tool tables, read
 [new-project.md](new-project.md)** — a complete starting file, and why ruff selects `ALL`, which
-mypy codes `strict` leaves off, pytest's strict mode, and ruff's runtime-evaluated tables for
-pydantic and FastAPI.
+mypy codes `strict` leaves off, and pytest's strict mode.

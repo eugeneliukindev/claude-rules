@@ -119,6 +119,29 @@ async def close_task(task_id: TaskId, tasks: TaskServiceDep) -> TaskResponse:
     return TaskResponse.from_domain(await tasks.close_task(task_id))
 ```
 
+### ruff's `runtime-evaluated-decorators` names every route decorator in use
+
+**Why:** FastAPI reads a route's annotations at runtime to build its parameters, so ruff's `TC`
+fix that moves their imports under `TYPE_CHECKING` breaks the route on import, wherever
+annotations are not evaluated at definition.
+
+**Example:**
+```toml
+# WRONG — the fix moves a parameter type's import out of the route's runtime reach
+[tool.ruff.lint]
+select = ["ALL"]
+
+# CORRECT — every router method the project uses
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-decorators = [
+  "fastapi.APIRouter.get",
+  "fastapi.APIRouter.post",
+  "fastapi.APIRouter.put",
+  "fastapi.APIRouter.patch",
+  "fastapi.APIRouter.delete",
+]
+```
+
 ### The response is an explicit model built from the domain object
 
 **Why:** a route annotated `-> Task` makes the domain type the response model, and every field it
@@ -206,5 +229,5 @@ disconnect arrives, the WebSocket handler, uvicorn's flags, the tests.
 
 ## Serving
 
-**Before writing the uvicorn command for an app behind a proxy, read [serving.md](serving.md)** —
-`--forwarded-allow-ips` set to the proxy's network.
+**Before writing the uvicorn command, read [serving.md](serving.md)** — the drain bounded below the
+grace period, and `--forwarded-allow-ips` set to the proxy's network behind one.

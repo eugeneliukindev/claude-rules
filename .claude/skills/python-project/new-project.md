@@ -6,7 +6,6 @@
 - ruff selects `ALL` and argues each ignore
 - mypy's extra error codes, and one type checker
 - pytest's strict mode and warnings as errors
-- ruff's runtime-evaluated tables for pydantic and FastAPI
 
 This is how to lay the configuration out, not a contract: the versions, the rule selection and the
 ignores are a start the owner adapts. What carries over is the shape — the floor stated once, strict
@@ -24,8 +23,8 @@ name = "pantry"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-  "niquests>=3.21",
-  "pydantic>=2.11",
+  "click>=8.2",
+  "rich>=14",
 ]
 
 [project.scripts]
@@ -43,7 +42,6 @@ dev = [
 [tool.mypy]
 python_version = "3.12"   # the floor: mypy does not read requires-python
 strict = true
-plugins = ["pydantic.mypy"]   # with pydantic: BaseSettings() type-checks without every field
 warn_unreachable = true
 strict_equality_for_none = true
 enable_error_code = [
@@ -79,16 +77,6 @@ ignore = [
   "S101",     # assert is how pytest checks
 ]
 
-[tool.ruff.lint.flake8-type-checking]
-# pydantic and FastAPI read these annotations at runtime: their imports stay real
-runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
-runtime-evaluated-decorators = [
-  "fastapi.APIRouter.get",
-  "fastapi.APIRouter.post",
-  "fastapi.APIRouter.put",
-  "fastapi.APIRouter.patch",
-  "fastapi.APIRouter.delete",
-]
 
 [tool.pytest]
 strict = true
@@ -144,23 +132,3 @@ enable_error_code = ["explicit-override", "exhaustive-match", "ignore-without-co
 strict `xfail` and strict parametrization ids together — a misspelt marker is an error, not a test
 silently selected by nothing. `filterwarnings = ["error"]` fails the run the day a deprecation
 warning appears, not the day the API is removed.
-
-### ruff's runtime-evaluated tables name every pydantic base and FastAPI route decorator in use
-
-**Why:** ruff's `TC` rules move an import used only in annotations under `TYPE_CHECKING`; pydantic
-and FastAPI read those annotations at runtime, so the suggested fix breaks the model or the route
-on import. The rules move an import only when annotations are not evaluated at definition — a
-`from __future__ import annotations` module, or a 3.14 floor — so on 3.12 or 3.13 without either
-the table waits for that day. Every model base the project defines joins the base classes.
-
-**Example:**
-```toml
-# WRONG — the fix moves `from pantry.recipes import Recipe` out of a route's runtime reach
-[tool.ruff.lint]
-select = ["ALL"]
-
-# CORRECT — the annotations pydantic and FastAPI evaluate keep their imports real
-[tool.ruff.lint.flake8-type-checking]
-runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
-runtime-evaluated-decorators = ["fastapi.APIRouter.get", "fastapi.APIRouter.post"]
-```

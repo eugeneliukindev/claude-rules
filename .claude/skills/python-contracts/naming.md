@@ -47,7 +47,7 @@ class LdapUserDirectory(UserDirectory):
 ### `Base` means "inherit me", never "implement me"
 
 **Why:** the prefix is earned by a class that carries shared *implementation* down — fields,
-defaults, ready methods — as `pydantic.BaseModel` and `BaseHTTPRequestHandler` do; a contract hands
+defaults, ready methods — as `BaseHTTPRequestHandler` and `BaseException` do; a contract hands
 nothing down. The test is mechanical: delete the base and see what the subclasses lose — fields or
 working methods make it a `Base`, only a promise the checker was already making makes it a
 contract. A shared base only its own module inherits is private: `_BaseCookie`.

@@ -181,9 +181,9 @@ is not a reason — restructure instead.
 
 ### An annotation that would cycle or pull a heavy dependency goes under `TYPE_CHECKING`
 
-**Why:** the import then costs nothing at runtime.
-**Except:** never one a framework reads at runtime — a pydantic field, a FastAPI parameter — where
-the guarded name is missing when the framework resolves it (`python-project`).
+**Why:** the import then costs nothing at runtime. **Except:** never one a framework reads at
+runtime — a validating model's field, a route's parameter — where the guarded name is missing when
+the framework resolves it (`python-project`).
 
 **Example:**
 ```python
