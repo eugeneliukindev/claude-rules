@@ -52,14 +52,14 @@ small" is not a bound.
 **Example:**
 ```python
 # WRONG — every customer's statement fetched at once, however many customers there are
-async def build_statements(
+async def fetch_statements(
     customer_ids: Sequence[CustomerId], *, api: StatementApi
 ) -> list[Statement]:
     return list(await asyncio.gather(*(api.statement(customer_id) for customer_id in customer_ids)))
 
 
 # CORRECT — at most _MAX_IN_FLIGHT requests, under one deadline
-async def build_statements(
+async def fetch_statements(
     customer_ids: Sequence[CustomerId], *, api: StatementApi
 ) -> list[Statement]:
     limit = asyncio.Semaphore(_MAX_IN_FLIGHT)
