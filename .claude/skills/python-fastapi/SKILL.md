@@ -24,12 +24,12 @@ looks like dependency injection and is used, in most tutorials, as a service loc
 **Why:** a module-level `app = FastAPI()` with a pool beside it is the global singleton
 `python-wiring` forbids, and the documentation's `@lru_cache def get_settings()` is one with extra
 steps — a test that needs another value has to clear a cache. The factory takes the settings its
-caller built; the server runs it with `uvicorn --factory`. The lifespan holds one `async with` with
-an item per resource, builds the services inside, and yields what requests need — Starlette puts it
-on `request.state` — closing everything in reverse on shutdown. `@app.on_event("startup")` is the
-deprecated shape, and a startup and shutdown pair releases in registration order, apart from the
-acquire. Every worker runs the lifespan, so a server it starts on a port of its own needs one
-worker.
+caller built — the entry point, which runs uvicorn with the app (`serving.md`). The lifespan holds
+one `async with` with an item per resource, builds the services inside, and yields what requests
+need — Starlette puts it on `request.state` — closing everything in reverse on shutdown.
+`@app.on_event("startup")` is the deprecated shape, and a startup and shutdown pair releases in
+registration order, apart from the acquire. Every worker runs the lifespan, so a server it starts on
+a port of its own needs one worker.
 
 **Example:**
 ```python
@@ -221,8 +221,9 @@ disconnect arrives, the WebSocket handler, uvicorn's flags, the tests.
 
 ## Serving
 
-**Before writing the uvicorn command, read [serving.md](serving.md)** — the drain bounded below the
-grace period, and `--forwarded-allow-ips` set to the proxy's network behind one.
+**Before writing the entry point that runs uvicorn, read [serving.md](serving.md)** — the settings
+built there and handed to `create_app`, the drain bounded below the grace period, and
+`forwarded_allow_ips` set to the proxy's network behind one.
 
 ## With Other Libraries
 
@@ -239,7 +240,7 @@ server entered in the lifespan, under one worker.
 
 **Before declaring a request or response model, or answering a validation error, read
 [with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
-domain and named by the return annotation, and the zero-argument factory uvicorn calls.
+domain and named by the return annotation.
 
 **Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
 cache entered in the lifespan, and no middleware that lets a client clear it.

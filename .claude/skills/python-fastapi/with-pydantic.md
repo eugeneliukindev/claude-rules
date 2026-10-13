@@ -53,24 +53,3 @@ async def read_account(account_id: AccountId, accounts: AccountServiceDep) -> Ac
 async def read_account(account_id: AccountId, accounts: AccountServiceDep) -> AccountResponse:
     return AccountResponse.from_domain(await accounts.get(account_id))
 ```
-
-### uvicorn's factory takes no arguments; it builds `Settings()` and calls `create_app`
-
-**Why:** `uvicorn --factory` calls the function with no arguments, so `create_app(settings)` cannot
-be the one it names. A default of `Settings()` in the signature is evaluated at import, reading the
-environment before anything asked for it. A zero-argument function builds the settings when
-uvicorn calls it, and tests call `create_app` with the settings they need.
-
-**Example:**
-```python
-# WRONG — the default is built at import: importing the module reads the environment
-def create_app(settings: Settings = Settings()) -> FastAPI:
-    app = FastAPI(lifespan=_lifespan_for(settings))
-    app.include_router(tasks_router)
-    return app
-
-
-# CORRECT — `uvicorn --factory tracker.api:app_from_environment`; tests call create_app
-def app_from_environment() -> FastAPI:
-    return create_app(Settings())
-```
