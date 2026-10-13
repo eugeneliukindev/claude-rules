@@ -92,6 +92,7 @@ _SETTING_NAME: Final = re.compile(
 )
 _FACTORY_NAME: Final = re.compile(r"^(build_|create_|make_|managed_|open_)")
 _TEST_DOUBLE_PREFIXES: Final = ("InMemory", "Fake", "Recording", "Stub", "Broken")
+_SETTINGS_TYPE: Final = re.compile(r"\b\w*Settings\b")
 _LEGACY_TYPING: Final = frozenset({"Optional", "Union", "List", "Dict", "Tuple", "Set", "Type"})
 _NAIVE_NOW: Final = frozenset({"datetime.now", "datetime.utcnow", "date.today"})
 _DATACLASS_FLAGS: Final = ("frozen=True", "slots=True", "kw_only=True")
@@ -489,6 +490,7 @@ def _node_violations(node: ast.AST) -> Iterator[tuple[int, str]]:
                 if missing:
                     yield node.lineno, f"{node.name} lacks {', '.join(missing)}"
     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        yield from _settings_parameters(node)
         defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
         if any(isinstance(default, (ast.List, ast.Dict, ast.Set)) for default in defaults):
             yield node.lineno, f"{node.name} has a mutable default"
@@ -500,6 +502,20 @@ def _node_violations(node: ast.AST) -> Iterator[tuple[int, str]]:
             yield node.lineno, f"{ast.unparse(node.func)}() without a timezone"
     elif isinstance(node, ast.ExceptHandler) and node.type is None:
         yield node.lineno, "a bare except"
+
+
+def _settings_parameters(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterator[tuple[int, str]]:
+    # Only the entry point holds the settings object; everything below takes its fields.
+    arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    for argument in arguments:
+        annotation = ast.unparse(argument.annotation) if argument.annotation else ""
+        if _SETTINGS_TYPE.search(annotation):
+            yield (
+                function.lineno,
+                f"{function.name} takes the settings object {argument.arg}; pass its fields",
+            )
 
 
 def _setting_violations(tree: ast.Module) -> Iterator[tuple[int, str]]:
