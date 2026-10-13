@@ -15,4 +15,6 @@ task in a fresh session without the rule and then with it, a few times each, and
 code against the rule; a rule whose task passes without it restates the default and is deleted.
 Path-scoped rules arrive on a read, so the task is seeded with a file to read, and its prompt holds
 no request that outranks the rule — "make sure it is well documented" overrides any rule about
-comments, by design.
+comments, by design. The cases live in `evals/python/` at the repository root, and
+`evals/run.py --arm both` runs them in both arms with what they check: the skills invoked, the
+reference files read, the code written.
