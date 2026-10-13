@@ -90,17 +90,17 @@ shared runner and blind to a regression smaller than the noise.
 **Example:**
 ```python
 # WRONG — flaky on a shared runner, and a page that doubles its queries still passes
-def test_article_page_stays_in_budget(client: TestClient) -> None:
+def test_article_page_stays_in_budget(articles: ArticleListing) -> None:
     started_seconds = time.perf_counter()
 
-    client.get("/articles")
+    articles.first_page()
 
     assert time.perf_counter() - started_seconds < _ARTICLE_PAGE_BUDGET_SECONDS
 
 
 # CORRECT — the same budget in statements, counted by a fixture
-def test_article_page_stays_in_budget(client: TestClient, statements: list[str]) -> None:
-    client.get("/articles")
+def test_article_page_stays_in_budget(articles: ArticleListing, statements: list[str]) -> None:
+    articles.first_page()
 
     assert len(statements) <= _ARTICLE_PAGE_STATEMENTS
 ```
