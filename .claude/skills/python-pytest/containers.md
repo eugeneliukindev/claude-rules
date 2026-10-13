@@ -22,7 +22,7 @@ def postgres() -> Iterator[PostgresContainer]:
         yield container
 
 
-# CORRECT — one container for the session, migrated once, with a URL asyncpg accepts
+# CORRECT — one container for the session, migrated once, with a URL the driver accepts
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
     with PostgresContainer(_POSTGRES_IMAGE) as container:

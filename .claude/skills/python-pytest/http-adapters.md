@@ -13,10 +13,9 @@ through its real client, session and error translation, whichever library that i
 
 **Example:**
 ```python
-# WRONG — proves the adapter calls get, not that it turns a real 404 into CityNotFoundError
+# WRONG — the adapter's own request method is patched: no 404 is ever translated
 def test_fetch_forecast_translates_unknown_city(mocker: MockerFixture) -> None:
-    response = mocker.Mock(spec=niquests.Response, status_code=HTTPStatus.NOT_FOUND)
-    mocker.patch.object(niquests.Session, "get", return_value=response)
+    mocker.patch.object(ForecastClient, "_get_json", side_effect=CityNotFoundError("Atlantis"))
     client = ForecastClient(
         base_url="https://weather.example.com", timeout_seconds=_TIMEOUT_SECONDS
     )

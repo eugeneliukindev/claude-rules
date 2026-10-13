@@ -44,13 +44,13 @@ asyncio_default_fixture_loop_scope = "function"
 
 **Why:** the `event_loop` fixture is gone in 1.0, and an override of it is silently ignored — 1.x
 never requests it. A session-scoped async fixture says `loop_scope="session"`, and so does every
-test using it, or the test runs on its own loop and an engine created on the fixture's loop fails
+test using it, or the test runs on its own loop and a pool created on the fixture's loop fails
 there with "attached to a different loop". A module whose tests share a loop takes
 `pytestmark = pytest.mark.asyncio(loop_scope="module")` once.
 
 **Example:**
 ```python
-# WRONG — the 0.x override, ignored by 1.x; the test then runs on a loop the engine never saw
+# WRONG — the 0.x override, ignored by 1.x; the test then runs on a loop the pool never saw
 @pytest.fixture(scope="session")
 def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
     loop = asyncio.new_event_loop()
@@ -58,8 +58,8 @@ def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
     loop.close()
 
 
-async def test_reservation_is_saved_and_read_back(engine: AsyncEngine) -> None:
-    reservations = PostgresReservationRepository(engine=engine)
+async def test_reservation_is_saved_and_read_back(pool: DatabasePool) -> None:
+    reservations = PostgresReservationRepository(pool=pool)
 
     await reservations.add(_RESERVATION)
 
@@ -68,15 +68,15 @@ async def test_reservation_is_saved_and_read_back(engine: AsyncEngine) -> None:
 
 # CORRECT — the fixture and the test name the same loop
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def engine() -> AsyncIterator[AsyncEngine]:
-    engine = create_async_engine(_DATABASE_URL)
-    yield engine
-    await engine.dispose()
+async def pool() -> AsyncIterator[DatabasePool]:
+    pool = open_database_pool(_DATABASE_URL)
+    yield pool
+    await pool.close()
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_reservation_is_saved_and_read_back(engine: AsyncEngine) -> None:
-    reservations = PostgresReservationRepository(engine=engine)
+async def test_reservation_is_saved_and_read_back(pool: DatabasePool) -> None:
+    reservations = PostgresReservationRepository(pool=pool)
 
     await reservations.add(_RESERVATION)
 
