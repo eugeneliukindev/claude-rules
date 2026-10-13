@@ -228,8 +228,10 @@ def build_broker(settings: WorkerSettings) -> RabbitBroker:
 
 
 # CORRECT — named, and inside the 30-second grace period
-def build_broker(settings: WorkerSettings) -> RabbitBroker:
-    return RabbitBroker(settings.amqp_url, graceful_timeout=_GRACEFUL_TIMEOUT_SECONDS)
+def build_broker(
+    settings: WorkerSettings, *, graceful_timeout_seconds: float = _GRACEFUL_TIMEOUT_SECONDS
+) -> RabbitBroker:
+    return RabbitBroker(settings.amqp_url, graceful_timeout=graceful_timeout_seconds)
 ```
 
 ## The CLI and the App's Lifespan

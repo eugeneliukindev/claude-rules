@@ -21,9 +21,9 @@ async def _open_inventory(context: ContextRepo) -> None:
 
 
 # CORRECT — `faststream run bookings.worker:build_app --factory`; the lifespan owns the session
-def build_app() -> FastStream:
+def build_app(*, graceful_timeout_seconds: float = _GRACEFUL_TIMEOUT_SECONDS) -> FastStream:
     settings = WorkerSettings()
-    broker = RabbitBroker(settings.amqp_url, graceful_timeout=_GRACEFUL_TIMEOUT_SECONDS)
+    broker = RabbitBroker(settings.amqp_url, graceful_timeout=graceful_timeout_seconds)
 
     @asynccontextmanager
     async def lifespan() -> AsyncIterator[None]:
