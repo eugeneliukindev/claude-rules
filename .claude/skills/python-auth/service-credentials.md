@@ -58,14 +58,21 @@ class ServiceTokenSource:
 # CORRECT — cached per audience, renewed a margin before it expires
 @final
 class ServiceTokenSource:
-    def __init__(self, *, provider: IdentityProvider, clock: Clock) -> None:
+    def __init__(
+        self,
+        *,
+        provider: IdentityProvider,
+        clock: Clock,
+        renewal_margin: timedelta = _RENEWAL_MARGIN,
+    ) -> None:
         self._provider = provider
         self._clock = clock
+        self._renewal_margin = renewal_margin
         self._token_by_audience: dict[str, IssuedToken] = {}
 
     async def token_for(self, *, audience: str) -> str:
         cached = self._token_by_audience.get(audience)
-        if cached is None or cached.expires_at - _RENEWAL_MARGIN <= self._clock.now():
+        if cached is None or cached.expires_at - self._renewal_margin <= self._clock.now():
             cached = await self._provider.client_credentials(audience=audience)
             self._token_by_audience[audience] = cached
         return cached.value
