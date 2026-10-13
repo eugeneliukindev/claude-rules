@@ -168,9 +168,9 @@ many deploys (measured).
 
 ## The CLI and the App's Lifespan
 
-**Before running the worker with `faststream run`, writing a `--factory`, a `lifespan`, or an
-`on_startup` or `after_startup` hook, read [app-and-cli.md](app-and-cli.md)** — the factory that
-builds the app, resources opened in `lifespan`, what each hook is not for.
+**Before writing the worker's entry point, a `lifespan`, or an `on_startup` or `after_startup` hook,
+read [app-and-cli.md](app-and-cli.md)** — the settings read by the entry point and the app built
+from them, resources opened in `lifespan`, what each hook is not for.
 
 ## Testing
 
