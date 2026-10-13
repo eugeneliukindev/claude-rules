@@ -135,18 +135,6 @@ tomorrow. Over-exposure is a security bug, not a formatting one, so the boundary
 from the domain object field by field and never serializes a domain or ORM object, `__dict__` or
 `vars()` by accident.
 
-**Example:**
-```python
-# WRONG — everything the user holds is published, password_hash included
-def to_payload(user: User) -> dict[str, object]:
-    return dataclasses.asdict(user)
-
-
-# CORRECT — the payload names what it publishes, and nothing else gets out
-def to_payload(user: User) -> dict[str, object]:
-    return {"user_id": str(user.user_id), "email": user.email}
-```
-
 ## External Calls
 
 ### Every call that leaves the process has an explicit timeout
@@ -155,35 +143,6 @@ def to_payload(user: User) -> dict[str, object]:
 outage into your own: a server that accepts the connection and never answers holds the worker
 forever. Client defaults are set once where the client is built; a call overrides them only with a
 named constant.
-
-**Example:**
-```python
-# WRONG — no timeout: one silent mail server stalls every worker that sends mail
-@final
-class SmtpMailer:
-    def __init__(self, *, host: str, port: int) -> None:
-        self._host = host
-        self._port = port
-
-    def send(self, message: EmailMessage) -> None:
-        with smtplib.SMTP(self._host, self._port) as smtp:
-            smtp.send_message(message)
-
-
-# CORRECT — the connection and every read on it give up at a stated deadline
-@final
-class SmtpMailer:
-    def __init__(
-        self, *, host: str, port: int, timeout_seconds: float = _SMTP_TIMEOUT_SECONDS
-    ) -> None:
-        self._host = host
-        self._port = port
-        self._timeout_seconds = timeout_seconds
-
-    def send(self, message: EmailMessage) -> None:
-        with smtplib.SMTP(self._host, self._port, timeout=self._timeout_seconds) as smtp:
-            smtp.send_message(message)
-```
 
 ### Only a transient failure is retried, and the adapter classifies it once
 

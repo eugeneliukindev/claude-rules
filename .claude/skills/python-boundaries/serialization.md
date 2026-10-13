@@ -83,22 +83,3 @@ stored and queued data tolerate unknown *added* fields and migrate an old versio
 request still rejects extras. A cache entry is the exception: its version is in its key, and an old
 entry is fetched again from the source, never migrated (`python-caching`). Binary formats follow the
 same rules — explicit schema, explicit version, adapters at the edge.
-
-**Example:**
-```python
-# WRONG — the payload says nothing about which shape it is
-def to_payload(event: ParcelDelivered) -> dict[str, object]:
-    return {
-        "tracking_number": event.tracking_number,
-        "delivered_at": event.delivered_at.isoformat(),
-    }
-
-
-# CORRECT — the shape names its version, so a consumer can migrate an old one on read
-def to_payload(event: ParcelDelivered) -> dict[str, object]:
-    return {
-        "version": _PARCEL_DELIVERED_VERSION,
-        "tracking_number": event.tracking_number,
-        "delivered_at": event.delivered_at.isoformat(),
-    }
-```

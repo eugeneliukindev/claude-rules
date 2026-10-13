@@ -30,15 +30,3 @@ def ticket_price(base_price: Money, *, fee: Money = _BOOKING_FEE) -> Money:
 **Why:** the reader's JSON parser turns a number into a float before anyone can stop it, and
 `19.90` arrives as `19.9`; the string carries the exact digits, and the consumer builds its
 `Decimal` from them.
-
-**Example:**
-```python
-# WRONG — the consumer's parser makes a float of it
-def to_payload(price: Money) -> dict[str, object]:
-    return {"amount": float(price.amount), "currency": price.currency}
-
-
-# CORRECT — the exact digits travel
-def to_payload(price: Money) -> dict[str, object]:
-    return {"amount": str(price.amount), "currency": price.currency}
-```

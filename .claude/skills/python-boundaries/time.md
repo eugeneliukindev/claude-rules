@@ -17,24 +17,6 @@ aware value; `datetime.utcnow()` is naive too, and deprecated. Conversion to loc
 `zoneinfo.ZoneInfo`, never a hand-written offset. `datetime.now(UTC)` appears in exactly one place:
 the system clock.
 
-**Example:**
-```python
-# WRONG — naive host-local time
-@final
-class SystemClock(Clock):
-    @override
-    def now(self) -> datetime:
-        return datetime.now()
-
-
-# CORRECT — aware UTC; this is the clock the composition root injects
-@final
-class SystemClock(Clock):
-    @override
-    def now(self) -> datetime:
-        return datetime.now(UTC)
-```
-
 ### A boundary rejects a datetime without an offset, and stores it as ISO-8601
 
 **Why:** `"2026-03-01T09:00:00"` is an instant in no zone at all, and whichever zone the reader
@@ -81,23 +63,6 @@ def access_expiry(issued_at: datetime) -> datetime:
 **Why:** code that reads the clock inside cannot be told when it is, so no test can fix the time.
 One abstract `now()`, the system clock above in production, a fixed or manual one in tests
 (`testing.md`), injected from the composition root (`python-wiring`).
-
-**Example:**
-```python
-# WRONG — "now" is read inside
-def issue_invitation(email: str) -> Invitation:
-    return Invitation(email=email, expires_at=datetime.now(UTC) + _INVITATION_LIFETIME)
-
-
-# CORRECT — the clock is a parameter
-class Clock(ABC):
-    @abstractmethod
-    def now(self) -> datetime: ...
-
-
-def issue_invitation(email: str, *, clock: Clock) -> Invitation:
-    return Invitation(email=email, expires_at=clock.now() + _INVITATION_LIFETIME)
-```
 
 ### A deadline or an elapsed time is measured on the monotonic clock
 
