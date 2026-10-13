@@ -29,10 +29,10 @@ locator. `main()` builds the broker, the resources and the router, and owns ever
 
 **Example:**
 ```python
-# WRONG — importing the module reads the environment and builds the broker and the session
+# WRONG — importing the module reads the environment and builds the broker and the client
 _settings = WorkerSettings()
 broker = RabbitBroker(_settings.amqp_url)
-inventory = HttpRoomInventory(niquests.AsyncSession(base_url=_settings.inventory_url))
+inventory = HttpRoomInventory(open_http_client(base_url=_settings.inventory_url))
 
 
 # CORRECT — the router is built from what main() hands it, and main() owns every lifetime

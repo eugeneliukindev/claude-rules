@@ -17,7 +17,7 @@ app = FastStream(broker)
 
 @app.on_startup
 async def _open_inventory(context: ContextRepo) -> None:
-    context.set_global("inventory", HttpRoomInventory(niquests.AsyncSession()))
+    context.set_global("inventory", HttpRoomInventory(open_http_client()))
 
 
 # CORRECT — `faststream run bookings.worker:build_app --factory`; the lifespan owns the session
