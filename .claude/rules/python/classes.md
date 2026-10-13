@@ -190,8 +190,8 @@ class HoursReporting:
 # WRONG — the repository is built inside: no test can hand in a fake
 @final
 class DocumentService:
-    def __init__(self, engine: Engine) -> None:
-        self._documents = PostgresDocumentRepository(engine)
+    def __init__(self, pool: DatabasePool) -> None:
+        self._documents = PostgresDocumentRepository(pool)
 
     def archive(self, document_id: DocumentId) -> None:
         self._documents.mark_archived(document_id)
@@ -282,21 +282,20 @@ def build_retention_report(day: date, *, documents: ExpiredDocuments) -> Retenti
 
 ### A class inherits only what it is; reuse is composition
 
-**Why:** a class inherits a contract, or a `Base` whose fields and methods it *is* — a `BaseModel`
-subclass is a model. Behaviour wanted only for its methods — an HTTP call, a retry, a formatter —
-arrives as a collaborator: a base class collecting helpers ties every subclass to all of them, and
-no test can swap one out.
-**Except:** a mixin adds behaviour over the class's own contract, holds no state and declares
-`__slots__ = ()`.
+**Why:** a class inherits a contract, or a `Base` whose fields and methods it *is* — an `Exception`
+subclass is an exception. Behaviour wanted only for its methods — an HTTP call, a retry, a formatter
+— arrives as a collaborator: a base class collecting helpers ties every subclass to all of them, and
+no test can swap one out. **Except:** a mixin adds behaviour over the class's own contract, holds no
+state and declares `__slots__ = ()`.
 
 **Example:**
 ```python
 # WRONG — inherits a helper class for its HTTP call: every notifier is now an HTTP client
 class _HttpHelpers:
-    _session: niquests.Session
+    _transport: HttpTransport
 
     def _post_json(self, path: str, payload: Mapping[str, object]) -> None:
-        self._session.post(path, json=payload, timeout=_TIMEOUT_SECONDS).raise_for_status()
+        self._transport.post(path, body=json.dumps(payload).encode(), timeout=_TIMEOUT_SECONDS)
 
 
 @final
