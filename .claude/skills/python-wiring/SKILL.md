@@ -247,7 +247,7 @@ def test_overdue_invoices_are_reminded() -> None:
 
 The root acquires, so the root releases; everything below it borrows.
 
-### Anything acquired is released by a context manager, and an own resource gets `@contextmanager`
+### An own resource is a `@contextmanager` named for its lifecycle, releasing in `finally`
 
 **Why:** `try/finally: close()` at every use site is the one that gets forgotten; a context manager
 named for the lifecycle — `managed_pool` — yields exactly once and cleans up in `finally`, so an

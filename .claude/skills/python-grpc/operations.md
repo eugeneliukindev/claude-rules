@@ -14,8 +14,7 @@
 `NOT_FOUND` until `set`, and `enter_graceful_shutdown()` turns every one `NOT_SERVING` and ignores
 later `set`s. A check that pings the database itself makes every probe wait on it, and a hung
 database hangs the probe; readiness that depends on the database is a task that sets the service's
-status, while `""` answers liveness (`python-container`). The stubs lack
-`grpc_health.v1.health.aio`, so that import carries `# type: ignore[attr-defined]` and its reason.
+status, while `""` answers liveness (`python-container`).
 
 **Example:**
 ```python

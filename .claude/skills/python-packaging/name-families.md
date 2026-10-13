@@ -15,8 +15,7 @@ Two names of the same shape for the same kind of job make that shape the rule fo
 ### A new public name takes the shape of its family
 
 **Why:** a user who has learned one member predicts the next; an outlier is looked up every time,
-and renaming it later costs a deprecation cycle — a library that waited renamed `isnot` to `is_not`
-and still carries every old name as an alias.
+and renaming it later costs a deprecation cycle (`naming.md`).
 
 **Example:**
 ```python

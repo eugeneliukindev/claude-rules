@@ -1,6 +1,6 @@
 # Log Output
 
-### Logging is configured once, in the entry point, as one JSON object per line
+### A log line is one JSON object, from a formatter that keeps every `extra=` field
 
 **Why:** a format string prints only the fields it names, so every `extra=` field and the filter's
 id are dropped. A JSON formatter writes every attribute the call sites and the filters add; it is

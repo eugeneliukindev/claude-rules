@@ -335,10 +335,9 @@ def describe(shipment: Shipment) -> str:
 
 ## Narrowing
 
-### An unknown value is `object`, narrowed at once; `Any` stays only where a library put it
+### `Any` stays only where a library put it, and an unknown value is narrowed at once
 
-**Why:** `Any` turns checking off, and a function returning it spreads that silence to every
-caller. Two positions earn it: an untyped third-party edge, narrowed on the next line; and a
+**Why:** two positions earn `Any`: an untyped third-party edge, narrowed on the next line; and a
 signature a library fixes — a validator, a hook — where `Any` stays in exactly the library's
 position and the arguments you control are typed. A return type is never widened to skip a branch:
 `-> Playlist | None` on a function that always returns one makes every caller check for nothing.
