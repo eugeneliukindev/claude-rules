@@ -121,8 +121,11 @@ MAX_LINES = 500
 
 
 class CsvExporter(Exporter):
+    def __init__(self, *, max_lines: int = MAX_LINES) -> None:
+        self._max_lines = max_lines
+
     def export(self, invoices: Sequence[Invoice]) -> bytes:
-        return render_csv(invoices[:MAX_LINES])
+        return render_csv(invoices[: self._max_lines])
 
 
 def reject(invoice: Invoice) -> None:
@@ -135,9 +138,12 @@ MAX_LINES: Final = 500
 
 @final
 class CsvExporter(Exporter):
+    def __init__(self, *, max_lines: int = MAX_LINES) -> None:
+        self._max_lines = max_lines
+
     @override
     def export(self, invoices: Sequence[Invoice]) -> bytes:
-        return render_csv(invoices[:MAX_LINES])
+        return render_csv(invoices[: self._max_lines])
 
 
 def reject(invoice: Invoice) -> Never:
