@@ -63,7 +63,8 @@ def free_rooms(stay: Stay, *, rooms: RoomRepository) -> list[Room]:
 ### What every caller would repeat lives inside the function
 
 **Why:** a parameter is for a value callers actually vary; a retry, an encoding or a reshaping that
-every caller passes or does the same way belongs in the body, written once.
+every caller passes or does the same way belongs in the body, written once. A value a caller may
+still need to change is not repeated either: it is defaulted in the signature (below).
 
 **Example:**
 ```python
@@ -149,6 +150,32 @@ def is_expired(token: AccessToken) -> bool:
 # CORRECT — both arrive as parameters
 def is_expired(token: AccessToken, *, now: datetime, lifetime: timedelta) -> bool:
     return now > token.issued_at + lifetime
+```
+
+### A plain value the body depends on — a limit, a path — is a keyword parameter with a default
+
+**Why:** a constant read inside the body is a setting no caller sees and no test or second entry
+point can change without patching the module; defaulted in the signature, callers still repeat
+nothing, and the value is visible where the function is called.
+**Except:** a value fixed by a format or a protocol — a file's magic bytes, a header's name — is not
+a choice, and stays in the body.
+
+**Example:**
+```python
+# WRONG — the limit is read inside: a test of the rejection must upload twenty megabytes
+def accept_upload(upload: Upload, *, storage: ObjectStorage) -> str:
+    if upload.size_bytes > _MAX_UPLOAD_BYTES:
+        raise UploadTooLargeError(upload.name, limit_bytes=_MAX_UPLOAD_BYTES)
+    return storage.put(upload.name, upload.content)
+
+
+# CORRECT — defaulted in the signature: no caller repeats it, any caller can replace it
+def accept_upload(
+    upload: Upload, *, storage: ObjectStorage, max_upload_bytes: int = _MAX_UPLOAD_BYTES
+) -> str:
+    if upload.size_bytes > max_upload_bytes:
+        raise UploadTooLargeError(upload.name, limit_bytes=max_upload_bytes)
+    return storage.put(upload.name, upload.content)
 ```
 
 ## Results
