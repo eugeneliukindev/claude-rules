@@ -59,18 +59,6 @@ def label_issue(issue: Issue, labels: Sequence[str]) -> Issue:
 every call site with a plain number fails the check. `float` already accepts `int`;
 `SupportsFloat` covers anything convertible. The `numbers` ABCs are for `isinstance` (below).
 
-**Example:**
-```python
-# WRONG — mean_speed([12, 15.5]) is a type error: int is not a numbers.Real to mypy
-def mean_speed(speeds_kmh: Sequence[numbers.Real]) -> float:
-    return float(sum(speeds_kmh)) / len(speeds_kmh)
-
-
-# CORRECT — float accepts int, and the call type-checks
-def mean_speed(speeds_kmh: Sequence[float]) -> float:
-    return sum(speeds_kmh) / len(speeds_kmh)
-```
-
 ## Runtime Checks
 
 ### A runtime check asks the ABC, never `hasattr` or a concrete type
@@ -108,22 +96,6 @@ def normalise_headers(headers: object) -> dict[str, str]:
 `Integral` — guard it if that matters — and `Decimal` is no `Real`, only a `numbers.Number`. A JSON
 decoder produces `int` and `float` and nothing else, so for a value you parsed yourself those two
 are the complete set, and `numbers` buys an import and no case.
-
-**Example:**
-```python
-# WRONG — a reading handed over by a numeric library as numpy.int64 is refused
-def to_celsius(reading: object) -> float:
-    if isinstance(reading, bool) or not isinstance(reading, (int, float)):
-        raise SensorValueError(reading)
-    return (float(reading) - 32) * 5 / 9
-
-
-# CORRECT — any real number passes; bool is still refused
-def to_celsius(reading: object) -> float:
-    if isinstance(reading, bool) or not isinstance(reading, numbers.Real):
-        raise SensorValueError(reading)
-    return (float(reading) - 32) * 5 / 9
-```
 
 ## Implementing a Container
 

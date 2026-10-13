@@ -16,32 +16,6 @@
 type it had before; with `Never` it knows that line is unreachable and narrows. `NoReturn` is the
 older spelling of the same type, which is also why `assert_never` works.
 
-**Example:**
-```python
-# WRONG — the checker thinks fail_not_found may return, so room is still Room | None
-def fail_not_found(entity: str, entity_id: object) -> None:
-    raise EntityNotFoundError(f"{entity} {entity_id} not found")
-
-
-def find_room(room_id: RoomId, *, rooms: Mapping[RoomId, Room]) -> Room:
-    room = rooms.get(room_id)
-    if room is None:
-        fail_not_found("room", room_id)
-    return room  # error: incompatible return value type
-
-
-# CORRECT — after the call nothing runs, and room is narrowed to Room
-def fail_not_found(entity: str, entity_id: object) -> Never:
-    raise EntityNotFoundError(f"{entity} {entity_id} not found")
-
-
-def find_room(room_id: RoomId, *, rooms: Mapping[RoomId, Room]) -> Room:
-    room = rooms.get(room_id)
-    if room is None:
-        fail_not_found("room", room_id)
-    return room
-```
-
 ### A parameter that must not receive interpolated input is `LiteralString`
 
 **Why:** a query builder, a shell helper or a template loader is safe only with text written in
@@ -122,21 +96,6 @@ read newton-seconds, and both sides were plain floats. Arithmetic on a `NewType`
 type, so the check holds at signatures, not inside expressions — and the reader of a call site still
 has only the name, so the unit stays in it.
 
-**Example:**
-```python
-# WRONG — any float is accepted, metres included
-def schedule_retry(job: Job, delay: float, *, queue: RetryQueue) -> None:
-    queue.push(job, delay_seconds=delay)
-
-
-# CORRECT — the unit is in the type and in the name; schedule_retry(job, Meters(5.0)) is an error
-Seconds = NewType("Seconds", float)
-
-
-def schedule_retry(job: Job, delay_seconds: Seconds, *, queue: RetryQueue) -> None:
-    queue.push(job, delay_seconds=delay_seconds)
-```
-
 ### A returned `Iterator` is consumed once; anything read twice returns a collection
 
 **Why:** a generator annotated `Iterable` invites a second loop, and the second loop sees nothing —
@@ -188,23 +147,6 @@ def flush_all(sinks: Iterable[object], *, timeout_seconds: float) -> None:
 **Why:** a value test passes whatever type the function now returns, so a refactor that widens
 `Decimal` to `Decimal | None` ships to every user unnoticed. `reveal_type()` is for debugging and is
 never committed.
-
-**Example:**
-```python
-# WRONG — the test holds the value, not the type users rely on
-def test_parse_amount_reads_decimal_string() -> None:
-    amount = parse_amount("12.50")
-
-    assert amount == Decimal("12.50")
-
-
-# CORRECT — a widened return type fails the type check of the test
-def test_parse_amount_reads_decimal_string() -> None:
-    amount = parse_amount("12.50")
-
-    assert_type(amount, Decimal)
-    assert amount == Decimal("12.50")
-```
 
 ## Absence and Failure
 
@@ -304,15 +246,3 @@ def import_rows(rows: Iterable[CsvRow]) -> list[ImportOutcome]:
 **Why:** `bytes | bytearray | memoryview` misses `array.array`, `mmap` and every other buffer;
 `Buffer` (PEP 688, `collections.abc` from 3.12) names the protocol itself. `SupportsIndex` and
 `SupportsFloat` say that only the conversion is needed.
-
-**Example:**
-```python
-# WRONG — an mmap or an array.array is refused, although the function only hashes bytes
-def checksum(data: bytes | bytearray | memoryview) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-# CORRECT — any object exposing the buffer protocol
-def checksum(data: Buffer) -> str:
-    return hashlib.sha256(data).hexdigest()
-```

@@ -279,28 +279,6 @@ replaces; `Flag` combines bits; a plain `Enum` with `auto()` has no wire form to
 with a raw literal survives a renamed value and turns false without an error. An enum is a
 singular noun, its members states or kinds.
 
-**Example:**
-```python
-# WRONG — a plain Enum on the wire, compared through its raw value
-class TicketPriority(Enum):
-    LOW = "low"
-    HIGH = "high"
-
-
-def needs_page(ticket: Ticket) -> bool:
-    return ticket.priority.value == "high"
-
-
-# CORRECT — a StrEnum serializes as itself, and the comparison names the member
-class TicketPriority(StrEnum):
-    LOW = "low"
-    HIGH = "high"
-
-
-def needs_page(ticket: Ticket) -> bool:
-    return ticket.priority is TicketPriority.HIGH
-```
-
 ### A field that belongs to one state makes each state its own variant
 
 **Why:** a status beside optional fields lets a delivered shipment have no delivery time. Variants
@@ -364,21 +342,6 @@ caller. Two positions earn it: an untyped third-party edge, narrowed on the next
 signature a library fixes — a validator, a hook — where `Any` stays in exactly the library's
 position and the arguments you control are typed. A return type is never widened to skip a branch:
 `-> Playlist | None` on a function that always returns one makes every caller check for nothing.
-
-**Example:**
-```python
-# WRONG — Any escapes, and every caller's flags.anything type-checks
-def load_feature_flags(path: Path) -> Any:
-    return json.loads(path.read_bytes())
-
-
-# CORRECT — narrowed where it was read; only a typed value leaves
-def load_feature_flags(path: Path) -> FeatureFlags:
-    raw: object = json.loads(path.read_bytes())
-    if not isinstance(raw, Mapping):
-        raise ConfigurationError(f"{path} must hold a JSON object")
-    return FeatureFlags.from_mapping(raw)
-```
 
 ### `cast()` is a claim; `isinstance` or a `TypeIs` predicate is a check
 

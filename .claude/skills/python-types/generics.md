@@ -41,42 +41,12 @@ them out. A `TypeVar` is a module-level name, so it is private and takes the PEP
 `_KT`, `_VT`, `_P`, `_R`. Where several share a module, the role goes in front of the suffix —
 `_BackendT`, `_ModelT` — and variance after it, `_ModelT_co`, which ruff's `PLC0105` checks.
 
-**Example:**
-```python
-# WRONG — below 3.12: a public name, no suffix, and a role the bound already states
-ModelType = TypeVar("ModelType", bound=WireModel)
-
-
-def parse_all(model_type: type[ModelType], payloads: Iterable[bytes]) -> list[ModelType]:
-    return [model_type.from_json(payload) for payload in payloads]
-
-
-# CORRECT — private and suffixed, sorted beside its variance twins
-_ModelT = TypeVar("_ModelT", bound=WireModel)
-
-
-def parse_all(model_type: type[_ModelT], payloads: Iterable[bytes]) -> list[_ModelT]:
-    return [model_type.from_json(payload) for payload in payloads]
-```
-
 ### A type parameter the body relies on is bounded, and a parameter takes a read-only collection
 
 **Why:** an unbounded parameter whose body reads an attribute promises callers more than it can
 keep, and the checker says so. `Sequence` and `Mapping` in parameters, concrete types in returns,
 handle variance without ever writing `covariant=`: a `list[T]` parameter refuses a tuple and a
 `list` of a subtype.
-
-**Example:**
-```python
-# WRONG — T promises nothing although the body needs an id, and list[T] refuses a tuple
-def index_by_id[T](devices: list[T]) -> dict[DeviceId, T]:
-    return {device.device_id: device for device in devices}  # error: "T" has no "device_id"
-
-
-# CORRECT — the bound states the requirement; Sequence takes any read-only sequence
-def index_by_id[T: Device](devices: Sequence[T]) -> dict[DeviceId, T]:
-    return {device.device_id: device for device in devices}
-```
 
 ## Decorators and Methods
 
