@@ -79,7 +79,7 @@ def main() -> None:
 
 ### The statements still live in `main()` and functions, never at module level
 
-**Why:** `main()` builds what it needs — the session, the engine — and uses it inside a `with`;
+**Why:** `main()` builds what it needs — the pool, the client — and uses it inside a `with`;
 statements at module level run on import, so the file cannot be imported by a test or promoted
 without running.
 
@@ -105,28 +105,28 @@ if __name__ == "__main__":
 ### The standard library comes first, and any other package is declared in the script's own header
 
 **Why:** `json` rather than `orjson`, `argparse` rather than a CLI framework; a dependency is worth
-it when it replaces real code — an HTTP client, a database driver. Declared in the PEP 723 block, it
-runs anywhere with one command and never against whatever happens to be installed: `uv run
-script.py` builds an isolated environment from the block, `uv add --script script.py
-'niquests>=3.21'` edits it, `uv lock --script script.py` writes `script.py.lock` for a script that
-must give the same result in a month. `#!/usr/bin/env -S uv run --script` as the first line makes
-the file executable.
+it when it replaces real code — a spreadsheet writer, a database driver. Declared in the PEP 723
+block, it runs anywhere with one command and never against whatever happens to be installed:
+`uv run script.py` builds an isolated environment from the block,
+`uv add --script script.py 'openpyxl>=3.1'` edits it, `uv lock --script script.py` writes
+`script.py.lock` for a script that must give the same result in a month.
+`#!/usr/bin/env -S uv run --script` as the first line makes the file executable.
 
 **Example:**
 ```python
-# WRONG — assumes niquests is installed wherever the script happens to run
-"""Download the nightly export. Run: python fetch_export.py URL."""
+# WRONG — assumes openpyxl is installed wherever the script happens to run
+"""Convert the nightly export to a spreadsheet. Run: python export_to_xlsx.py CSV."""
 
-import niquests
+import openpyxl
 
 # CORRECT — the header declares the floor and the dependency; uv run builds the environment
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["niquests>=3.21"]
+# dependencies = ["openpyxl>=3.1"]
 # ///
-"""Download the nightly export. Run: uv run fetch_export.py URL."""
+"""Convert the nightly export to a spreadsheet. Run: uv run export_to_xlsx.py CSV."""
 
-import niquests
+import openpyxl
 ```
 
 ### Under `basicConfig`, what the reader must see goes in the message, not in `extra=`
