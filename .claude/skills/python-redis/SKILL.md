@@ -89,23 +89,6 @@ that raises `MaxConnectionsError` — a `ConnectionError` — at once (*measured
 `BlockingConnectionPool` waits instead, up to its `timeout`. An adapter that catches `RedisError`
 counts it with the rest; the size is a named setting, not a default nobody chose.
 
-**Example:**
-```python
-# WRONG — the default 100, and a burst past it raises from every call at once
-def build_redis(*, url: str, timeout_seconds: float) -> Redis:
-    return Redis.from_url(url, socket_timeout=timeout_seconds, retry=Retry(NoBackoff(), retries=0))
-
-
-# CORRECT — sized for this process's concurrency, from settings
-def build_redis(*, url: str, timeout_seconds: float, max_connections: int) -> Redis:
-    return Redis.from_url(
-        url,
-        socket_timeout=timeout_seconds,
-        retry=Retry(NoBackoff(), retries=0),
-        max_connections=max_connections,
-    )
-```
-
 ### A reply is narrowed with `isinstance`, because `decode_responses` decides its type at runtime
 
 **Why:** every string reply is typed `bytes | str`. A client for payloads keeps the default

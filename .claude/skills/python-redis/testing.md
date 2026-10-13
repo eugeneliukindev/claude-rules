@@ -63,24 +63,3 @@ async def test_killed_subscription_raises_lost(channel: ParcelEventChannel, admi
 **Why:** a TTL lost on the way — an `ex` that became zero and was refused, an option dropped —
 leaves a key that never expires; `ttl` answers `-1` for one, so the test asserts every TTL is
 positive, never only that one exists.
-
-**Example:**
-```python
-# WRONG — "not None" passes for -1, a key with no expiry
-async def test_every_written_key_expires(redis_client: Redis) -> None:
-    await RedisCache(redis_client).set(_PROFILE_KEY, _PROFILE_PAYLOAD, ttl=_PROFILE_TTL)
-
-    ttls_seconds = [await redis_client.ttl(key) async for key in redis_client.scan_iter()]
-
-    assert all(ttl_seconds is not None for ttl_seconds in ttls_seconds)
-
-
-# CORRECT — every key has a positive TTL
-async def test_every_written_key_expires(redis_client: Redis) -> None:
-    await RedisCache(redis_client).set(_PROFILE_KEY, _PROFILE_PAYLOAD, ttl=_PROFILE_TTL)
-
-    ttls_seconds = [await redis_client.ttl(key) async for key in redis_client.scan_iter()]
-
-    assert ttls_seconds
-    assert all(ttl_seconds > 0 for ttl_seconds in ttls_seconds)
-```
