@@ -59,18 +59,6 @@ already imported, a surface `safe_load` does not have. XML goes through `defused
 entity expansion and external entities. No `eval`, `exec` or `pickle.loads` on outside data;
 `ast.literal_eval` when the input really is a Python literal.
 
-**Example:**
-```python
-# WRONG — FullLoader still resolves !!python/name tags to importable objects
-def parse_import_manifest(document: str) -> object:
-    return yaml.load(document, Loader=yaml.FullLoader)
-
-
-# CORRECT — mappings, lists and scalars only; a python tag is a ConstructorError
-def parse_import_manifest(document: str) -> object:
-    return yaml.safe_load(document)
-```
-
 ### Every external input is bounded in size, decompression included
 
 **Why:** validation includes size, not just shape — a body, a page, a collection, a decompressed
@@ -121,19 +109,6 @@ def can_refund(agent: Agent) -> bool:
 
 **Why:** `==` stops at the first differing byte, so the response time tells an attacker how much of
 a guessed signature was right.
-
-**Example:**
-```python
-# WRONG — the comparison is as fast as the guess is wrong
-def is_authentic(payload: bytes, signature: str, *, secret: bytes) -> bool:
-    return hmac.new(secret, payload, hashlib.sha256).hexdigest() == signature
-
-
-# CORRECT — constant time, whatever the inputs
-def is_authentic(payload: bytes, signature: str, *, secret: bytes) -> bool:
-    expected = hmac.new(secret, payload, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
-```
 
 ## Passwords
 

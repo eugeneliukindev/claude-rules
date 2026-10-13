@@ -27,18 +27,6 @@ def attachment_path(upload_root: Path, filename: str) -> Path:
 
 **Why:** the user's filename as the path is `..`, a device name, or another upload's name.
 
-**Example:**
-```python
-# WRONG — the user's filename becomes the path
-def storage_path(upload_root: Path, upload: Upload) -> Path:
-    return upload_root / upload.filename
-
-
-# CORRECT — the stored name is generated; the user's name is kept beside it for display
-def storage_path(upload_root: Path, upload: Upload) -> Path:
-    return upload_root / uuid.uuid4().hex
-```
-
 ### A tar archive is extracted with `filter="data"`
 
 **Why:** an entry named `../../.ssh/authorized_keys` writes wherever it points. The `data` filter
