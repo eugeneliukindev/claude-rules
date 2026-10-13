@@ -1,8 +1,9 @@
 ---
 name: python-persistence
 description: >-
-  Designs persistence whatever the ORM: a transaction per use case, a unit of work, repositories
-  returning domain objects, N+1, keyset pagination, optimistic locking, upserts and SKIP LOCKED.
+  Designs persistence whatever the ORM: a transaction per use case committed by the service,
+  repositories returning domain objects, N+1, keyset pagination, optimistic locking, upserts and
+  SKIP LOCKED.
   Use when deciding where a transaction begins and ends, writing a repository, paginating a query,
   or guarding against lost updates.
 paths:
@@ -18,15 +19,16 @@ These rules hold for any ORM or query builder. How to spell them in SQLAlchemy i
 
 ## Transactions
 
-### One use case is one transaction, opened by the service in a unit of work
+### One use case is one transaction: the edge opens it, repositories share it, the service commits
 
-**Why:** the service method is the boundary — entry points do not manage transactions, and
-repositories do not commit, or a failed second write leaves the first one committed. The unit of
-work is a context manager that opens one transaction, exposes the repositories bound to it, commits
-on a clean exit, rolls back on an exception and releases its connection; one kept past the use case
-holds a pooled connection and serves what it read earlier to the next one. The `with` is written in
-the service — a decorator or middleware that wraps everything hides the boundary and makes a
-two-transaction use case impossible to see.
+**Why:** a repository that commits its own write leaves the first write of a use case committed
+when the second fails. The edge that receives the work — a request, a message — opens one
+transaction per request or message it receives and closes it in an `async with`, which rolls back
+whatever was not committed; the repositories are built on that transaction and never commit; the
+service commits as its last step, so the use case decides its boundary and its return means
+committed. A transaction kept past the request holds a pooled connection and serves what it read
+earlier to the next one. `Transaction` is a `Protocol` with `commit` and `rollback`: the driver's
+session or connection fits it as it is, and it cannot be made to inherit.
 
 **Example:**
 ```python
@@ -37,29 +39,33 @@ class TicketBooking:
         self._bookings = bookings
         self._seats = seats
 
-    def book(self, request: BookingRequest) -> BookingId:
-        booking_id = self._bookings.add(Booking.create(request))
-        self._seats.reserve(request.seat_ids)
+    async def book(self, request: BookingRequest) -> BookingId:
+        booking_id = await self._bookings.add_and_commit(Booking.create(request))
+        await self._seats.reserve_and_commit(request.seat_ids)
         return booking_id
 
 
-# CORRECT — one unit of work: both writes commit together or neither does
+# CORRECT — both repositories write in the request's transaction, and the service commits it
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(
+        self, *, bookings: BookingRepository, seats: SeatRepository, transaction: Transaction
+    ) -> None:
+        self._bookings = bookings
+        self._seats = seats
+        self._transaction = transaction
 
-    def book(self, request: BookingRequest) -> BookingId:
-        with self._unit_of_work() as unit:
-            booking_id = unit.bookings.add(Booking.create(request))
-            unit.seats.reserve(request.seat_ids)
+    async def book(self, request: BookingRequest) -> BookingId:
+        booking_id = await self._bookings.add(Booking.create(request))
+        await self._seats.reserve(request.seat_ids)
+        await self._transaction.commit()
         return booking_id
 ```
 
-### Nothing slow or irreversible runs inside a transaction
+### Nothing slow or irreversible runs before the commit
 
 **Why:** a slow call holds row locks for its whole duration, and a rollback cannot unsend an email.
-Side effects run after commit; one that must be atomic with the data is an outbox row written in
+Side effects run after the commit; one that must be atomic with the data is an outbox row written in
 the same transaction and published separately (the consuming side: `python-workers`).
 
 **Example:**
@@ -67,76 +73,103 @@ the same transaction and published separately (the consuming side: `python-worke
 # WRONG — the mail server's latency holds row locks, and a rollback cannot unsend the email
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork], mailer: Mailer) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(
+        self, *, bookings: BookingRepository, transaction: Transaction, mailer: Mailer
+    ) -> None:
+        self._bookings = bookings
+        self._transaction = transaction
         self._mailer = mailer
 
-    def book(self, request: BookingRequest) -> BookingId:
-        with self._unit_of_work() as unit:
-            booking_id = unit.bookings.add(Booking.create(request))
-            self._mailer.send_confirmation(request.holder_email, booking_id)
+    async def book(self, request: BookingRequest) -> BookingId:
+        booking_id = await self._bookings.add(Booking.create(request))
+        await self._mailer.send_confirmation(request.holder_email, booking_id)
+        await self._transaction.commit()
         return booking_id
 
 
-# CORRECT — the email goes after commit, when the booking it confirms exists
+# CORRECT — the email goes after the commit, when the booking it confirms exists
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork], mailer: Mailer) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(
+        self, *, bookings: BookingRepository, transaction: Transaction, mailer: Mailer
+    ) -> None:
+        self._bookings = bookings
+        self._transaction = transaction
         self._mailer = mailer
 
-    def book(self, request: BookingRequest) -> BookingId:
-        with self._unit_of_work() as unit:
-            booking_id = unit.bookings.add(Booking.create(request))
-        self._mailer.send_confirmation(request.holder_email, booking_id)
+    async def book(self, request: BookingRequest) -> BookingId:
+        booking_id = await self._bookings.add(Booking.create(request))
+        await self._transaction.commit()
+        await self._mailer.send_confirmation(request.holder_email, booking_id)
         return booking_id
 ```
 
-### An async unit of work is entered with `async with`
+### A deadlock or serialization failure rolls back and re-runs the whole use case
 
-**Why:** a cancelled task must roll back like a failed one, and the cancellation reaches
-`__aexit__` as an exception. A `begin()` … `commit()` pair written by hand commits nothing and rolls
-back nothing when the task is cancelled between them, and the connection goes back to the pool
-mid-transaction.
-
-### A deadlock or serialization failure retries the whole unit of work, at the level that raises it
-
-**Why:** the database has already rolled the transaction back, so retrying the statement inside it
-is meaningless; the retry re-runs the use case from the start, which is safe only because side
-effects run after commit. This is the one retry above the adapter (`python-boundaries`). A
-serialization failure exists only under `REPEATABLE READ` or `SERIALIZABLE` — under the default
-`READ COMMITTED` the second of two read-then-update transactions overwrites the first without an
-error, and the retry never fires — so a use case that relies on it opens its unit of work at the
-stricter level. The `return` sits inside the loop: a value assigned there and returned after it is
-what mypy's `possibly-undefined` reports.
+**Why:** the database has already aborted the transaction, so retrying the statement inside it is
+meaningless; the service rolls back and runs the use case again from the start, which is safe only
+because side effects run after the commit. This is the one retry above the adapter
+(`python-boundaries`). A serialization failure exists only under `REPEATABLE READ` or
+`SERIALIZABLE` — under the default `READ COMMITTED` the second of two read-then-update transactions
+overwrites the first without an error, and the retry never fires — so the edge opens the
+transaction of a use case that relies on it at the stricter level.
 
 **Example:**
 ```python
-# WRONG — the retry runs inside a transaction the database has already rolled back
+# WRONG — the failed statement is retried inside a transaction the database has already aborted
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: UnitOfWorkFactory) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(
+        self,
+        *,
+        bookings: BookingRepository,
+        seats: SeatRepository,
+        transaction: Transaction,
+        conflict_attempts: int = _CONFLICT_ATTEMPTS,
+    ) -> None:
+        self._bookings = bookings
+        self._seats = seats
+        self._transaction = transaction
+        self._conflict_attempts = conflict_attempts
 
-    def book(self, request: BookingRequest) -> BookingId:
-        with self._unit_of_work() as unit:
-            for attempt in _RETRY_ON_CONFLICT:
-                with attempt:
-                    return unit.bookings.add(Booking.create(request))
-        raise AssertionError("unreachable: the last attempt's error propagates from the loop")
+    async def book(self, request: BookingRequest) -> BookingId:
+        for _ in range(self._conflict_attempts):
+            try:
+                booking_id = await self._bookings.add(Booking.create(request))
+                break
+            except ConcurrentUpdateError:
+                continue
+        await self._transaction.commit()
+        return booking_id
 
 
-# CORRECT — each attempt opens a fresh unit of work, at the level that can raise the conflict
+# CORRECT — each attempt rolls back, then runs the whole use case and its commit again
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: UnitOfWorkFactory) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(
+        self,
+        *,
+        bookings: BookingRepository,
+        seats: SeatRepository,
+        transaction: Transaction,
+        conflict_attempts: int = _CONFLICT_ATTEMPTS,
+    ) -> None:
+        self._bookings = bookings
+        self._seats = seats
+        self._transaction = transaction
+        self._conflict_attempts = conflict_attempts
 
-    def book(self, request: BookingRequest) -> BookingId:
-        for attempt in _RETRY_ON_CONFLICT:
-            with attempt, self._unit_of_work(isolation=Isolation.REPEATABLE_READ) as unit:
-                return unit.bookings.add(Booking.create(request))
-        raise AssertionError("unreachable: the last attempt's error propagates from the loop")
+    async def book(self, request: BookingRequest) -> BookingId:
+        for _ in range(self._conflict_attempts):
+            try:
+                booking_id = await self._bookings.add(Booking.create(request))
+                await self._seats.reserve(request.seat_ids)
+                await self._transaction.commit()
+            except ConcurrentUpdateError:
+                await self._transaction.rollback()
+                continue
+            return booking_id
+        raise BookingConflictError(request.event_id)
 ```
 
 ### Every database connection carries server-side timeouts
@@ -197,25 +230,25 @@ statements a use case runs, and fails the day it grows.
 # WRONG — one query per booking: a hundred bookings are a hundred and one statements
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, bookings: BookingRepository, holders: HolderRepository) -> None:
+        self._bookings = bookings
+        self._holders = holders
 
-    def holders_of(self, event_id: EventId) -> list[Holder]:
-        with self._unit_of_work() as unit:
-            bookings = unit.bookings.for_event(event_id)
-            return [unit.holders.get(booking.holder_id) for booking in bookings]
+    async def holders_of(self, event_id: EventId) -> list[Holder]:
+        bookings = await self._bookings.for_event(event_id)
+        return [await self._holders.get(booking.holder_id) for booking in bookings]
 
 
 # CORRECT — one query for the holders of every booking at once
 @final
 class TicketBooking:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, bookings: BookingRepository, holders: HolderRepository) -> None:
+        self._bookings = bookings
+        self._holders = holders
 
-    def holders_of(self, event_id: EventId) -> list[Holder]:
-        with self._unit_of_work() as unit:
-            bookings = unit.bookings.for_event(event_id)
-            return unit.holders.get_many([booking.holder_id for booking in bookings])
+    async def holders_of(self, event_id: EventId) -> list[Holder]:
+        bookings = await self._bookings.for_event(event_id)
+        return await self._holders.get_many([booking.holder_id for booking in bookings])
 ```
 
 ## Idempotent Inserts
