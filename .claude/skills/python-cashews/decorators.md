@@ -7,7 +7,9 @@
 - An explicit key template, always
 - `condition=NOT_NONE`, and `ttl` never `None`
 - No `jwt` filter in a key
-- `protected=True` has no shield
+- `protected=True`, the default, has no shield
+- `failover` names its exceptions
+- `circuit_breaker` sets `min_calls`
 - `early`, `soft` and `hit` need pickle
 
 `@cache(...)` caches a function's result with no adapter and no service code — and with no contract,
@@ -104,14 +106,15 @@ async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
     return _feed_to_payload(await feeds.latest_for(user_id))
 ```
 
-### `protected=True` is single-flight without a shield, and `early`, `soft` and `hit` need pickle
+### `protected=True`, the default, has no shield; `early`, `soft` and `hit` need pickle
 
-**Why:** *measured*, cancelling the first caller — which every deadline eventually does — cancelled
-the load the second caller was awaiting; where that matters, the adapter shape with the service's
-shielded single-flight is used. `@cache.early`, `@cache.soft` and `@cache.hit` store
+**Why:** `@cache`, `@cache.early` and `@cache.soft` take `protected=True` unless told otherwise
+(cashews 7.6). *Measured*, cancelling the first caller — which every deadline eventually does —
+cancelled the load the second caller was awaiting; where that matters, the adapter shape with the
+service's shielded single-flight is used. `@cache.early`, `@cache.soft` and `@cache.hit` store
 `[datetime, value]`, which needs pickle: under the null pickler they silently never cache
-(*measured*: every call ran), under json they raise `TypeError`. Expiry is spread with the
-adapter's jittered TTL and the refresh marker of `python-caching` instead.
+(*measured*: every call ran), under json they raise `TypeError`. Expiry is spread with the adapter's
+jittered TTL and the refresh marker of `python-caching` instead.
 
 **Example:**
 ```python
@@ -125,4 +128,54 @@ async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
 @profile_cache(ttl=_FEED_TTL, key="feed:v1:{user_id}", condition=NOT_NONE)
 async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
     return _feed_to_payload(await feeds.latest_for(user_id))
+```
+
+### `@cache.failover` names the transient errors it answers with the last good value
+
+**Why:** with no `exceptions`, it catches everything — *measured*, a `KeyError` raised by a bug in
+the function came back as the cached value, and the bug never surfaced. Named, only an outage serves
+stale data; anything else escapes. It needs one success first: before that, the error escapes too.
+
+**Example:**
+```python
+# WRONG — every exception, a bug's included, is answered with yesterday's rates
+@rates_cache.failover(ttl=_RATES_FAILOVER_TTL, key="rates:v1:{currency}")
+async def fetch_rates(currency: Currency, *, rates: RateSource) -> bytes:
+    return _rates_to_payload(await rates.latest(currency))
+
+
+# CORRECT — only the source being down serves the last good rates
+@rates_cache.failover(
+    ttl=_RATES_FAILOVER_TTL, key="rates:v1:{currency}", exceptions=(RateSourceUnavailableError,)
+)
+async def fetch_rates(currency: Currency, *, rates: RateSource) -> bytes:
+    return _rates_to_payload(await rates.latest(currency))
+```
+
+### `@cache.circuit_breaker` sets `min_calls`, so one failure does not open it
+
+**Why:** `min_calls` defaults to 1, so the error rate is judged on a single call — *measured*, with
+`errors_rate=50`, the first `ConnectionError` opened the circuit, and the next calls, which would
+have succeeded, got `CircuitBreakerOpen` for the whole `ttl`. `min_calls` makes the rate a rate.
+`exceptions` names what counts as a failure, as for `failover`.
+
+**Example:**
+```python
+# WRONG — the first failed call opens the circuit for everyone, for thirty seconds
+@rates_cache.circuit_breaker(errors_rate=50, period="1m", ttl="30s", key="rates-source")
+async def fetch_latest(currency: Currency, *, rates: RateSource) -> Rates:
+    return await rates.latest(currency)
+
+
+# CORRECT — opened by half of at least twenty calls failing, and only by the source's outage
+@rates_cache.circuit_breaker(
+    errors_rate=50,
+    period="1m",
+    ttl="30s",
+    min_calls=_CIRCUIT_MIN_CALLS,
+    exceptions=(RateSourceUnavailableError,),
+    key="rates-source",
+)
+async def fetch_latest(currency: Currency, *, rates: RateSource) -> Rates:
+    return await rates.latest(currency)
 ```
