@@ -34,29 +34,6 @@ call on redis with the null pickler. `cache.disabling()` switches the cache off 
 context to test the function's own logic, and still needs a `setup()`, or the call raises
 `NotConfiguredError`.
 
-**Example:**
-```python
-# WRONG — passes on mem://, where nothing is serialized, and caches nothing in production
-async def test_feed_is_cached(feeds: CountingFeedReader) -> None:
-    profile_cache.setup("mem://")
-
-    await fetch_feed_payload(_USER_ID, feeds=feeds)
-    await fetch_feed_payload(_USER_ID, feeds=feeds)
-
-    assert feeds.calls == 1
-
-
-# CORRECT — the root's setup against real redis
-@pytest.mark.integration
-async def test_feed_is_cached(redis_url: str, feeds: CountingFeedReader) -> None:
-    setup_profile_cache(url=redis_url)
-
-    await fetch_feed_payload(_USER_ID, feeds=feeds)
-    await fetch_feed_payload(_USER_ID, feeds=feeds)
-
-    assert feeds.calls == 1
-```
-
 ### Warnings stay errors, with the one deprecated `close()` message ignored by name
 
 **Why:** cashews' `close()` calls redis-py's deprecated `close()`, so a suite with warnings as

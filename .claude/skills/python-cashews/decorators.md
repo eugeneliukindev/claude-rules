@@ -63,20 +63,6 @@ injected repository or `self` enters as its `repr`, which holds a memory address
 instances of one class never shared an entry. A template's placeholders are checked against the
 parameters when the function is decorated; a parameter missing from the template is not.
 
-**Example:**
-```python
-# WRONG — the key names the page, not the user: one user's feed is served to everyone
-@profile_cache(ttl=_FEED_TTL, key="feed:v1", condition=NOT_NONE)
-async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
-    return _feed_to_payload(await feeds.latest_for(user_id))
-
-
-# CORRECT — the user is in the key, the reader is not
-@profile_cache(ttl=_FEED_TTL, key="feed:v1:{user_id}", condition=NOT_NONE)
-async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
-    return _feed_to_payload(await feeds.latest_for(user_id))
-```
-
 ### `condition=NOT_NONE` unless absence is cached on purpose, and `ttl` is never `None`
 
 **Why:** the default condition stores every result, `None` included (*measured*) — negative caching
@@ -147,16 +133,3 @@ async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
 **Why:** `CacheRequestControlMiddleware` and `CacheDeleteMiddleware` let any client skip or clear
 the cache with a request header — `Cache-Control: no-cache`, `Clear-Site-Data: "cache"` — and each
 such request goes to the source; a client that sends them on every request turns the cache off.
-
-**Example:**
-```python
-# WRONG — any client can bypass or wipe the cache with one header
-def add_cache_middlewares(app: FastAPI) -> None:
-    app.add_middleware(CacheRequestControlMiddleware)
-    app.add_middleware(CacheDeleteMiddleware)
-
-
-# CORRECT — the app the public reaches has neither; invalidation is the service's, after commit
-def add_cache_middlewares(app: FastAPI) -> None:
-    return None
-```
