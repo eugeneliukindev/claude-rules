@@ -125,7 +125,7 @@ def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int
     )
 ```
 
-### A unit of work opens its session with `session_factory.begin()`
+### A transaction opens its session with `session_factory.begin()`
 
 **Why:** `begin()` commits on a clean exit, rolls back on an error and closes the session either
 way; a session opened and committed by hand leaves the transaction open on its connection when the
@@ -135,17 +135,17 @@ use case raises.
 ```python
 # WRONG — an error in the use case skips commit and leaves the transaction open
 @contextmanager
-def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOfWork]:
+def transaction(session_factory: sessionmaker[Session]) -> Iterator[Session]:
     session = session_factory()
-    yield UnitOfWork(courses=SqlCourseRepository(session=session))
+    yield session
     session.commit()
 
 
 # CORRECT — commit on a clean exit, rollback on an error, close either way
 @contextmanager
-def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOfWork]:
+def transaction(session_factory: sessionmaker[Session]) -> Iterator[Session]:
     with session_factory.begin() as session:
-        yield UnitOfWork(courses=SqlCourseRepository(session=session))
+        yield session
 ```
 
 ### A session whose rows are read after commit sets `expire_on_commit=False`
@@ -154,7 +154,7 @@ def open_unit_of_work(session_factory: sessionmaker[Session]) -> Iterator[UnitOf
 on an async session. With `lazy="raise"` it is not only async: a relationship loaded by
 `selectinload` is expired at `commit()` like any attribute, and the next read raises
 `InvalidRequestError` (*measured* on 2.1.4). Better still, the repository maps rows to domain
-objects before the unit of work exits (`python-persistence`).
+objects before the transaction exits (`python-persistence`).
 
 **Example:**
 ```python
@@ -170,12 +170,12 @@ def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
 
 ### A repository that needs a generated id flushes; it never commits
 
-**Why:** `commit()` ends the unit of work's transaction from inside one repository; `flush()`
+**Why:** `commit()` ends the use case's transaction from inside one repository; `flush()`
 sends the `INSERT`, fills the primary key, and leaves the transaction open.
 
 **Example:**
 ```python
-# WRONG — commit ends the unit of work's transaction from inside one repository
+# WRONG — commit ends the use case's transaction from inside one repository
 @final
 class SqlEnrollmentRepository(EnrollmentRepository):
     def __init__(self, *, session: Session) -> None:
