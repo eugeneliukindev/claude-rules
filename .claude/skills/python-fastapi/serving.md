@@ -8,21 +8,25 @@ The WebSocket limits are in [streaming.md](streaming.md); the container start co
 **Why:** `uvicorn --factory` calls a function with no arguments, so the app module would have to
 read the environment itself — the one place allowed to read it is the entry point, which builds the
 settings once and unpacks the fields `create_app` takes. It runs `uvicorn.Server` with that app, the
-server's options from the same settings; tests call `create_app` with their own values.
+server's options from the server's own settings (`python-wiring`); tests call `create_app` with
+their own values.
 
 **Example:**
 ```python
 # WRONG — `uvicorn --factory tracker.api:app_from_environment`: the app module reads the environment
 def app_from_environment() -> FastAPI:
-    settings = Settings()
-    return create_app(database_url=settings.database_url)
+    app_settings = AppSettings()
+    return create_app(database_url=app_settings.database_url)
 
 
 # CORRECT — `tracker-server = "tracker.server:main"`: the entry point reads, the app receives
 def main() -> None:
-    settings = Settings()
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
     config = uvicorn.Config(
-        create_app(database_url=settings.database_url), host=settings.host, port=settings.port
+        create_app(database_url=app_settings.database_url),
+        host=server_settings.host,
+        port=server_settings.port,
     )
     uvicorn.Server(config).run()
 ```
@@ -36,21 +40,25 @@ orchestrator's grace period into `SIGKILL`, so the lifespan's shutdown never run
 ```python
 # WRONG — the drain waits for every open request
 def main() -> None:
-    settings = Settings()
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
     config = uvicorn.Config(
-        create_app(database_url=settings.database_url), host=settings.host, port=settings.port
+        create_app(database_url=app_settings.database_url),
+        host=server_settings.host,
+        port=server_settings.port,
     )
     uvicorn.Server(config).run()
 
 
 # CORRECT — open requests get the drain, inside Kubernetes' default 30 seconds, then the lifespan
 def main() -> None:
-    settings = Settings()
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
     config = uvicorn.Config(
-        create_app(database_url=settings.database_url),
-        host=settings.host,
-        port=settings.port,
-        timeout_graceful_shutdown=settings.drain_seconds,
+        create_app(database_url=app_settings.database_url),
+        host=server_settings.host,
+        port=server_settings.port,
+        timeout_graceful_shutdown=server_settings.drain_seconds,
     )
     uvicorn.Server(config).run()
 ```
