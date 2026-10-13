@@ -144,11 +144,11 @@ domain's types are frozen dataclasses (`python-boundaries`).
 
 **Example:**
 ```python
-# WRONG — a domain entity is a validation-library model
-from pydantic import BaseModel
+# WRONG — a domain entity is a framework's model
+from django.db import models
 
 
-class Loan(BaseModel):
+class Loan(models.Model):
     book_isbn: str
     member_id: MemberId
     due_on: date
