@@ -4,8 +4,8 @@ description: >-
   Designs a package's public surface: the facade, public and internal modules, __all__, _internal,
   lazy exports, stability tiers, deprecation, optional extras, the prefix check. Use when building
   a package other code imports, editing __init__.py or __all__, adding an optional extra,
-  deprecating a name, or choosing between a.b and a._b. Not for pyproject.toml itself (python-
-  project).
+  deprecating a name, or choosing between a.b and a._b. Not for pyproject.toml itself
+  (python-project).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

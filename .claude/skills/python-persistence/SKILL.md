@@ -4,8 +4,8 @@ description: >-
   Designs persistence whatever the ORM: a transaction per use case committed by the service,
   repositories returning domain objects, N+1, keyset pagination, optimistic locking, upserts and
   SKIP LOCKED. Use when deciding where a transaction begins and ends, writing a repository,
-  paginating a query, or guarding against lost updates. Not for the ORM's own API (python-
-  sqlalchemy).
+  paginating a query, or guarding against lost updates. Not for the ORM's own API
+  (python-sqlalchemy).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

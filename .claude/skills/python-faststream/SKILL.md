@@ -4,8 +4,8 @@ description: >-
   FastStream on RabbitMQ mechanics behind the consumer design: routers from the root's
   dependencies, AckPolicy, delivery limits and dead letters, message ids, validation mode,
   prefetch, shutdown, tests. Use when code imports faststream, defines a RabbitBroker,
-  RabbitRouter, RabbitQueue or subscriber, or runs faststream. Not for consumer design (python-
-  workers).
+  RabbitRouter, RabbitQueue or subscriber, or runs faststream. Not for consumer design
+  (python-workers).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
