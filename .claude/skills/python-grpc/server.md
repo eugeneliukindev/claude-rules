@@ -167,8 +167,8 @@ is the same in both.
 def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_engine(settings.database_url) as engine:
-            flights = FlightService(PostgresFlightRepository(engine), PostgresFlightFeed(engine))
+        async with managed_pool(settings.database_url) as pool:
+            flights = FlightService(PostgresFlightRepository(pool), PostgresFlightFeed(pool))
             asyncio.create_task(serve(flights=flights, address=settings.grpc_address))
             yield {"flight_service": flights}
 
@@ -177,7 +177,7 @@ def create_app(settings: Settings) -> FastAPI:
     return app
 
 
-# CORRECT — the server is entered inside the engine and left before it, drained on the way out
+# CORRECT — the server is entered inside the pool and left before it, drained on the way out
 def create_app(settings: Settings) -> FastAPI:
     grpc_credentials = grpc.ssl_server_credentials(
         [(settings.grpc_private_key.get_secret_value(), settings.grpc_certificate_chain)]
@@ -185,8 +185,8 @@ def create_app(settings: Settings) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_engine(settings.database_url) as engine:
-            flights = FlightService(PostgresFlightRepository(engine), PostgresFlightFeed(engine))
+        async with managed_pool(settings.database_url) as pool:
+            flights = FlightService(PostgresFlightRepository(pool), PostgresFlightFeed(pool))
             async with managed_grpc_server(
                 flights=flights,
                 address=settings.grpc_address,
