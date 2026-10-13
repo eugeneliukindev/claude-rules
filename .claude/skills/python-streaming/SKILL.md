@@ -247,35 +247,30 @@ async def follow_parcel(
 
 ### A stream never holds a transaction or a pooled connection while it waits
 
-**Why:** a unit of work held for a stream's life holds a pooled connection, and ten idle listeners
+**Why:** a transaction held for a stream's life holds a pooled connection, and ten idle listeners
 drain a pool of ten. The replay is its own short read (`python-persistence`); the live part reads
 the feed, not the database. A framework that keeps a dependency open until the response finishes
 holds it the same way.
 
 **Example:**
 ```python
-# WRONG — the unit of work, and its connection, stay open until the client leaves
+# WRONG — the history reader, and its connection, stay open until the client leaves
 async def stream_parcel(
-    tracking_number: TrackingNumber, *, unit_of_work: UnitOfWork, feed: ParcelFeed
+    tracking_number: TrackingNumber, *, history: ParcelHistory, feed: ParcelFeed
 ) -> AsyncIterator[ParcelEvent]:
-    async with unit_of_work, feed.subscribe(tracking_number) as events:
-        for event in await unit_of_work.parcel_history.events_for(tracking_number):
+    async with history.reader() as reader, feed.subscribe(tracking_number) as events:
+        for event in await reader.events_for(tracking_number):
             yield event
         while True:
             yield await events.get()
 
 
-# CORRECT — the replay opens and closes its own short unit of work before the live part
+# CORRECT — the replay is one short read, finished before the live part begins
 async def stream_parcel(
-    tracking_number: TrackingNumber,
-    *,
-    unit_of_work: Callable[[], UnitOfWork],
-    feed: ParcelFeed,
+    tracking_number: TrackingNumber, *, history: ParcelHistory, feed: ParcelFeed
 ) -> AsyncIterator[ParcelEvent]:
     async with feed.subscribe(tracking_number) as events:
-        async with unit_of_work() as unit:
-            history = await unit.parcel_history.events_for(tracking_number)
-        for event in history:
+        for event in await history.events_for(tracking_number):
             yield event
         while True:
             yield await events.get()

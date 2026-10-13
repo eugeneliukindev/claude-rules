@@ -121,8 +121,8 @@ class ParcelEventRelay:
 ### The relay only queues; it never awaits a socket
 
 **Why:** sending to each connection in turn lets one client that stops reading stall its room, then
-the subscription behind it, until the broker drops a subscriber that does not read. `feed.publish` is `put_nowait` into the bounded queues, and each connection's own
-push task does the sending.
+the subscription behind it, until the broker drops a subscriber that does not read. `feed.publish`
+is `put_nowait` into the bounded queues, and each connection's own push task does the sending.
 
 **Example:**
 ```python
@@ -174,9 +174,9 @@ def _channel_name(tracking_number: TrackingNumber) -> str:
 
 
 # CORRECT — one channel; the parcel and the shape's version travel in the message
-class ParcelEventMessage(BaseModel):
-    model_config = ConfigDict(strict=True, extra="ignore")
-
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ParcelEventMessage:
     version: Literal[1]
     tracking_number: str
     sequence: int

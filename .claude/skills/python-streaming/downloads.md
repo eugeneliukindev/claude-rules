@@ -11,21 +11,20 @@ cursor is acceptable only under the stream's deadline, on a pool of its own.
 
 **Example:**
 ```python
-# WRONG — one unit of work for the whole download, at the client's pace
-async def stream_entries(*, unit_of_work: UnitOfWork) -> AsyncIterator[AuditEntry]:
-    async with unit_of_work:
-        async for entry in unit_of_work.audit_entries.stream_all():
+# WRONG — one cursor for the whole download, at the client's pace
+async def stream_entries(*, audit_log: AuditLog) -> AsyncIterator[AuditEntry]:
+    async with audit_log.cursor() as entries:
+        async for entry in entries:
             yield entry
 
 
 # CORRECT — each page is a short read; nothing is held while the client downloads
 async def stream_entries(
-    *, unit_of_work: Callable[[], UnitOfWork], page_size: int = _PAGE_SIZE
+    *, audit_log: AuditLog, page_size: int = _PAGE_SIZE
 ) -> AsyncIterator[AuditEntry]:
     after_id = 0
     while True:
-        async with unit_of_work() as unit:
-            page = await unit.audit_entries.page_after(after_id, limit=page_size)
+        page = await audit_log.page_after(after_id, limit=page_size)
         if not page:
             return
         for entry in page:
