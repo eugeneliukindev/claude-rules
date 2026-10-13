@@ -85,27 +85,6 @@ principal is a dependency of the getter, and its failure is an HTTP 401 before a
 resolver that reads the token itself is one more place to forget it. How the token is verified is
 `python-auth`.
 
-**Example:**
-```python
-# WRONG — each resolver authenticates on its own, and the next one added may not
-@strawberry.type
-class Query:
-    @strawberry.field
-    async def claim(self, info: GraphQLInfo, claim_id: UUID) -> ClaimObject:
-        principal = info.context.verifier.verify(info.context.request.headers["authorization"])
-        claim = await info.context.claims.get_claim(principal, ClaimId(claim_id))
-        return ClaimObject.from_domain(claim)
-
-
-# CORRECT — the getter depends on the principal; resolvers only read it
-@strawberry.type
-class Query:
-    @strawberry.field
-    async def claim(self, info: GraphQLInfo, claim_id: UUID) -> ClaimObject:
-        claim = await info.context.claims.get_claim(info.context.principal, ClaimId(claim_id))
-        return ClaimObject.from_domain(claim)
-```
-
 ### The getter takes `HTTPConnection`, not `Request`
 
 **Why:** the same getter serves the WebSocket route, which has no `Request`; measured with

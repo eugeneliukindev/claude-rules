@@ -48,40 +48,8 @@ class Subscription:
 **Why:** the default also accepts the legacy `graphql-ws`, a second protocol to keep working and to
 test. Excluded, a client asking for it is refused with 4406.
 
-**Example:**
-```python
-# WRONG — both protocols, the legacy one included
-graphql_router = GraphQLRouter(schema, context_getter=get_context)
-
-# CORRECT — the current protocol only
-graphql_router = GraphQLRouter(
-    schema,
-    context_getter=get_context,
-    subscription_protocols=(GRAPHQL_TRANSPORT_WS_PROTOCOL,),
-)
-```
-
 ### The per-connection limits are set to what a client needs
 
 **Why:** `max_subscriptions_per_connection` is 100 by default and `connection_init_wait_timeout` a
 minute: one connection can hold a hundred subscriptions, and a socket that never sends
 `connection_init` holds a slot for a minute.
-
-**Example:**
-```python
-# WRONG — the defaults: a hundred subscriptions per socket, a minute to say hello
-graphql_router = GraphQLRouter(
-    schema,
-    context_getter=get_context,
-    subscription_protocols=(GRAPHQL_TRANSPORT_WS_PROTOCOL,),
-)
-
-# CORRECT — what the client actually opens, and a few seconds to initialise
-graphql_router = GraphQLRouter(
-    schema,
-    context_getter=get_context,
-    subscription_protocols=(GRAPHQL_TRANSPORT_WS_PROTOCOL,),
-    max_subscriptions_per_connection=_MAX_SUBSCRIPTIONS_PER_CONNECTION,
-    connection_init_wait_timeout=timedelta(seconds=_CONNECTION_INIT_SECONDS),
-)
-```

@@ -50,30 +50,3 @@ class Mutation:
 **Why:** a client that resends `submitClaim` after a timeout files the claim twice; with a key the
 service recognises the second request and answers it with the first one's result
 (`python-boundaries`).
-
-**Example:**
-```python
-# WRONG — a resend after a timeout files a second claim
-@strawberry.input(name="SubmitClaimInput")
-class SubmitClaimInput:
-    policy_number: str
-    amount: Decimal
-
-    def to_domain(self) -> ClaimSubmission:
-        return ClaimSubmission(policy_number=PolicyNumber(self.policy_number), amount=self.amount)
-
-
-# CORRECT — the client's key travels with the submission, and the service deduplicates on it
-@strawberry.input(name="SubmitClaimInput")
-class SubmitClaimInput:
-    idempotency_key: UUID
-    policy_number: str
-    amount: Decimal
-
-    def to_domain(self) -> ClaimSubmission:
-        return ClaimSubmission(
-            idempotency_key=IdempotencyKey(self.idempotency_key),
-            policy_number=PolicyNumber(self.policy_number),
-            amount=self.amount,
-        )
-```

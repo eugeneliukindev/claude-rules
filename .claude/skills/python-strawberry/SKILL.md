@@ -95,22 +95,6 @@ class ClaimObject:
 camel-cased; without the pin, renaming a Python class renames a type every client queries. The
 Python name carries the family suffix, the schema the domain word.
 
-**Example:**
-```python
-# WRONG — the schema publishes "ClaimObject", and a rename of the class breaks every client
-@strawberry.type
-class ClaimObject:
-    id: UUID
-    amount: Decimal
-
-
-# CORRECT — the published name is stated, and the class can be renamed freely
-@strawberry.type(name="Claim")
-class ClaimObject:
-    id: UUID
-    amount: Decimal
-```
-
 ### A resolver translates and calls one service method
 
 **Why:** a resolver is an adapter, as a FastAPI route is (`python-fastapi`); a rule written in it is

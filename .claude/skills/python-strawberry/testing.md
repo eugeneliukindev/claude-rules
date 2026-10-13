@@ -74,20 +74,3 @@ def test_claim_query_through_the_app(app: FastAPI, claim: Claim) -> None:
 **Why:** a limit nobody tests is found missing in production, and one answered with a masked
 "Unexpected error." tells the client nothing — a query one level too deep, an alias too many, a
 `first` over the ceiling.
-
-**Example:**
-```python
-# WRONG — only that it failed: a masked error passes too
-async def test_query_past_the_depth_limit_is_refused() -> None:
-    result = await _SCHEMA.execute(_TOO_DEEP_QUERY, context_value=make_graphql_context())
-
-    assert result.errors
-
-
-# CORRECT — refused, and told why
-async def test_query_past_the_depth_limit_is_refused() -> None:
-    result = await _SCHEMA.execute(_TOO_DEEP_QUERY, context_value=make_graphql_context())
-
-    assert result.errors is not None
-    assert "exceeds maximum operation depth" in result.errors[0].message
-```

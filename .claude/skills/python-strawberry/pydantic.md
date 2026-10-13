@@ -93,18 +93,3 @@ class SubmitClaimInput:
 
 **Why:** the model is shared, and with `all_fields` a field added to it for another consumer becomes
 part of the GraphQL schema too.
-
-**Example:**
-```python
-# WRONG — all_fields: a field the queue consumer needs becomes a GraphQL argument as well
-@strawberry.experimental.pydantic.input(model=ClaimSubmissionPayload, all_fields=True)
-class SubmitClaimInput:
-    pass
-
-
-# CORRECT — the input lists each field it accepts
-@strawberry.experimental.pydantic.input(model=ClaimSubmissionPayload, name="SubmitClaimInput")
-class SubmitClaimInput:
-    policy_number: strawberry.auto
-    amount: Decimal
-```

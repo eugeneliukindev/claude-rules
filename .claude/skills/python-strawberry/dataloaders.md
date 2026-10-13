@@ -74,17 +74,6 @@ async def _load_policyholders(
 (`python-sqlalchemy`). The loader's batch is unbounded by default: a page of five thousand claims
 sends one list of five thousand keys.
 
-**Example:**
-```python
-# WRONG — however many keys the page holds, one list
-policyholder_loader = DataLoader(load_fn=partial(_load_policyholders, policyholders))
-
-# CORRECT — split into batches the database plans well
-policyholder_loader = DataLoader(
-    load_fn=partial(_load_policyholders, policyholders), max_batch_size=_MAX_BATCH_SIZE
-)
-```
-
 ### A loader is built per request, never in the lifespan
 
 **Why:** its cache is an unbounded dict on the instance: shared, it serves one user's rows to the
