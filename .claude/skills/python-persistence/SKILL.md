@@ -99,32 +99,6 @@ class TicketBooking:
 back nothing when the task is cancelled between them, and the connection goes back to the pool
 mid-transaction.
 
-**Example:**
-```python
-# WRONG — a cancellation between the add and the commit leaves the transaction open
-@final
-class TicketBooking:
-    def __init__(self, *, unit_of_work: AsyncUnitOfWorkFactory) -> None:
-        self._unit_of_work = unit_of_work
-
-    async def book(self, booking: Booking) -> BookingId:
-        unit = await self._unit_of_work.begin()
-        booking_id = await unit.bookings.add(booking)
-        await unit.commit()
-        return booking_id
-
-
-# CORRECT — commit on a clean exit, rollback on an error or a cancellation alike
-@final
-class TicketBooking:
-    def __init__(self, *, unit_of_work: AsyncUnitOfWorkFactory) -> None:
-        self._unit_of_work = unit_of_work
-
-    async def book(self, booking: Booking) -> BookingId:
-        async with self._unit_of_work() as unit:
-            return await unit.bookings.add(booking)
-```
-
 ### A deadlock or serialization failure retries the whole unit of work, at the level that raises it
 
 **Why:** the database has already rolled the transaction back, so retrying the statement inside it
@@ -171,18 +145,6 @@ class TicketBooking:
 `idle_in_transaction_session_timeout` a transaction the application opened and abandoned, which
 otherwise holds its locks until someone kills it. They are set once — on the pool or the database
 role — never per query by memory; the client-side half is in `python-boundaries`.
-
-**Example:**
-```sql
--- WRONG — no server-side limits: an abandoned transaction holds its row locks indefinitely
-CREATE ROLE ticketing LOGIN;
-
--- CORRECT — every session of the role is bounded, whatever the client forgets
-CREATE ROLE ticketing LOGIN;
-ALTER ROLE ticketing SET statement_timeout = '5s';
-ALTER ROLE ticketing SET lock_timeout = '2s';
-ALTER ROLE ticketing SET idle_in_transaction_session_timeout = '30s';
-```
 
 ## Repositories
 
