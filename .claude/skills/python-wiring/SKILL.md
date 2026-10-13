@@ -21,8 +21,8 @@ application's lifespan (`python-fastapi`); a cashews `Cache` connects when the r
 ### All construction happens in one place — the composition root
 
 **Why:** the entry point of a worker or CLI, or the application factory of a service, is the one
-place that knows every concrete class; everywhere else a dependency arrives through a constructor
-or a signature, so a test or a second entry point can hand in another.
+place that knows every concrete class; everywhere else a dependency arrives through a constructor or
+a signature, so a test or a second entry point can hand in another.
 
 **Example:**
 ```python
@@ -85,9 +85,10 @@ class ReminderService:
 **Why:** `clock: Clock | None = None` then `clock or SystemClock()` is what pydantic
 (`ns_resolver or NsResolver()`) and the OpenTelemetry SDK (`span_limits or SpanLimits()`) do: the
 parameter is a seam for a test or a second root, and the default costs the caller nothing. A default
-that needs a setting wastes that setting whenever the collaborator is passed. **Except:** `is None`
-instead of `or` when a valid value can be falsy — an empty mapping, `0`. A plain value — a path, a
-limit — is no collaborator: it is defaulted in the signature (`functions.md`).
+that needs a setting wastes that setting whenever the collaborator is passed.
+**Except:** `is None` instead of `or` when a valid value can be falsy — an empty mapping, `0`. A
+plain value — a path, a limit — is no collaborator: it is defaulted in the signature
+(`functions.md`).
 
 **Example:**
 ```python
@@ -156,8 +157,8 @@ class ThumbnailRenderer:
 
 ### The wiring is plain code; a DI framework stays inside the root if one is used at all
 
-**Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one that
-is reached from inside the code is a service locator — the hidden global below.
+**Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one that is
+reached from inside the code is a service locator — the hidden global below.
 
 ### No global singletons, no service locator
 
@@ -166,8 +167,8 @@ import-time side effects, un-fakeable tests, ordering bugs.
 **Except:** the module-level names that record nothing until the entry point configures them — the
 logger, the tracer, the meter and its instruments, a context variable (`python-observability`); the
 Celery or taskiq app object tasks are decorated with, whose pools are built in the worker's startup
-hook (`python-workers`); a decorator library's cache object, which connects only when the root
-sets it up.
+hook (`python-workers`); a decorator library's cache object, which connects only when the root sets
+it up.
 
 **Example:**
 ```python
@@ -256,8 +257,8 @@ exception in the block still releases.
 ### A known set of resources is one `with` statement, an item per resource
 
 **Why:** the parenthesized form closes them in reverse order exactly as nesting would, and shows
-what is open; `ExitStack` is for a count known only at runtime — one connection per configured
-shard — and hides that for two or three fixed resources.
+what is open; `ExitStack` is for a count known only at runtime — one connection per configured shard
+— and hides that for two or three fixed resources.
 
 **Example:**
 ```python
@@ -283,8 +284,8 @@ def main() -> None:
 ### An async root has the same shape
 
 **Why:** `asyncio.run(main())` once, `async with` an item per resource, `AsyncExitStack` only for a
-runtime count. A pool created with a bare `await` and never entered is closed by nobody: the
-process exits with its connections open and the server logs them as dropped. In a web service the
+runtime count. A pool created with a bare `await` and never entered is closed by nobody: the process
+exits with its connections open and the server logs them as dropped. In a web service the
 framework's startup and shutdown hook is this root.
 
 **Example:**

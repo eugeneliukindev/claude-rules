@@ -138,8 +138,8 @@ vocabulary nearly every importer needs; a facade that re-exported everything mad
 enum load a browser driver and an ORM. What only some need, or what pulls a heavy library, stays in
 a public module `package/topic.py`; what only siblings use is an internal `_topic.py`, never reached
 into. The decision table is in `python-packaging`.
-**Except:** an application package nobody outside imports needs no facade; the underscore rule
-above holds there all the same.
+**Except:** an application package nobody outside imports needs no facade; the underscore rule above
+holds there all the same.
 
 **Example:**
 ```python
@@ -181,9 +181,10 @@ is not a reason — restructure instead.
 
 ### An annotation that would cycle or pull a heavy dependency goes under `TYPE_CHECKING`
 
-**Why:** the import then costs nothing at runtime. **Except:** never one a framework reads at
-runtime — a validating model's field, a route's parameter — where the guarded name is missing when
-the framework resolves it (`python-project`).
+**Why:** the import then costs nothing at runtime.
+**Except:** never one a framework reads at runtime — a validating model's field, a route's parameter
+— where the guarded name is missing when the framework resolves it; ruff's runtime-evaluated tables
+keep those imports real.
 
 **Example:**
 ```python

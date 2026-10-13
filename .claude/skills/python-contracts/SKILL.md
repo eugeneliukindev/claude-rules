@@ -117,8 +117,8 @@ class InMemoryMessageFeed(MessageFeed):
 
 ### An abstract property is `@property` above `@abstractmethod`
 
-**Why:** the other order fails when the class is defined — `attribute '__isabstractmethod__' of
-'property' objects is not writable`.
+**Why:** the other order fails when the class is defined —
+`attribute '__isabstractmethod__' of 'property' objects is not writable`.
 
 ### A generic contract binds its parameter in each implementation
 
@@ -153,8 +153,8 @@ class PostgresDocumentRepository(Repository[Document]):
 
 ### A template method — the base's skeleton calling abstract steps — is `@final`
 
-**Why:** a subclass then fills in the steps and cannot replace the skeleton; mypy reports `Cannot
-override final attribute`.
+**Why:** a subclass then fills in the steps and cannot replace the skeleton; mypy reports
+`Cannot override final attribute`.
 
 **Example:**
 ```python
@@ -191,8 +191,9 @@ class Report(ABC):
 `notifier.smtp.send_message(...)` depends on the transport its notifier hides, cannot run against
 the fake, and breaks when the transport changes. The parameter typed as the contract enforces it:
 mypy answers the reach with `[attr-defined]`, so the leak always starts with an annotation naming
-the implementation. **Except:** data — `document.owner.address.city` reads a frozen structure and
-couples to nothing that behaves.
+the implementation.
+**Except:** data — `document.owner.address.city` reads a frozen structure and couples to nothing
+that behaves.
 
 **Example:**
 ```python

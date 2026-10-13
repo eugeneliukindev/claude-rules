@@ -11,8 +11,8 @@ Functions are the default; a class is an upgrade that must be triggered.
 
 ### A class is written only when one of seven triggers holds
 
-**Why:** a module is already a namespace with "methods"; a class without a trigger adds `self` and
-a constructor to code that needed neither.
+**Why:** a module is already a namespace with "methods"; a class without a trigger adds `self` and a
+constructor to code that needed neither.
 
 1. **State survives between calls** — a token bucket, a pool, an accumulator, an open session.
 2. **Invariants tie values together** — `Money`, `DateRange`: a frozen dataclass with methods.
@@ -96,8 +96,8 @@ def nearest_stores(stores: Iterable[Store], *, home: Coordinate) -> list[Store]:
 
 **Why:** code answering to two actors ships the fix one of them asks for to the other. This is SRP,
 not "does one thing" (that rule is for functions), and the test is *who*, not *which layer*.
-**Except:** knowledge both actors share — what counts as regular hours — lives once, on the data;
-if they come to mean different things, those are two rules with two names.
+**Except:** knowledge both actors share — what counts as regular hours — lives once, on the data; if
+they come to mean different things, those are two rules with two names.
 
 **Example:**
 ```python
@@ -210,9 +210,8 @@ class DocumentService:
 
 ### A subclass accepts at least what its parent accepts and returns nothing wider
 
-**Why:** code written against the parent must work with the subclass; mypy's `[override]` checks
-the types, and nothing checks the behaviour — no new precondition, no dropped promise, no new
-exception.
+**Why:** code written against the parent must work with the subclass; mypy's `[override]` checks the
+types, and nothing checks the behaviour — no new precondition, no dropped promise, no new exception.
 
 **Example:**
 ```python
@@ -286,8 +285,9 @@ def build_retention_report(day: date, *, documents: ExpiredDocuments) -> Retenti
 **Why:** a class inherits a contract, or a `Base` whose fields and methods it *is* — an `Exception`
 subclass is an exception. Behaviour wanted only for its methods — an HTTP call, a retry, a formatter
 — arrives as a collaborator: a base class collecting helpers ties every subclass to all of them, and
-no test can swap one out. **Except:** a mixin adds behaviour over the class's own contract, holds no
-state and declares `__slots__ = ()`.
+no test can swap one out.
+**Except:** a mixin adds behaviour over the class's own contract, holds no state and declares
+`__slots__ = ()`.
 
 **Example:**
 ```python
