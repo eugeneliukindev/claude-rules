@@ -198,23 +198,23 @@ service loads, calls and saves, so it is tested with plain values and no fake.
 # WRONG — the service gets a tracked row: any attribute it sets is written at the next flush
 @final
 class SqlBookingRepository(BookingRepository):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, rows: BookingRows) -> None:
+        self._rows = rows
 
     @override
     def find(self, booking_id: BookingId) -> BookingRow | None:
-        return self._session.get(BookingRow, booking_id)
+        return self._rows.get(booking_id)
 
 
 # CORRECT — the row stops at the repository; the service gets a frozen Booking
 @final
 class SqlBookingRepository(BookingRepository):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, rows: BookingRows) -> None:
+        self._rows = rows
 
     @override
     def find(self, booking_id: BookingId) -> Booking | None:
-        row = self._session.get(BookingRow, booking_id)
+        row = self._rows.get(booking_id)
         if row is None:
             return None
         return Booking(
