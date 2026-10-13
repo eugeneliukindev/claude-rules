@@ -278,8 +278,8 @@ def import_rates(*, client: RatesClient) -> int:
 ### Guards first, the work at one indentation level, the result last
 
 **Why:** a guard that returns or raises at once keeps the happy path at level 1; a happy path nested
-inside an `if` makes the reader hold the condition for the whole body. One blank line between
-steps, none inside one; a step below its siblings' level is extracted, length alone never is.
+inside an `if` makes the reader hold the condition for the whole body. A step below its siblings'
+level is extracted, length alone never is.
 
 **Example:**
 ```python
@@ -296,6 +296,35 @@ def send_receipt(payment: Payment, *, mailer: Mailer) -> None:
         return
 
     mailer.send(payment.customer_email, f"Receipt for {payment.amount}")
+```
+
+### Each value a later call needs is named on its own line, and the steps fall into blocks
+
+**Why:** a value built inside another call's arguments hides a step — the reader unpicks the
+nesting to learn what is made — and when one sibling is named and the other inlined, the asymmetry
+suggests a difference that is not there. Named, each line is one step; a blank line separates the
+blocks that belong together — what is shared, what is built from it, what is assembled — and none
+falls inside a block.
+**Except:** a trivial conversion or a literal — `str(order_id)`, `Decimal("0.2")` — stays inline;
+naming it adds a line and no meaning.
+
+**Example:**
+```python
+# WRONG — one channel named, its sibling built inside the constructor call, no blocks
+def build_sensor_pipeline(settings: SensorSettings) -> SensorPipeline:
+    station = StationIdentity(name=_STATION_NAME, site=settings.site)
+    readings = open_reading_stream(station, port=settings.serial_port)
+    return SensorPipeline(readings, open_alarm_channel(station, port=settings.serial_port))
+
+
+# CORRECT — what is shared, what is built from it, what is assembled: one block each
+def build_sensor_pipeline(settings: SensorSettings) -> SensorPipeline:
+    station = StationIdentity(name=_STATION_NAME, site=settings.site)
+
+    readings = open_reading_stream(station, port=settings.serial_port)
+    alarms = open_alarm_channel(station, port=settings.serial_port)
+
+    return SensorPipeline(readings, alarms)
 ```
 
 ### A function stays at one level of abstraction
