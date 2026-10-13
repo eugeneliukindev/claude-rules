@@ -14,9 +14,12 @@ cancelling the load the others wait on; the dictionary holds the task, so it is 
 # WRONG — every concurrent miss for one profile loads it again
 @final
 class ProfileLookup:
-    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+    def __init__(
+        self, *, profiles: ProfileRepository, cache: Cache, ttl: timedelta = _PROFILE_TTL
+    ) -> None:
         self._profiles = profiles
         self._cache = cache
+        self._ttl = ttl
 
     async def find(self, user_id: UserId) -> Profile | None:
         payload = await self._cache.get(_profile_key(user_id))
@@ -28,16 +31,19 @@ class ProfileLookup:
         profile = await self._profiles.get(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
-            await self._cache.set(_profile_key(user_id), payload, ttl=_PROFILE_TTL)
+            await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)
         return profile
 
 
 # CORRECT — the first miss loads; the others for the same user await the same task
 @final
 class ProfileLookup:
-    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+    def __init__(
+        self, *, profiles: ProfileRepository, cache: Cache, ttl: timedelta = _PROFILE_TTL
+    ) -> None:
         self._profiles = profiles
         self._cache = cache
+        self._ttl = ttl
         self._loads_in_flight: dict[UserId, asyncio.Task[Profile | None]] = {}
 
     async def find(self, user_id: UserId) -> Profile | None:
@@ -55,7 +61,7 @@ class ProfileLookup:
         profile = await self._profiles.get(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
-            await self._cache.set(_profile_key(user_id), payload, ttl=_PROFILE_TTL)
+            await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)
         return profile
 ```
 

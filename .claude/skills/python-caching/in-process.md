@@ -23,11 +23,16 @@ _rate_by_currency: dict[Currency, Decimal] = {}
 @final
 class ExchangeRates:
     def __init__(
-        self, *, source: RateSource, timer: Callable[[], float] = time.monotonic
+        self,
+        *,
+        source: RateSource,
+        timer: Callable[[], float] = time.monotonic,
+        max_currencies: int = _MAX_CACHED_CURRENCIES,
+        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
     ) -> None:
         self._source = source
         self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=_MAX_CACHED_CURRENCIES, ttl=_RATE_TTL_SECONDS, timer=timer
+            maxsize=max_currencies, ttl=rate_ttl_seconds, timer=timer
         )
 ```
 
@@ -42,10 +47,16 @@ already awaited coroutine`. The awaited value is what goes into the cache.
 # WRONG — the cache holds the coroutine; the second fetch of a currency raises RuntimeError
 @final
 class ExchangeRates:
-    def __init__(self, *, source: RateSource) -> None:
+    def __init__(
+        self,
+        *,
+        source: RateSource,
+        max_currencies: int = _MAX_CACHED_CURRENCIES,
+        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
+    ) -> None:
         self._source = source
         self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=_MAX_CACHED_CURRENCIES, ttl=_RATE_TTL_SECONDS
+            maxsize=max_currencies, ttl=rate_ttl_seconds
         )
 
     @cachedmethod(attrgetter("_rate_by_currency"))
@@ -56,10 +67,16 @@ class ExchangeRates:
 # CORRECT — the awaited rate is what goes into the cache
 @final
 class ExchangeRates:
-    def __init__(self, *, source: RateSource) -> None:
+    def __init__(
+        self,
+        *,
+        source: RateSource,
+        max_currencies: int = _MAX_CACHED_CURRENCIES,
+        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
+    ) -> None:
         self._source = source
         self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=_MAX_CACHED_CURRENCIES, ttl=_RATE_TTL_SECONDS
+            maxsize=max_currencies, ttl=rate_ttl_seconds
         )
 
     async def fetch(self, currency: Currency) -> Decimal:
