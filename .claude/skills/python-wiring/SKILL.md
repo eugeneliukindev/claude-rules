@@ -125,8 +125,10 @@ a store that built its own client and never closed it leaked a connection per in
 # WRONG — close() also shuts down a pool the caller passed in, and every other user of it
 @final
 class ThumbnailRenderer:
-    def __init__(self, executor: Executor | None = None) -> None:
-        self._executor = executor or ThreadPoolExecutor(max_workers=_MAX_RENDER_WORKERS)
+    def __init__(
+        self, executor: Executor | None = None, *, max_workers: int = _MAX_RENDER_WORKERS
+    ) -> None:
+        self._executor = executor or ThreadPoolExecutor(max_workers=max_workers)
 
     def render(self, document: Document) -> Future[bytes]:
         return self._executor.submit(render_thumbnail, document)
@@ -138,9 +140,11 @@ class ThumbnailRenderer:
 # CORRECT — remembers whether it built the pool, and shuts down only its own
 @final
 class ThumbnailRenderer:
-    def __init__(self, executor: Executor | None = None) -> None:
+    def __init__(
+        self, executor: Executor | None = None, *, max_workers: int = _MAX_RENDER_WORKERS
+    ) -> None:
         self._owns_executor = executor is None
-        self._executor = executor or ThreadPoolExecutor(max_workers=_MAX_RENDER_WORKERS)
+        self._executor = executor or ThreadPoolExecutor(max_workers=max_workers)
 
     def render(self, document: Document) -> Future[bytes]:
         return self._executor.submit(render_thumbnail, document)
