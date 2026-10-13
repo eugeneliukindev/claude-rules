@@ -56,8 +56,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER 10001
 WORKDIR /app
 EXPOSE 8000
-CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["tracker-server"]
 ```
+
+`tracker-server` is the project's console script, `[project.scripts]` in `pyproject.toml`.
 
 ### The builder holds uv and the source; the runtime holds the same interpreter and the environment
 
@@ -72,7 +74,7 @@ managed interpreter fixes `UV_PYTHON_INSTALL_DIR` and is copied too.
 **Example:**
 ```dockerfile
 # WRONG — downloads allowed: with a 3.13 floor on a 3.12 image the build passes, and the container
-# fails with "exec /app/.venv/bin/uvicorn: no such file or directory"
+# fails with "exec /app/.venv/bin/tracker-server: no such file or directory"
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
@@ -121,14 +123,14 @@ requests even when the code has not changed.
 ### `CMD` uses the exec form, so the server is PID 1 and receives `SIGTERM`
 
 **Why:** in shell form `/bin/sh -c` is PID 1 and does not forward `SIGTERM`; `docker stop` waits ten
-seconds and sends `SIGKILL`, the lifespan never closes, and the shutdown `python-async` designs
+seconds and sends `SIGKILL`, and the shutdown `python-async` designs
 never runs — with a single command, a `migrate && serve` chain, or a wrapper script that does not
 `exec`. A wrapper is allowed when its last line is `exec "$@"`.
 
 ### A process you write handles `SIGTERM` itself, because PID 1 ignores what it does not handle
 
-**Why:** uvicorn and gunicorn install a `SIGTERM` handler; a worker you write must install its own,
-or the stop runs out the grace period into `SIGKILL`. Handling only Ctrl-C is the version that
+**Why:** an off-the-shelf server installs a `SIGTERM` handler; a worker you write must install its
+own, or the stop runs out the grace period into `SIGKILL`. Handling only Ctrl-C is the version that
 passes on a laptop. `--init` and `tini` forward the signal, but then `SIGTERM`'s default action ends
 Python without running any `finally`, so they replace no handler.
 
@@ -154,17 +156,17 @@ def main() -> None:
 ### The server's drain is bounded a few seconds below the orchestrator's grace period
 
 **Why:** on `SIGTERM` an HTTP server stops accepting and waits for open requests — without a bound,
-one stream or slow client runs Kubernetes' default thirty seconds into `SIGKILL`, and the lifespan's
-shutdown never runs. uvicorn's flag for it is `--timeout-graceful-shutdown`.
+one stream or slow client runs Kubernetes' default thirty seconds into `SIGKILL`, and the
+application's own shutdown never runs. The bound is the server's setting, passed by the start
+command.
 
 **Example:**
 ```dockerfile
 # WRONG — the drain waits for every open request; a stream outlives the grace period
-CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["tracker-server"]
 
-# CORRECT — open requests get 25 seconds, inside the default 30, then the lifespan closes
-CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000", \
-     "--timeout-graceful-shutdown", "25"]
+# CORRECT — open requests get 25 seconds, inside the default 30, then the application closes
+CMD ["tracker-server", "--drain-seconds", "25"]
 ```
 
 ### The image starts its server directly, never through `uv run`
