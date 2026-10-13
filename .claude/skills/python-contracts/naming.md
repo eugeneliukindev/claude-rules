@@ -87,21 +87,21 @@ does. If nothing distinguishes the implementation, there was no contract worth w
 # WRONG — Impl says only that it is not the contract
 @final
 class DocumentRepositoryImpl(DocumentRepository):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, connection: DatabaseConnection) -> None:
+        self._connection = connection
 
     @override
     def get(self, document_id: DocumentId) -> Document:
-        return self._session.get_one(DocumentRow, document_id).to_domain()
+        return _document_from_row(self._connection.fetch_one(_SELECT_DOCUMENT, document_id))
 
 
 # CORRECT — named for its storage
 @final
 class PostgresDocumentRepository(DocumentRepository):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, connection: DatabaseConnection) -> None:
+        self._connection = connection
 
     @override
     def get(self, document_id: DocumentId) -> Document:
-        return self._session.get_one(DocumentRow, document_id).to_domain()
+        return _document_from_row(self._connection.fetch_one(_SELECT_DOCUMENT, document_id))
 ```

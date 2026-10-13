@@ -61,17 +61,15 @@ plain base with `@abstractmethod` where one is; never both shapes in one tree.
 **Example:**
 ```python
 # WRONG — an ABC under a framework base that brings its own metaclass: metaclass conflict at import
-class AuditedModel(DeclarativeBase, ABC):
+class ExportPlugin(Plugin, ABC):
     @abstractmethod
-    def audit_line(self) -> str: ...
+    def export(self, report: Report) -> bytes: ...
 
 
 # CORRECT — the metaclass slot is taken, so the plain base keeps the checker's guarantee only
-class AuditedModel(DeclarativeBase):
-    __abstract__ = True
-
+class ExportPlugin(Plugin):
     @abstractmethod
-    def audit_line(self) -> str: ...
+    def export(self, report: Report) -> bytes: ...
 ```
 
 ### A stdlib ABC that already names the capability is used directly
@@ -179,8 +177,8 @@ can store nothing in particular.
 # WRONG — the implementation stays generic: the table and the row mapping cannot be written
 @final
 class PostgresRepository[T](Repository[T]):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, connection: DatabaseConnection) -> None:
+        self._connection = connection
 
     @override
     def get(self, key: str) -> T:
@@ -190,13 +188,13 @@ class PostgresRepository[T](Repository[T]):
 # CORRECT — the parameter is bound, and the body knows its table
 @final
 class PostgresDocumentRepository(Repository[Document]):
-    def __init__(self, *, session: Session) -> None:
-        self._session = session
+    def __init__(self, *, connection: DatabaseConnection) -> None:
+        self._connection = connection
 
     @override
     def get(self, key: str) -> Document:
-        row = self._session.get_one(DocumentRow, key)
-        return Document(document_id=DocumentId(row.id), page_count=row.page_count)
+        row = self._connection.fetch_one(_SELECT_DOCUMENT, key)
+        return Document(document_id=DocumentId(row["id"]), page_count=row["page_count"])
 ```
 
 ### A template method — the base's skeleton calling abstract steps — is `@final`
