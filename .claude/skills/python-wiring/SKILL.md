@@ -26,14 +26,14 @@ or a signature, so a test or a second entry point can hand in another.
 
 **Example:**
 ```python
-# WRONG — the service wires itself: a module-level engine, built at import from the environment
-engine = create_engine(os.environ["DATABASE_URL"])
+# WRONG — the service wires itself: a module-level pool, opened at import from the environment
+pool = open_database_pool(os.environ["DATABASE_URL"])
 
 
 @final
 class InvoiceService:
     def __init__(self) -> None:
-        self._invoices = PostgresInvoiceRepository(engine)
+        self._invoices = PostgresInvoiceRepository(pool)
 
     def issue(self, draft: InvoiceDraft) -> InvoiceId:
         return self._invoices.add(Invoice.from_draft(draft))
@@ -42,8 +42,8 @@ class InvoiceService:
 # CORRECT — the root builds settings, resources, adapters and services, and hands them down
 def main() -> None:
     settings = Settings()
-    with managed_engine(settings.database_url) as engine:
-        invoices = InvoiceService(invoices=PostgresInvoiceRepository(engine), clock=SystemClock())
+    with managed_pool(settings.database_url) as pool:
+        invoices = InvoiceService(invoices=PostgresInvoiceRepository(pool), clock=SystemClock())
         run_consumer(invoices, batch_size=settings.consumer_batch_size)
 ```
 
@@ -169,8 +169,8 @@ class ReportService:
 
 
 # CORRECT — plain code in the root, in dependency order
-def build_report_service(engine: Engine) -> ReportService:
-    return ReportService(documents=PostgresDocumentRepository(engine))
+def build_report_service(pool: DatabasePool) -> ReportService:
+    return ReportService(documents=PostgresDocumentRepository(pool))
 ```
 
 ### No global singletons, no service locator
@@ -211,26 +211,24 @@ built per request exhausts the pool.
 
 **Example:**
 ```python
-# WRONG — a per-request unit of work stored on an application-scoped service: requests share it
+# WRONG — one request's catalog built once: the first request's language answers every request
 @final
-class DocumentService:
-    def __init__(self, *, unit_of_work: UnitOfWork) -> None:
-        self._unit_of_work = unit_of_work
+class ReceiptRenderer:
+    def __init__(self, *, catalog: TranslationCatalog) -> None:
+        self._catalog = catalog
 
-    def publish(self, document_id: DocumentId) -> None:
-        with self._unit_of_work as unit:
-            unit.documents.mark_published(document_id)
+    def render(self, receipt: Receipt) -> str:
+        return self._catalog.translate("receipt.total", amount=receipt.total)
 
 
-# CORRECT — the service holds the factory; each request opens its own unit of work
+# CORRECT — the renderer holds the factory; each request builds the catalog for its own locale
 @final
-class DocumentService:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work = unit_of_work
+class ReceiptRenderer:
+    def __init__(self, *, catalog_for: Callable[[Locale], TranslationCatalog]) -> None:
+        self._catalog_for = catalog_for
 
-    def publish(self, document_id: DocumentId) -> None:
-        with self._unit_of_work() as unit:
-            unit.documents.mark_published(document_id)
+    def render(self, receipt: Receipt, *, locale: Locale) -> str:
+        return self._catalog_for(locale).translate("receipt.total", amount=receipt.total)
 ```
 
 ### Tests get their own root
@@ -265,28 +263,28 @@ The root acquires, so the root releases; everything below it borrows.
 ### Anything acquired is released by a context manager, and an own resource gets `@contextmanager`
 
 **Why:** `try/finally: close()` at every use site is the one that gets forgotten; a context manager
-named for the lifecycle — `managed_engine` — yields exactly once and cleans up in `finally`, so an
+named for the lifecycle — `managed_pool` — yields exactly once and cleans up in `finally`, so an
 exception in the block still releases.
 **Except:** a class with `__enter__`/`__exit__` when the object has other methods besides those two.
 
 **Example:**
 ```python
-# WRONG — an exception in the with block never reaches dispose(): the pool stays open
+# WRONG — an exception in the with block never reaches close(): the pool stays open
 @contextmanager
-def managed_engine(database_url: str) -> Iterator[Engine]:
-    engine = create_engine(database_url)
-    yield engine
-    engine.dispose()
+def managed_pool(database_url: str) -> Iterator[ConnectionPool]:
+    pool = ConnectionPool.open(database_url)
+    yield pool
+    pool.close()
 
 
 # CORRECT — finally runs whether the block returns or raises
 @contextmanager
-def managed_engine(database_url: str) -> Iterator[Engine]:
-    engine = create_engine(database_url)
+def managed_pool(database_url: str) -> Iterator[ConnectionPool]:
+    pool = ConnectionPool.open(database_url)
     try:
-        yield engine
+        yield pool
     finally:
-        engine.dispose()
+        pool.close()
 ```
 
 ### A known set of resources is one `with` statement, an item per resource
@@ -301,19 +299,19 @@ shard — and hides that for two or three fixed resources.
 def main() -> None:
     settings = Settings()
     with ExitStack() as resources:
-        engine = resources.enter_context(managed_engine(settings.database_url))
+        pool = resources.enter_context(managed_pool(settings.database_url))
         client = resources.enter_context(managed_http_client(settings.http_timeout_seconds))
-        run_import(documents=PostgresDocumentRepository(engine), source=HttpDocumentSource(client))
+        run_import(documents=PostgresDocumentRepository(pool), source=HttpDocumentSource(client))
 
 
 # CORRECT — one with item per resource, closed in reverse order
 def main() -> None:
     settings = Settings()
     with (
-        managed_engine(settings.database_url) as engine,
+        managed_pool(settings.database_url) as pool,
         managed_http_client(settings.http_timeout_seconds) as client,
     ):
-        run_import(documents=PostgresDocumentRepository(engine), source=HttpDocumentSource(client))
+        run_import(documents=PostgresDocumentRepository(pool), source=HttpDocumentSource(client))
 ```
 
 ### An async root has the same shape
@@ -328,16 +326,16 @@ application's lifespan is this root.
 # WRONG — the pool is created and never closed; shutdown drops its connections mid-protocol
 async def main() -> None:
     settings = Settings()
-    pool = await asyncpg.create_pool(settings.database_url)
-    documents = DocumentService(unit_of_work=partial(open_unit_of_work, pool))
+    pool = await AsyncConnectionPool.open(settings.database_url)
+    documents = DocumentService(documents=PostgresDocumentRepository(pool))
     await run_consumer(documents)
 
 
 # CORRECT — entered like any resource, and closed on the way out whatever happened
 async def main() -> None:
     settings = Settings()
-    async with asyncpg.create_pool(settings.database_url) as pool:
-        documents = DocumentService(unit_of_work=partial(open_unit_of_work, pool))
+    async with managed_async_pool(settings.database_url) as pool:
+        documents = DocumentService(documents=PostgresDocumentRepository(pool))
         await run_consumer(documents)
 ```
 

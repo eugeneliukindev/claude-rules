@@ -1,7 +1,7 @@
 # Settings and Startup
 
-The composition root and resource lifetime are in `SKILL.md`; FastAPI's form of the settings
-accessor is `python-fastapi`.
+The composition root and resource lifetime are in `SKILL.md`; the settings model in pydantic is
+`python-pydantic`, and FastAPI's form of the settings accessor is `python-fastapi`.
 
 ## Contents
 
@@ -127,12 +127,24 @@ def rates_url() -> str:
     return os.environ["RATES_URL"]
 
 
-# CORRECT — every field parsed and validated when Settings() is built, in main()
+# CORRECT — every field parsed and validated at once, when main() builds the settings
 @final
-class Settings(BaseSettings):
-    rates_url: HttpUrl
-    rates_timeout_seconds: float = Field(gt=0)
-    reminders_enabled: bool = False
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Settings:
+    rates_url: str
+    rates_timeout_seconds: float
+    reminders_enabled: bool
+
+    @classmethod
+    def from_environment(cls, environ: Mapping[str, str]) -> Self:
+        timeout_seconds = float(environ["RATES_TIMEOUT_SECONDS"])
+        if timeout_seconds <= 0:
+            raise InvalidSettingError("RATES_TIMEOUT_SECONDS", timeout_seconds)
+        return cls(
+            rates_url=environ["RATES_URL"],
+            rates_timeout_seconds=timeout_seconds,
+            reminders_enabled=environ.get("REMINDERS_ENABLED") == "true",
+        )
 ```
 
 ### A secret never appears in code, in a default or in a log
@@ -142,14 +154,16 @@ class Settings(BaseSettings):
 
 **Example:**
 ```python
-# WRONG — a placeholder default: a deploy that forgot the variable starts and uses "changeme"
+# WRONG — a placeholder default, and a repr that prints the password
 @final
-class Settings(BaseSettings):
-    database_password: SecretStr = SecretStr("changeme")
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Settings:
+    database_password: str = "changeme"
 
 
-# CORRECT — no default: a deploy that forgot the variable stops at startup, naming the field
+# CORRECT — no default, so a forgotten variable stops the start; and kept out of every repr
 @final
-class Settings(BaseSettings):
-    database_password: SecretStr
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Settings:
+    database_password: str = field(repr=False)
 ```
