@@ -22,10 +22,11 @@ These rules hold for any ORM or query builder. How to spell them in SQLAlchemy i
 
 **Why:** the service method is the boundary — entry points do not manage transactions, and
 repositories do not commit, or a failed second write leaves the first one committed. The unit of
-work is a context manager that opens the session, exposes the repositories bound to it, commits on
-a clean exit, rolls back on an exception and closes the session; a session that outlives it serves
-stale rows to the next one. The `with` is written in the service — a decorator or middleware that
-wraps everything hides the boundary and makes a two-transaction use case impossible to see.
+work is a context manager that opens one transaction, exposes the repositories bound to it, commits
+on a clean exit, rolls back on an exception and releases its connection; one kept past the use case
+holds a pooled connection and serves what it read earlier to the next one. The `with` is written in
+the service — a decorator or middleware that wraps everything hides the boundary and makes a
+two-transaction use case impossible to see.
 
 **Example:**
 ```python
@@ -164,12 +165,12 @@ class TicketBooking:
         raise AssertionError("unreachable: the last attempt's error propagates from the loop")
 ```
 
-### Every session carries server-side timeouts
+### Every database connection carries server-side timeouts
 
 **Why:** `statement_timeout` bounds a query, `lock_timeout` a wait for a lock, and
 `idle_in_transaction_session_timeout` a transaction the application opened and abandoned, which
-otherwise holds its locks until someone kills it. They are set once — on the engine, the pool or
-the database role — never per query by memory; the client-side half is in `python-boundaries`.
+otherwise holds its locks until someone kills it. They are set once — on the pool or the database
+role — never per query by memory; the client-side half is in `python-boundaries`.
 
 **Example:**
 ```sql
@@ -188,10 +189,10 @@ ALTER ROLE ticketing SET idle_in_transaction_session_timeout = '30s';
 ### A repository takes and returns domain objects; the ORM row stops at it
 
 **Why:** an ORM row handed to a service carries change tracking — an attribute set "just for this
-calculation" is written back at the next flush — and a detached row that lazy-loads outside its
-session fails far from the cause. The repository holds query construction only: no business rules,
-no commits. A rule computable from loaded data is a pure function over domain objects that the
-service loads, calls and saves, so it is tested with plain values and no fake.
+calculation" is written back at the next flush — and a detached row that lazy-loads after its
+transaction closed fails far from the cause. The repository holds query construction only: no
+business rules, no commits. A rule computable from loaded data is a pure function over domain
+objects that the service loads, calls and saves, so it is tested with plain values and no fake.
 
 **Example:**
 ```python

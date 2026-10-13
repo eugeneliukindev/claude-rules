@@ -51,6 +51,7 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
         "python-sqlalchemy": re.compile(
             r"(?<![.\w])(AsyncSession|async_sessionmaker|sessionmaker|mapped_column|DeclarativeBase"
             r"|create_async_engine|create_engine|AsyncEngine|Mapped\[|select\()|(?<![.\w])Session\b"
+            r"|\.scalars?\(|\bengine\.|\(engine\)|\bas engine\b|\bengine\s*="
         ),
         "python-persistence": re.compile(r"UnitOfWork|unit_of_work"),
         "python-pydantic": re.compile(

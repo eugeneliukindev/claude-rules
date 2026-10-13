@@ -15,26 +15,26 @@ comes from the environment or a secret manager (`python-security`).
 # WRONG — one shared key for every caller, sent as is
 @final
 class BillingClient:
-    def __init__(self, *, session: HttpSession, shared_api_key: str) -> None:
-        self._session = session
+    def __init__(self, *, http: BillingHttpClient, shared_api_key: str) -> None:
+        self._http = http
         self._shared_api_key = shared_api_key
 
     async def invoice(self, document_id: DocumentId) -> Invoice:
         headers = {"X-Api-Key": self._shared_api_key}
-        return await self._session.get_invoice(document_id, headers=headers)
+        return await self._http.get_invoice(document_id, headers=headers)
 
 
 # CORRECT — this service's own token, minted for the billing audience
 @final
 class BillingClient:
-    def __init__(self, *, session: HttpSession, tokens: ServiceTokenSource) -> None:
-        self._session = session
+    def __init__(self, *, http: BillingHttpClient, tokens: ServiceTokenSource) -> None:
+        self._http = http
         self._tokens = tokens
 
     async def invoice(self, document_id: DocumentId) -> Invoice:
         token = await self._tokens.token_for(audience=_BILLING_AUDIENCE)
         headers = {"Authorization": f"Bearer {token}"}
-        return await self._session.get_invoice(document_id, headers=headers)
+        return await self._http.get_invoice(document_id, headers=headers)
 ```
 
 ### An outbound token is fetched once and reused until shortly before its `exp`

@@ -234,23 +234,22 @@ class Report(ABC):
 ### Code uses what the collaborator's contract declares, and never reaches past it
 
 **Why:** the Law of Demeter, applied to collaborators — a service that calls
-`documents.session.execute(...)` depends on the driver its repository hides, cannot run against the
-fake, and breaks when the storage changes. The parameter typed as the contract enforces it: mypy
-answers the reach with `[attr-defined]`, so the leak always starts with an annotation naming the
-implementation.
-**Except:** data — `document.owner.address.city` reads a frozen structure and couples to nothing
-that behaves.
+`notifier.smtp.send_message(...)` depends on the transport its notifier hides, cannot run against
+the fake, and breaks when the transport changes. The parameter typed as the contract enforces it:
+mypy answers the reach with `[attr-defined]`, so the leak always starts with an annotation naming
+the implementation. **Except:** data — `document.owner.address.city` reads a frozen structure and
+couples to nothing that behaves.
 
 **Example:**
 ```python
-# WRONG — typed as the implementation, so the service can reach the session behind the repository
-def archive_document(document_id: DocumentId, *, documents: PostgresDocumentRepository) -> None:
-    documents.session.execute(_ARCHIVE_DOCUMENT, {"document_id": document_id})
+# WRONG — typed as the implementation, so the service can reach the transport behind the notifier
+def send_receipt(receipt: Receipt, *, notifier: SmtpNotifier) -> None:
+    notifier.smtp.send_message(receipt.as_email())
 
 
 # CORRECT — typed as the contract: the call it declares is the only one there is
-def archive_document(document_id: DocumentId, *, documents: DocumentRepository) -> None:
-    documents.archive(document_id)
+def send_receipt(receipt: Receipt, *, notifier: Notifier) -> None:
+    notifier.send(receipt.recipient, receipt.as_message())
 ```
 
 ## Naming

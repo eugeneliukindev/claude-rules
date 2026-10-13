@@ -9,8 +9,8 @@ deprecated, and with warnings as errors its import fails. Each module needs its 
 `testcontainers[rabbitmq]` pulls `pika` — or the import fails with `ModuleNotFoundError`. Starting a
 container costs seconds, so there is one per session and one transaction or schema reset per test;
 migrations run in the session fixture, which also proves the chain. `get_connection_url()` returns
-`postgresql+psycopg2://` unless told otherwise — `driver=None` for asyncpg, `driver="asyncpg"` for
-SQLAlchemy's async engine. Integration tests carry a registered marker, so the unit suite runs
+`postgresql+psycopg2://` unless told otherwise — `driver=None` for a driver that takes a plain
+`postgresql://` URL. Integration tests carry a registered marker, so the unit suite runs
 without Docker.
 
 **Example:**
