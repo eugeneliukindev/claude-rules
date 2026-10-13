@@ -14,8 +14,8 @@ paths:
 
 Checked against FastAPI 0.143 and Starlette 1.7. Construction, lifetime and layering are
 `python-wiring`; request and response models are `python-pydantic` — and a strict body model relaxes
-its `datetime`, `UUID` and `Decimal` fields by name, or every valid payload is a 422. `Depends` looks
-like dependency injection and is used, in most tutorials, as a service locator.
+its `datetime`, `UUID` and `Decimal` fields by name, or every valid payload is a 422. `Depends`
+looks like dependency injection and is used, in most tutorials, as a service locator.
 
 ## The Factory and the Lifespan
 

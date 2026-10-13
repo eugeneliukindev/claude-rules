@@ -12,7 +12,7 @@ The channel contract, the relay and the fake are in `python-streaming`; the cont
 that **a subscription that may have missed an event raises `ParcelEventChannelLostError` while
 iterating** — not only on leaving the `async with`, where the relay's loop would never see it.
 `RedisConnectionError` is `redis.exceptions.ConnectionError`, imported under that name so it does
-not shadow the builtin. The wire format in pydantic is `python-pydantic`.
+not shadow the builtin.
 
 **What a dropped connection looks like depends on how the client was built** (*measured*, with
 `CLIENT KILL TYPE pubsub` from a second client). Through the constructor's retry,

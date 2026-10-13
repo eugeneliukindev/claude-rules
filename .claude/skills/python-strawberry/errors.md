@@ -7,8 +7,8 @@
 - The unexpected are logged once
 
 GraphQL answers 200 with an `errors` list; the HTTP status says only that the request was
-understood. What `python-fastapi` does with one exception handler — a classified domain error
-becomes a stated answer, anything else a fixed message — strawberry does with two mechanisms.
+understood. A classified domain error becomes a stated answer and anything else a fixed message,
+through two mechanisms.
 
 ### A classified domain error is a member of the field's result union, converted by a schema handler
 

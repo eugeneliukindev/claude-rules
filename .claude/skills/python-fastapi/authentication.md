@@ -12,7 +12,7 @@ is `python-auth`.
 ### `require_principal` is a plain `def` mapping the verifier's errors to a fixed 401 and a 503
 
 **Why:** `verify` may block on a key set fetch, so the dependency is a `def` that FastAPI runs in
-its thread pool (`python-pyjwt`). `HTTPBearer` already answers a missing header with a 401 and
+its thread pool. `HTTPBearer` already answers a missing header with a 401 and
 `WWW-Authenticate`; the verifier's rejection must match it, with one fixed body, the reason left on
 the chained cause. `HTTPException` is right here: authentication failing exists only in HTTP. The
 root builds the verifier, the lifespan yields it, and the dependency sits on the protected router.

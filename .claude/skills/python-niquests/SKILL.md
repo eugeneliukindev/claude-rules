@@ -14,7 +14,7 @@ paths:
 Checked against niquests 3.21. The API is `requests`-shaped, and the habits below carry over to
 `httpx` almost unchanged — `allow_redirects` here is `follow_redirects` there. One HTTP stack per
 codebase: two mean two places to configure timeouts. Timeouts and retries in general are
-`python-boundaries`; the retry policy is `python-tenacity`; why a user's URL is checked on every
+`python-boundaries`; why a user's URL is checked on every
 redirect is `python-security`.
 
 ### One session is built by the root and closed there, never a module-level call

@@ -14,8 +14,7 @@ paths:
 
 Checked against pytest 9.1, pytest-asyncio 1.4, hypothesis 6.168, pytest-httpserver 1.2, respx 0.23
 and testcontainers 4.15. What to test, the three levels, fakes over mocks and the shape of a test
-are in `testing.md`. Configuration lives in `[tool.pytest]` (`python-project`); an ASGI app in an
-async test is `python-fastapi`.
+are in `testing.md`. Configuration lives in `[tool.pytest]` (`python-project`).
 
 ## Async Tests
 

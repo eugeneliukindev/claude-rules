@@ -15,8 +15,7 @@ paths:
 Checked against strawberry-graphql 0.333, graphql-core 3.3 and pydantic 2.14, by reading the
 installed source and running every `CORRECT` below. Strawberry is 0.x and renames and deprecates
 between minor versions — check the source of the version you pin. Mounting the GraphQL app in a web
-framework is that framework's skill (`python-fastapi`); construction and lifetime are
-`python-wiring`.
+framework is that framework's skill; construction and lifetime are `python-wiring`.
 
 ### The GraphQL package turns off `disallow_untyped_decorators` in one mypy override
 
