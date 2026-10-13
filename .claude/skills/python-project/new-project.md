@@ -117,20 +117,6 @@ ones ruff itself reports as conflicting, plus a project decision. A lint rule th
 these rules — `EM102` or `TRY003` against the f-string messages `errors.md` asks for, `TD002`
 against an ownerless `TODO` — is the owner's call, made the same way.
 
-**Example:**
-```toml
-# WRONG — a hand-picked list: the bugbear, security and annotation families are never checked
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-
-# CORRECT — everything, minus what is argued on its line
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = [
-  "COM812",   # conflicts with the formatter
-]
-```
-
 ### mypy enables the error codes `strict` leaves off, and is the only type checker
 
 **Why:** `strict` does not turn on `explicit-override`, `exhaustive-match` or `ignore-without-code`,
@@ -158,19 +144,6 @@ enable_error_code = ["explicit-override", "exhaustive-match", "ignore-without-co
 strict `xfail` and strict parametrization ids together — a misspelt marker is an error, not a test
 silently selected by nothing. `filterwarnings = ["error"]` fails the run the day a deprecation
 warning appears, not the day the API is removed.
-
-**Example:**
-```toml
-# WRONG — a typo in a marker selects nothing, and deprecations scroll past
-[tool.pytest]
-testpaths = ["tests"]
-
-# CORRECT — unknown markers and every warning fail the run
-[tool.pytest]
-strict = true
-testpaths = ["tests"]
-filterwarnings = ["error"]
-```
 
 ### ruff's runtime-evaluated tables name every pydantic base and FastAPI route decorator in use
 

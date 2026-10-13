@@ -23,20 +23,6 @@ installed package, what users get. `--lib` also writes `py.typed`, without which
 type checker treats the library as untyped. `tests/` sits beside `src/`, and a helper the package
 must not ship lives there. The build backend `uv init` writes stays unless there is a reason.
 
-**Example:**
-```text
-# WRONG — the package beside the tests: they import the working tree, not what is installed
-pantry/__init__.py
-pantry/recipes.py
-pantry/tests/test_recipes.py
-
-# CORRECT — the src layout, the marker shipped, the tests outside the package
-src/pantry/__init__.py
-src/pantry/py.typed
-src/pantry/recipes.py
-tests/test_recipes.py
-```
-
 ### `requires-python` is the floor, and `[tool.mypy] python_version` repeats it
 
 **Why:** the floor decides the syntax once — PEP 695 generics from 3.12, `TypeIs` from 3.13, `uuid7`
@@ -93,31 +79,11 @@ application and a library alike; a library's users never see it. Plain `uv sync`
 `pyproject.toml` has moved past the lock, so CI would test versions nobody locked; `--locked` fails
 instead.
 
-**Example:**
-```bash
-# WRONG — a stale lock is quietly re-resolved, and CI tests what nobody committed
-uv sync && uv run pytest
-
-# CORRECT — a lock that no longer matches pyproject.toml fails the job
-uv sync --locked && uv run pytest
-```
-
 ### Tools are a dependency group, never an extra
 
 **Why:** `[dependency-groups]` (PEP 735) is what `uv sync` installs and the published package does
 not carry. An extra — `[project.optional-dependencies]` — is a feature a user opts into, and lives
 in the one module that imports it (`python-packaging`).
-
-**Example:**
-```toml
-# WRONG — an extra: `pip install pantry[dev]` is now a published feature that installs a linter
-[project.optional-dependencies]
-dev = ["mypy>=2.4", "pytest>=9.0"]
-
-# CORRECT — a group: uv sync installs it, and the published package does not carry it
-[dependency-groups]
-dev = ["mypy>=2.4", "pytest>=9.0"]
-```
 
 ## Upgrades and Audits
 

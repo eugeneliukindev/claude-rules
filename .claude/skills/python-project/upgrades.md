@@ -6,18 +6,6 @@
 revert of the feature takes the upgrade with it. `uv lock --upgrade-package NAME` moves one package,
 `uv lock --upgrade` all of them; `uv tree --outdated` lists what is behind.
 
-**Example:**
-```bash
-# WRONG — every package upgraded inside the feature's commit
-uv lock --upgrade
-git commit --all --message "feat: search recipes by ingredient"
-
-# CORRECT — the upgrade is its own commit, with the suite run on it
-uv lock --upgrade-package pydantic
-uv sync --locked && uv run pytest
-git commit --message "build: upgrade pydantic" uv.lock
-```
-
 ### A lower bound is tested by a CI job that installs every direct dependency at its floor
 
 **Why:** a `pydantic>=2.11` that quietly needs 2.12 passes every run on the locked, newest versions
