@@ -51,25 +51,6 @@ def require_principal(request: Request, credentials: BearerCredentials) -> Princ
 cookie set with the defaults is readable by any script on the page and sent over plain HTTP. A
 `__Host-` name works with Starlette's defaults of `Path=/` and no `Domain`.
 
-**Example:**
-```python
-# WRONG — the defaults: readable by any script on the page, and sent over plain HTTP
-def set_session_cookie(response: Response, session_id: str) -> None:
-    response.set_cookie(_SESSION_COOKIE, session_id, max_age=_SESSION_MAX_AGE_SECONDS)
-
-
-# CORRECT — HTTPS only, invisible to JavaScript, withheld from cross-site subrequests
-def set_session_cookie(response: Response, session_id: str) -> None:
-    response.set_cookie(
-        _SESSION_COOKIE,
-        session_id,
-        max_age=_SESSION_MAX_AGE_SECONDS,
-        secure=True,
-        httponly=True,
-        samesite="lax",
-    )
-```
-
 ### Protected routes are tested through the app built with the fake verifier
 
 **Why:** a principal injected with `dependency_overrides` skips the edge's mapping; through the app,

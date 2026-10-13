@@ -92,24 +92,6 @@ type TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 whatever the dependency acquired — a scratch directory, a lease — is never released. A dependency
 cached for the life of the app is a lazy singleton — it belongs in the lifespan.
 
-**Example:**
-```python
-# WRONG — a route that raises never reaches the cleanup, and the directory stays on disk
-def get_scratch_directory() -> Iterator[Path]:
-    directory = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX))
-    yield directory
-    shutil.rmtree(directory)
-
-
-# CORRECT — removed whether the route returned or raised
-def get_scratch_directory() -> Iterator[Path]:
-    directory = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX))
-    try:
-        yield directory
-    finally:
-        shutil.rmtree(directory)
-```
-
 ## Routers
 
 ### A route parses, calls one service method, and builds the response
@@ -143,20 +125,6 @@ async def close_task(task_id: TaskId, tasks: TaskServiceDep) -> TaskResponse:
 has is published — one added attribute is one leaked field (`python-boundaries`). An explicit
 `response_model=` over a returned domain object drops extras, but maps by attribute name, out of
 sight; `from_domain` states the mapping.
-
-**Example:**
-```python
-# WRONG — the domain dataclass is the response model: every field added to Task is published
-@tasks_router.get("/tasks/{task_id}")
-async def get_task(task_id: TaskId, tasks: TaskServiceDep) -> Task:
-    return await tasks.get_task(task_id)
-
-
-# CORRECT — an explicit response model, built from the domain object
-@tasks_router.get("/tasks/{task_id}")
-async def get_task(task_id: TaskId, tasks: TaskServiceDep) -> TaskResponse:
-    return TaskResponse.from_domain(await tasks.get_task(task_id))
-```
 
 ### Domain errors map to statuses in one handler, and only a classified error gets a 4xx
 

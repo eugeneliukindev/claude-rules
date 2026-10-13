@@ -282,16 +282,6 @@ kill grace period. `--ws-max-size` is 16 MiB by default and closes an oversize f
 set to what the protocol needs. `--ws-ping-interval`, 20 seconds by default, is the WebSocket
 heartbeat; it stays on.
 
-**Example:**
-```bash
-# WRONG — open streams hold the shutdown until the orchestrator kills the process mid-send
-uvicorn tracking.main:app --host 0.0.0.0 --port 8000
-
-# CORRECT — twenty seconds to drain inside a thirty-second grace period, frames capped at 64 KiB
-uvicorn tracking.main:app --host 0.0.0.0 --port 8000 \
-    --timeout-graceful-shutdown 20 --ws-max-size 65536
-```
-
 ### A WebSocket is tested through `websocket_connect`, inside `with TestClient(app)`
 
 **Why:** outside the `with` the lifespan never runs, so the feed and the channel it builds do not
