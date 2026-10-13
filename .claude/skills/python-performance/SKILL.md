@@ -26,15 +26,6 @@ or `py-spy top --pid` on a running process; memory is two `tracemalloc` snapshot
 number to pin is `timeit` or `pytest-benchmark`. One wall-clock reading of one run is noise, and
 says nothing about where the time went. The profile goes with the change.
 
-**Example:**
-```bash
-# WRONG — one wall-clock reading of one run
-time python -m catalog.import_prices
-
-# CORRECT — where the time goes, saved to compare against the run after the change
-python -m cProfile -o before.prof -m catalog.import_prices
-```
-
 ## Containers
 
 | the operation | use | instead of | measured on CPython 3.14 |

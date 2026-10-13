@@ -7,28 +7,6 @@
 as a list and 8 MB as an array. Arithmetic over whole columns is numpy's job, a dependency a
 measurement decides.
 
-**Example:**
-```python
-# WRONG — a million int objects behind a million pointers
-@final
-class LatencyLog:
-    def __init__(self) -> None:
-        self._latencies_ns: list[int] = []
-
-    def record(self, latency_ns: int) -> None:
-        self._latencies_ns.append(latency_ns)
-
-
-# CORRECT — eight bytes per sample, in one buffer
-@final
-class LatencyLog:
-    def __init__(self) -> None:
-        self._latencies_ns = array("q")
-
-    def record(self, latency_ns: int) -> None:
-        self._latencies_ns.append(latency_ns)
-```
-
 ### A large byte buffer is sliced through a `memoryview`, released with `with`
 
 **Why:** slicing `bytes` copies; slicing a `memoryview` does not — cutting 50 MB into 64 KiB chunks
