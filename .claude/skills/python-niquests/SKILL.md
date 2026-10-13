@@ -33,8 +33,10 @@ async def fetch_shipment(shipment_id: ShipmentId, *, base_url: str) -> object:
 
 # CORRECT — the root's session, opened once and closed on the way out
 @asynccontextmanager
-async def managed_carrier_session(*, base_url: str) -> AsyncIterator[niquests.AsyncSession]:
-    async with niquests.AsyncSession(base_url=base_url, timeout=_CARRIER_TIMEOUT) as session:
+async def managed_carrier_session(
+    *, base_url: str, timeout: TimeoutConfiguration = _CARRIER_TIMEOUT
+) -> AsyncIterator[niquests.AsyncSession]:
+    async with niquests.AsyncSession(base_url=base_url, timeout=timeout) as session:
         yield session
 ```
 
