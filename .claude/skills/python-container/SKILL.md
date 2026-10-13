@@ -18,11 +18,12 @@ paths:
 # Containers
 
 Checked against uv 0.13.0 and Docker 29 with BuildKit. The project inside the image is
-`python-project`'s; how the process shuts down is `python-async`, and how a consumer drains within
-the grace period is `python-workers`; settings are `python-wiring`; the schema change a deploy runs
-is `python-migrations`, with alembic's command in `python-alembic`; a gRPC service's health probe is
-`python-grpc`; uvicorn's own flags are `python-fastapi`. A one-off job runs from the service's own
-image with a different command, so nothing here relaxes for a script.
+`python-project`'s; how the process shuts down is `python-async`, or `python-sync` without a loop,
+and how a consumer drains within the grace period is `python-workers`; settings are `python-wiring`;
+the schema change a deploy runs is `python-migrations`, with alembic's command in `python-alembic`;
+a gRPC service's health probe is `python-grpc`; uvicorn's own flags are `python-fastapi`. A one-off
+job runs from the service's own image with a different command, so nothing here relaxes for a
+script.
 
 ## The Image
 

@@ -76,10 +76,11 @@ is not obvious.
 8. **Comments** — every comment is one of the four forms in `comments.md` and passes the relocation
    test; no credential, URL or environment value is hardcoded.
 
-Then the skills the diff reaches: an `async def` is read against `python-async`, a query against
-`python-persistence`, a migration against `python-migrations`, an outbound call against
-`python-boundaries`, a settings field against `python-wiring`, an import of a library against
-its `python-<library>` skill. A test file is read against `testing.md`.
+Then the skills the diff reaches: an `async def` is read against `python-async`, a thread or a pool
+against `python-sync`, a query against `python-persistence`, a migration against
+`python-migrations`, an outbound call against `python-boundaries`, a settings field against
+`python-wiring`, an import of a library against its `python-<library>` skill. A test file is read
+against `testing.md`.
 
 ## 5. Report
 
