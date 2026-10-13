@@ -32,7 +32,7 @@ async def main() -> None:
 ### A thread that does work is never a daemon; it watches a stop event and is joined with a deadline
 
 **Why:** a daemon thread is killed wherever it stands when the interpreter exits — mid-write, with
-its buffer unflushed. A thread that checks a stop event finishes its unit of work, and the join's
+its buffer unflushed. A thread that checks a stop event finishes its current item, and the join's
 timeout bounds how long shutdown waits for it.
 
 **Example:**
