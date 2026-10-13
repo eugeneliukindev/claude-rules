@@ -230,3 +230,14 @@ disconnect arrives, the WebSocket handler, uvicorn's flags, the tests.
 
 **Before writing the uvicorn command, read [serving.md](serving.md)** — the drain bounded below the
 grace period, and `--forwarded-allow-ips` set to the proxy's network behind one.
+
+## With Other Libraries
+
+**Before using SQLAlchemy in a FastAPI app, read [with-sqlalchemy.md](with-sqlalchemy.md)** — the
+engine built and disposed by the lifespan, and no session through `Depends`.
+
+**Before running a gRPC server beside a FastAPI app, read [with-grpc.md](with-grpc.md)** — the server
+entered in the lifespan, under one worker.
+
+**Before mounting a strawberry GraphQL app in FastAPI, read [with-strawberry.md](with-strawberry.md)**
+— the context getter as an authenticating dependency, on `HTTPConnection`.
