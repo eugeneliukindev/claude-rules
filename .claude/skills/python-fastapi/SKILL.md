@@ -14,10 +14,9 @@ paths:
 
 Checked against FastAPI 0.143 and Starlette 1.7. Construction, lifetime and layering are
 `python-wiring`; request and response models are `python-pydantic` — and a strict body model relaxes
-its `datetime`, `UUID` and `Decimal` fields by name, or every valid payload is a 422. A gRPC server
-started in the lifespan is `python-grpc`, a GraphQL `GraphQLRouter` is `python-strawberry`. This
-file is where FastAPI's own mechanisms meet those rules — chiefly `Depends`, which looks like
-dependency injection and is used, in most tutorials, as a service locator.
+its `datetime`, `UUID` and `Decimal` fields by name, or every valid payload is a 422. This file is
+where FastAPI's own mechanisms meet those rules — chiefly `Depends`, which looks like dependency
+injection and is used, in most tutorials, as a service locator.
 
 ## The Factory and the Lifespan
 
@@ -30,7 +29,8 @@ caller built; the server runs it with `uvicorn --factory`. The lifespan holds on
 an item per resource, builds the services inside, and yields what requests need — Starlette puts it
 on `request.state` — closing everything in reverse on shutdown. `@app.on_event("startup")` is the
 deprecated shape, and a startup and shutdown pair releases in registration order, apart from the
-acquire. Every worker runs the lifespan, so a server it starts — gRPC — needs one worker.
+acquire. Every worker runs the lifespan, so a server it starts on a port of its own needs one
+worker.
 
 **Example:**
 ```python

@@ -91,14 +91,14 @@ def parse_return(body: bytes) -> BookReturned:
 ### A body a framework decodes for you relaxes exactly its string-carried fields, by name
 
 **Why:** a framework that validates the dict it decoded is in Python mode, and strict answers every
-valid ISO-8601 or UUID string with an error — measured on FastAPI 0.143, a strict body model turned
-a correct payload into a 422. Where the raw bytes are at hand they are validated as JSON; where they
-are not — a FastAPI body, which also feeds the OpenAPI schema — the string wire forms are made lax
-once, by name, and everything else stays strict.
+valid ISO-8601 or UUID string with an error — measured, a strict body model behind a web framework
+turned a correct payload into a 422. Where the raw bytes are at hand they are validated as JSON;
+where they are not — a body the framework decodes and documents itself — the string wire forms are
+made lax once, by name, and everything else stays strict.
 
 **Example:**
 ```python
-# WRONG — a FastAPI body on the strict base: every valid due_on is a 422
+# WRONG — a framework-decoded body on the strict base: every valid due_on is a 422
 @final
 class ReserveBookRequest(BoundaryModel):
     due_on: datetime
