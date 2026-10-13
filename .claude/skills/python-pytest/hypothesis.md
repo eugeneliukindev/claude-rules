@@ -39,14 +39,3 @@ def test_money_round_trips_through_dict(money: Money) -> None:
 **Why:** the 200 ms default deadline trips at random on a shared runner, so it is a CI hazard, not a
 performance test. A profile registered in the root `conftest.py` and loaded by environment turns it
 off there.
-
-**Example:**
-```python
-# WRONG — the default deadline: CI fails whenever the runner is busy
-settings.register_profile("ci", max_examples=200)
-
-
-# CORRECT — CI runs more examples, without a deadline
-settings.register_profile("ci", max_examples=200, deadline=None)
-settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
-```

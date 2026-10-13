@@ -27,19 +27,6 @@ claim `async def` tests. `asyncio_mode = "auto"` lets an `async def test_…` an
 without a marker, and `asyncio_default_fixture_loop_scope = "function"` is stated rather than left
 to the plugin's warning.
 
-**Example:**
-```toml
-# WRONG — strict mode: every async test needs a marker, and the loop scope is a warning
-[tool.pytest]
-asyncio_mode = "strict"
-
-
-# CORRECT — auto mode, and the default loop scope chosen
-[tool.pytest]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-```
-
 ### A shared loop is a `loop_scope`, never an `event_loop` fixture
 
 **Why:** the `event_loop` fixture is gone in 1.0, and an override of it is silently ignored — 1.x
@@ -93,30 +80,6 @@ factories are ordinary modules — `tests/fakes.py`, `tests/factories.py` — im
 `conftest.py` is not meant to be imported, and an import of it that works today breaks under
 `--import-mode=importlib`. `pytest_plugins` goes only in the root `conftest.py`; deeper, pytest
 refuses to start.
-
-**Example:**
-```python
-# WRONG — works only while pytest puts this directory on sys.path, which importlib mode does not
-from conftest import make_reservation
-
-
-def test_reservation_cannot_overlap() -> None:
-    existing = make_reservation(nights=2)
-
-    with pytest.raises(OverlappingReservationError):
-        check_no_overlap(existing, make_reservation(nights=1))
-
-
-# CORRECT — the factories are an ordinary module of the tests package
-from tests.factories import make_reservation
-
-
-def test_reservation_cannot_overlap() -> None:
-    existing = make_reservation(nights=2)
-
-    with pytest.raises(OverlappingReservationError):
-        check_no_overlap(existing, make_reservation(nights=1))
-```
 
 ## Property-Based Tests
 
