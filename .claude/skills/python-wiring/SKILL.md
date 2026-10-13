@@ -159,23 +159,6 @@ class ThumbnailRenderer:
 **Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one that
 is reached from inside the code is a service locator — the hidden global below.
 
-**Example:**
-```python
-# WRONG — a container resolved from inside the service: the dependency is invisible in the signature
-@final
-class ReportService:
-    def __init__(self) -> None:
-        self._documents = container.resolve(DocumentRepository)
-
-    def build(self, day: date) -> Report:
-        return Report(documents=self._documents.created_on(day))
-
-
-# CORRECT — plain code in the root, in dependency order
-def build_report_service(pool: DatabasePool) -> ReportService:
-    return ReportService(documents=PostgresDocumentRepository(pool))
-```
-
 ### No global singletons, no service locator
 
 **Why:** a module-level connection or a globally reachable container is hidden global state:
@@ -270,26 +253,6 @@ named for the lifecycle — `managed_pool` — yields exactly once and cleans up
 exception in the block still releases.
 **Except:** a class with `__enter__`/`__exit__` when the object has other methods besides those two.
 
-**Example:**
-```python
-# WRONG — an exception in the with block never reaches close(): the pool stays open
-@contextmanager
-def managed_pool(database_url: str) -> Iterator[ConnectionPool]:
-    pool = ConnectionPool.open(database_url)
-    yield pool
-    pool.close()
-
-
-# CORRECT — finally runs whether the block returns or raises
-@contextmanager
-def managed_pool(database_url: str) -> Iterator[ConnectionPool]:
-    pool = ConnectionPool.open(database_url)
-    try:
-        yield pool
-    finally:
-        pool.close()
-```
-
 ### A known set of resources is one `with` statement, an item per resource
 
 **Why:** the parenthesized form closes them in reverse order exactly as nesting would, and shows
@@ -378,31 +341,6 @@ def managed_lock(name: str, *, locks: LockService) -> Iterator[Lock]:
 **Why:** a context manager that flips process state — `chdir`, an environment variable, logging
 configuration — changes every other caller for its duration; it belongs to tests and entry points
 only.
-
-**Example:**
-```python
-# WRONG — a service helper changes the process's working directory for everyone else running
-@contextmanager
-def inside(directory: Path) -> Iterator[None]:
-    previous = Path.cwd()
-    os.chdir(directory)
-    try:
-        yield
-    finally:
-        os.chdir(previous)
-
-
-def export_documents(documents: Sequence[Document], *, into: Path) -> None:
-    with inside(into):
-        for document in documents:
-            Path(f"{document.document_id}.pdf").write_bytes(document.content)
-
-
-# CORRECT — the path is built; nothing about the process changes
-def export_documents(documents: Sequence[Document], *, into: Path) -> None:
-    for document in documents:
-        (into / f"{document.document_id}.pdf").write_bytes(document.content)
-```
 
 ## Constants
 

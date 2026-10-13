@@ -10,26 +10,6 @@ callee use essentially every field; is the name a concept (`RetryPolicy`) rather
 (`Settings`, `Config`, `Env`); could a test build it in one line from literals? Three yeses make a
 value to pass; one no makes the configuration root wearing a smaller name.
 
-**Example:**
-```python
-# WRONG — "options" is the configuration root renamed: the callee reads two of its nine fields
-def send_batch(messages: Sequence[Message], *, options: NotifierSettings) -> None:
-    for chunk in batched(messages, options.batch_size):
-        deliver(chunk, timeout_seconds=options.timeout_seconds)
-
-
-# CORRECT — a concept the callee uses whole, buildable from literals in one line
-@dataclass(frozen=True, slots=True, kw_only=True)
-class BatchPolicy:
-    batch_size: int
-    timeout_seconds: float
-
-
-def send_batch(messages: Sequence[Message], *, policy: BatchPolicy) -> None:
-    for chunk in batched(messages, policy.batch_size):
-        deliver(chunk, timeout_seconds=policy.timeout_seconds)
-```
-
 ### A dispatcher that forwards options forwards them typed
 
 **Why:** a factory handing one option bundle to whichever builder it selected takes `**options:

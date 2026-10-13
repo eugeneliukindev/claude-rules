@@ -151,19 +151,3 @@ class Settings:
 
 **Why:** a placeholder default lets a deploy that forgot the variable start and run with
 `"changeme"`; a plain `str` secret is printed by the first `repr` of the settings.
-
-**Example:**
-```python
-# WRONG — a placeholder default, and a repr that prints the password
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Settings:
-    database_password: str = "changeme"
-
-
-# CORRECT — no default, so a forgotten variable stops the start; and kept out of every repr
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Settings:
-    database_password: str = field(repr=False)
-```
