@@ -7,20 +7,23 @@ The WebSocket limits are in [streaming.md](streaming.md); the container start co
 
 **Why:** `uvicorn --factory` calls a function with no arguments, so the app module would have to
 read the environment itself — the one place allowed to read it is the entry point, which builds the
-settings once and hands them in. The entry point runs `uvicorn.Server` with the app `create_app`
-built, and the server's options come from the same settings; tests call `create_app` with theirs.
+settings once and unpacks the fields `create_app` takes. It runs `uvicorn.Server` with that app, the
+server's options from the same settings; tests call `create_app` with their own values.
 
 **Example:**
 ```python
 # WRONG — `uvicorn --factory tracker.api:app_from_environment`: the app module reads the environment
 def app_from_environment() -> FastAPI:
-    return create_app(Settings())
+    settings = Settings()
+    return create_app(database_url=settings.database_url)
 
 
 # CORRECT — `tracker-server = "tracker.server:main"`: the entry point reads, the app receives
 def main() -> None:
     settings = Settings()
-    config = uvicorn.Config(create_app(settings), host=settings.host, port=settings.port)
+    config = uvicorn.Config(
+        create_app(database_url=settings.database_url), host=settings.host, port=settings.port
+    )
     uvicorn.Server(config).run()
 ```
 
@@ -34,7 +37,9 @@ orchestrator's grace period into `SIGKILL`, so the lifespan's shutdown never run
 # WRONG — the drain waits for every open request
 def main() -> None:
     settings = Settings()
-    config = uvicorn.Config(create_app(settings), host=settings.host, port=settings.port)
+    config = uvicorn.Config(
+        create_app(database_url=settings.database_url), host=settings.host, port=settings.port
+    )
     uvicorn.Server(config).run()
 
 
@@ -42,7 +47,7 @@ def main() -> None:
 def main() -> None:
     settings = Settings()
     config = uvicorn.Config(
-        create_app(settings),
+        create_app(database_url=settings.database_url),
         host=settings.host,
         port=settings.port,
         timeout_graceful_shutdown=settings.drain_seconds,

@@ -22,12 +22,10 @@ def create_app() -> FastAPI:
 
 
 # CORRECT — entered with the other resources, closed after the last request
-def create_app(settings: Settings) -> FastAPI:
+def create_app(*, cache_url: str, cache_timeout_seconds: float) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_cashews(
-            url=settings.cache_url, timeout_seconds=settings.cache_timeout_seconds
-        ) as cache:
+        async with managed_cashews(url=cache_url, timeout_seconds=cache_timeout_seconds) as cache:
             yield {"catalog": CatalogService(cache=CashewsCache(cache))}
 
     app = FastAPI(lifespan=lifespan)

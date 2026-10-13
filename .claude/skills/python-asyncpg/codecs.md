@@ -28,12 +28,12 @@ async def _register_json_codecs(connection: asyncpg.Connection) -> None:
 
 
 @asynccontextmanager
-async def managed_pool(settings: DatabaseSettings) -> AsyncIterator[asyncpg.Pool]:
+async def managed_pool(config: PoolConfig) -> AsyncIterator[asyncpg.Pool]:
     async with asyncpg.create_pool(
-        settings.url,
-        min_size=settings.min_connections,
-        max_size=settings.max_connections,
-        command_timeout=settings.command_timeout_seconds,
+        config.url,
+        min_size=config.min_connections,
+        max_size=config.max_connections,
+        command_timeout=config.command_timeout_seconds,
         init=_register_json_codecs,
     ) as pool:
         yield pool

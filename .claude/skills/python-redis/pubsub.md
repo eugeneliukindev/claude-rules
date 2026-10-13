@@ -158,11 +158,11 @@ task group and cancels it at shutdown:
 
 ```python
 @asynccontextmanager
-async def tracking_resources(settings: TrackingSettings) -> AsyncIterator[TrackingResources]:
+async def tracking_resources(
+    *, redis_url: str, redis_timeout_seconds: float
+) -> AsyncIterator[TrackingResources]:
     async with (
-        managed_redis(
-            url=settings.redis_url, timeout_seconds=settings.redis_timeout_seconds
-        ) as redis,
+        managed_redis(url=redis_url, timeout_seconds=redis_timeout_seconds) as redis,
         asyncio.TaskGroup() as tasks,
     ):
         feed = ParcelFeed()

@@ -330,7 +330,7 @@ def test_parcel_events_streams_published_event(app: FastAPI) -> None:
 
 # CORRECT — a one-second lifetime ends the stream, after the event published to it
 async def test_parcel_events_streams_published_event() -> None:
-    app = create_app(make_tracking_settings(stream_lifetime_seconds=1.0))
+    app = create_app(stream_lifetime_seconds=1.0)
     async with LifespanManager(app) as manager, _client(manager.app) as client:
         publishing = asyncio.create_task(_publish_when_subscribed(app, _OUT_FOR_DELIVERY))
 

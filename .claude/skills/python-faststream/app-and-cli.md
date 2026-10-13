@@ -21,15 +21,18 @@ async def _open_inventory(context: ContextRepo) -> None:
     context.set_global("inventory", HttpRoomInventory(open_http_client()))
 
 
-# CORRECT — the entry point reads the settings; the app is built from them, the lifespan opens
+# CORRECT — the entry point reads the settings and unpacks them; the lifespan opens the resources
 def build_app(
-    settings: WorkerSettings, *, graceful_timeout_seconds: float = _GRACEFUL_TIMEOUT_SECONDS
+    *,
+    amqp_url: str,
+    inventory_url: str,
+    graceful_timeout_seconds: float = _GRACEFUL_TIMEOUT_SECONDS,
 ) -> FastStream:
-    broker = RabbitBroker(settings.amqp_url, graceful_timeout=graceful_timeout_seconds)
+    broker = RabbitBroker(amqp_url, graceful_timeout=graceful_timeout_seconds)
 
     @asynccontextmanager
     async def lifespan() -> AsyncIterator[None]:
-        async with managed_inventory_session(settings.inventory_url) as session:
+        async with managed_inventory_session(inventory_url) as session:
             broker.include_router(build_booking_router(inventory=HttpRoomInventory(session)))
             yield
 
@@ -37,5 +40,7 @@ def build_app(
 
 
 def main() -> None:
-    asyncio.run(build_app(WorkerSettings()).run())
+    settings = WorkerSettings()
+    app = build_app(amqp_url=settings.amqp_url, inventory_url=settings.inventory_url)
+    asyncio.run(app.run())
 ```

@@ -5,20 +5,19 @@ The composition root and resource lifetime are in `SKILL.md`; the settings model
 
 ## Contents
 
-- Configuration is one typed settings object, built once at the root and passed in
-- Pass fields, never the configuration root
+- Configuration is one typed settings object, built once at the root and unpacked there
 - Tests never build `Settings`; they pass fields
 - Configuration is validated at startup, before serving
 - A secret never appears in code, in a default or in a log
 
 ## The Settings Object
 
-### Configuration is one typed settings object, built once at the root and passed in
+### Configuration is one typed settings object, built once at the root and unpacked there
 
 **Why:** anything that varies by environment read from `os.environ` across the code is a dependency
 nobody declared; a module-level settings instance — or a cached `get_settings()` behind `@lru_cache`
-— is that instance by another name, global, and changed in a
-test only through `cache_clear()` and the environment.
+— is that instance by another name, global, and changed in a test only through `cache_clear()` and
+the environment. Below the root nothing takes the settings object (`functions.md`).
 
 **Example:**
 ```python
@@ -47,40 +46,6 @@ def main() -> None:
             timeout_seconds=settings.rates_timeout_seconds,
         )
         publish_rates(rates)
-```
-
-### Pass fields, never the configuration root
-
-**Why:** middleware that kept the settings object it was given changed behaviour when someone edited
-that object after startup; fields copied at construction cannot. The signature of a function taking
-`settings: Settings` stops being a dependency list, and a test has to build the whole tree for one
-call — an untyped `**kwargs` has the same defect. Unpacking happens once, in the root.
-
-**Example:**
-```python
-# WRONG — the signature hides what is read, and a test builds every settings group for one call
-@final
-class RateFetcher:
-    def __init__(self, *, client: HttpClient, settings: Settings) -> None:
-        self._client = client
-        self._settings = settings
-
-    def fetch(self) -> RateTable:
-        return self._client.get_rates(
-            self._settings.rates_url, timeout_seconds=self._settings.rates_timeout_seconds
-        )
-
-
-# CORRECT — the signature is the dependency list; the root unpacks the settings
-@final
-class RateFetcher:
-    def __init__(self, *, client: HttpClient, rates_url: str, timeout_seconds: float) -> None:
-        self._client = client
-        self._rates_url = rates_url
-        self._timeout_seconds = timeout_seconds
-
-    def fetch(self) -> RateTable:
-        return self._client.get_rates(self._rates_url, timeout_seconds=self._timeout_seconds)
 ```
 
 ### Tests never build `Settings`; they pass fields

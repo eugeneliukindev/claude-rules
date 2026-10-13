@@ -19,12 +19,13 @@ looks like dependency injection and is used, in most tutorials, as a service loc
 
 ## The Factory and the Lifespan
 
-### `create_app(settings)` builds the app, and its lifespan builds and closes every resource
+### `create_app` builds the app from plain values, and its lifespan builds and closes every resource
 
 **Why:** a module-level `app = FastAPI()` with a pool beside it is the global singleton
 `python-wiring` forbids, and the documentation's `@lru_cache def get_settings()` is one with extra
-steps — a test that needs another value has to clear a cache. The factory takes the settings its
-caller built — the entry point, which runs uvicorn with the app (`serving.md`). The lifespan holds
+steps — a test that needs another value has to clear a cache. The factory takes the values it
+needs — plain types, or a frozen config dataclass for a group — which the entry point unpacks from
+its settings before running uvicorn with the app (`serving.md`). The lifespan holds
 one `async with` with an item per resource, builds the services inside, and yields what requests
 need — Starlette puts it on `request.state` — closing everything in reverse on shutdown.
 `@app.on_event("startup")` is the deprecated shape, and a startup and shutdown pair releases in
@@ -44,10 +45,10 @@ def task_service(settings: Annotated[Settings, Depends(get_settings)]) -> TaskSe
 
 
 # CORRECT — the factory's lifespan builds once; the dependency only hands it over
-def create_app(settings: Settings) -> FastAPI:
+def create_app(*, database_url: str) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_pool(settings.database_url) as pool:
+        async with managed_pool(database_url) as pool:
             yield {"task_service": TaskService(PostgresTaskRepository(pool))}
 
     app = FastAPI(lifespan=lifespan)
@@ -242,9 +243,9 @@ server entered in the lifespan, under one worker.
 [with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
 domain and named by the return annotation.
 
-**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the cache
-entered in the lifespan, no middleware that lets a client clear it, decorators on the service and
-not the route, and 429 and 503 for its rate limit and circuit breaker.
+**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
+cache entered in the lifespan, no middleware that lets a client clear it, decorators on the service
+and not the route, and 429 and 503 for its rate limit and circuit breaker.
 
 **Before publishing a message from a FastAPI app, read [with-faststream.md](with-faststream.md)** —
 the event written to the outbox by the service, never published from the route.

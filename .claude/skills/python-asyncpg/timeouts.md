@@ -44,13 +44,13 @@ async def apply_statement_timeout(connection: PoolConnectionProxy) -> None:
 
 # CORRECT — a startup parameter every connection of the pool keeps
 @asynccontextmanager
-async def managed_pool(settings: DatabaseSettings) -> AsyncIterator[asyncpg.Pool]:
+async def managed_pool(config: PoolConfig) -> AsyncIterator[asyncpg.Pool]:
     async with asyncpg.create_pool(
-        settings.url,
-        min_size=settings.min_connections,
-        max_size=settings.max_connections,
-        command_timeout=settings.command_timeout_seconds,
-        server_settings={"statement_timeout": str(settings.statement_timeout_ms)},
+        config.url,
+        min_size=config.min_connections,
+        max_size=config.max_connections,
+        command_timeout=config.command_timeout_seconds,
+        server_settings={"statement_timeout": str(config.statement_timeout_ms)},
     ) as pool:
         yield pool
 ```

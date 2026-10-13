@@ -23,14 +23,14 @@ def create_app() -> FastAPI:
 
 
 # CORRECT — built when the app starts, disposed when it stops, whatever happened in between
-def create_app(settings: Settings) -> FastAPI:
+def create_app(*, database: DatabaseConfig, max_attachment_bytes: int) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
         engine = create_async_engine(
-            settings.database_url, pool_size=settings.database_pool_size, pool_pre_ping=True
+            database.url, pool_size=database.pool_size, pool_pre_ping=True
         )
         task_service_factory: TaskServiceFactory = partial(
-            TaskService, max_attachment_bytes=settings.max_attachment_bytes
+            TaskService, max_attachment_bytes=max_attachment_bytes
         )
         try:
             yield {
@@ -45,29 +45,29 @@ def create_app(settings: Settings) -> FastAPI:
     return app
 ```
 
-### The lifespan binds settings into a service factory with `partial`; a request adds its session
+### The lifespan binds fixed values into a service factory; a request adds its session
 
-**Why:** a service holds two kinds of input: settings, fixed for the app's life, and a session, one
-per request. A dependency that reads the settings to build the service on every request is the
-settings lookup the dependency rule forbids, and a service built once in the lifespan cannot hold a
-session. `partial` splits them: the lifespan binds what is application-scoped once, and the
+**Why:** a service holds two kinds of input: values fixed for the app's life, and a session, one per
+request. A dependency that looks the values up to build the service on every request is the
+configuration lookup the dependency rule forbids, and a service built once in the lifespan cannot
+hold a session. `partial` splits them: the lifespan binds what is application-scoped once, and the
 dependency passes only what is request-scoped. The factory is typed as a calling protocol: as
 `partial[TaskService]` mypy accepts a call that omits the transaction — measured — while the
 protocol checks both the binding in the lifespan and the call in the dependency.
 
 **Example:**
 ```python
-# WRONG — every request reads the settings to build the service
+# WRONG — every request reads the limit from the state to build the service
 async def get_task_service(request: Request, session: SessionDep) -> TaskService:
-    settings: Settings = request.state.settings
+    max_attachment_bytes: int = request.state.max_attachment_bytes
     return TaskService(
         tasks=SqlTaskRepository(session),
         transaction=session,
-        max_attachment_bytes=settings.max_attachment_bytes,
+        max_attachment_bytes=max_attachment_bytes,
     )
 
 
-# CORRECT — the settings were bound in the lifespan; the request passes its session alone
+# CORRECT — the values were bound in the lifespan; the request passes its session alone
 class TaskServiceFactory(Protocol):
     def __call__(self, *, tasks: TaskRepository, transaction: Transaction) -> TaskService: ...
 

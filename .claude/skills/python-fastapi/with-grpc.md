@@ -14,12 +14,12 @@ point in the same image, in a second container.
 **Example:**
 ```python
 # WRONG — started as a task the lifespan never stops: no drain, and an error in it goes unseen
-def create_app(settings: Settings) -> FastAPI:
+def create_app(*, database_url: str, grpc_server: GrpcServerConfig) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_task_store(settings.database_url) as store:
+        async with managed_task_store(database_url) as store:
             tasks = TaskService(tasks=store)
-            asyncio.create_task(serve(tasks=tasks, address=settings.grpc_address))
+            asyncio.create_task(serve(tasks=tasks, address=grpc_server.address))
             yield {"task_service": tasks}
 
     app = FastAPI(lifespan=lifespan)
@@ -28,20 +28,18 @@ def create_app(settings: Settings) -> FastAPI:
 
 
 # CORRECT — the server is entered inside the store and left before it, drained on the way out
-def create_app(settings: Settings) -> FastAPI:
-    grpc_credentials = grpc.ssl_server_credentials(
-        [(settings.grpc_private_key.get_secret_value(), settings.grpc_certificate_chain)]
-    )
-
+def create_app(*, database_url: str, grpc_server: GrpcServerConfig) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_task_store(settings.database_url) as store:
+        async with managed_task_store(database_url) as store:
             tasks = TaskService(tasks=store)
             async with managed_grpc_server(
                 tasks=tasks,
-                address=settings.grpc_address,
-                credentials=grpc_credentials,
-                grace_seconds=settings.grpc_grace_seconds,
+                address=grpc_server.address,
+                credentials=grpc.ssl_server_credentials(
+                    [(grpc_server.private_key, grpc_server.certificate_chain)]
+                ),
+                grace_seconds=grpc_server.grace_seconds,
             ):
                 yield {"task_service": tasks}
 

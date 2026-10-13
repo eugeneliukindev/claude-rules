@@ -38,8 +38,8 @@ principal arrives already verified, so no resolver reads a token (`python-auth`)
 **Example:**
 ```python
 # WRONG — a pool opened for every request, and never closed
-def build_context(principal: Principal, *, settings: ClaimSettings) -> GraphQLContext:
-    pool = open_database_pool(settings.database_url)
+def build_context(principal: Principal, *, database_url: str) -> GraphQLContext:
+    pool = open_database_pool(database_url)
     policyholders = PostgresPolicyholderRepository(pool)
     return GraphQLContext(
         principal=principal,
