@@ -30,7 +30,7 @@ async def test_booking_router_valid_message_holds_room() -> None:
     message = make_booking_confirmed_v1()
 
     async with TestRabbitBroker(broker) as test_broker:
-        await test_broker.publish(message.model_dump(mode="json"), _BOOKINGS_QUEUE_NAME)
+        await test_broker.publish(message.to_json(), _BOOKINGS_QUEUE_NAME)
 
     assert inventory.held_booking_ids == [BookingId(message.booking_id)]
 ```

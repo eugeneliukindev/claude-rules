@@ -78,14 +78,7 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
 _LIBRARY_INTEGRATIONS: Final = frozenset(
     {
         ("python-alembic", "python-sqlalchemy"),
-        ("python-cashews", "python-fastapi"),
         ("python-fastapi", "python-pydantic"),
-        ("python-faststream", "python-fastapi"),
-        ("python-faststream", "python-pydantic"),
-        ("python-grpc", "python-fastapi"),
-        ("python-grpc", "python-pydantic"),
-        ("python-pydantic", "python-fastapi"),
-        ("python-strawberry", "python-fastapi"),
         ("python-strawberry", "python-pydantic"),
     }
 )
