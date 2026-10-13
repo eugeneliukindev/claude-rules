@@ -15,27 +15,6 @@ Prefer an identity provider; this file is for a service that issues its own toke
 `jti` comes from `secrets`, `kid` names the key that signed it, and the clock is injected
 (`functions.md`).
 
-**Example:**
-```python
-# WRONG — a day-long token without an audience, a key id or an id of its own
-def access_claims(user_id: UserId, *, now: datetime) -> dict[str, object]:
-    return {"sub": user_id, "exp": now + timedelta(days=1)}
-
-
-# CORRECT — minutes, and every claim a verifier checks
-def access_claims(
-    user_id: UserId, *, now: datetime, issuer: str, audience: str
-) -> dict[str, object]:
-    return {
-        "iss": issuer,
-        "aud": audience,
-        "sub": user_id,
-        "iat": now,
-        "exp": now + _ACCESS_TOKEN_LIFETIME,
-        "jti": secrets.token_urlsafe(_TOKEN_ID_BYTES),
-    }
-```
-
 ### A refresh token is opaque, stored hashed, and rotated on every use
 
 **Why:** a refresh token presented a second time means it was copied: the whole family it belongs to

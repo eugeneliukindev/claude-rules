@@ -107,28 +107,6 @@ def parse_access_claims(claims: Mapping[str, object]) -> AccessClaims:
 the claims trusts whatever dict it was given, from a test or a queue message alike. With a
 `Principal`, a worker or a test builds the caller directly.
 
-**Example:**
-```python
-# WRONG — every caller must hold a token to call the service
-@final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
-
-    async def open(self, token: str, document_id: DocumentId) -> Document:
-        return await self._documents.get(document_id)
-
-
-# CORRECT — the service receives who is asking
-@final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
-
-    async def open(self, principal: Principal, document_id: DocumentId) -> Document:
-        return await _readable(principal, await self._documents.find(document_id), document_id)
-```
-
 ## Authorization
 
 ### Whether this caller may touch this resource is checked in the service, next to the load
@@ -239,26 +217,6 @@ someone probing with a stolen token which checks passed. The reason goes to the 
 the chained cause, and a counter with a `reason` attribute (`python-observability`) — at `INFO` at
 most, since a rejected token is an expected client mistake.
 
-**Example:**
-```python
-# WRONG — the reason reaches the client, and an outage looks like bad credentials
-def rejection_for(error: AuthenticationError) -> Rejection:
-    return Rejection(status=HTTPStatus.UNAUTHORIZED, body=str(error))
-
-
-# CORRECT — one fixed body per kind of failure; the reason stays on the server
-def rejection_for(error: AuthenticationError) -> Rejection:
-    match error:
-        case KeySetUnavailableError():
-            return Rejection(status=HTTPStatus.SERVICE_UNAVAILABLE, body="Try again later")
-        case _:
-            return Rejection(
-                status=HTTPStatus.UNAUTHORIZED,
-                body="Invalid bearer token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-```
-
 ### Tokens and cookies never reach a log, a span or a URL
 
 **Why:** a bearer token is a password with an expiry — whoever reads it from a log replays it until
@@ -267,21 +225,6 @@ then. The access log records an allowlist of headers, never a denylist with `Aut
 and browser history; the principal's id is logged, never the claims, which carry e-mail addresses
 and names.
 
-**Example:**
-```python
-# WRONG — "all headers but a few": Authorization arrives under a new spelling and is logged
-def loggable_headers(headers: Mapping[str, str]) -> dict[str, str]:
-    return {name: value for name, value in headers.items() if name.lower() != "authorization"}
-
-
-# CORRECT — only the headers named as safe are ever logged
-_LOGGED_HEADERS: Final = frozenset({"user-agent", "x-request-id", "content-type"})
-
-
-def loggable_headers(headers: Mapping[str, str]) -> dict[str, str]:
-    return {name: value for name, value in headers.items() if name.lower() in _LOGGED_HEADERS}
-```
-
 ### A session cookie is `Secure`, `HttpOnly`, `SameSite` and `__Host-`-prefixed
 
 **Why:** a browser session is an opaque id from `secrets.token_urlsafe`, not a JWT. Without
@@ -289,21 +232,6 @@ def loggable_headers(headers: Mapping[str, str]) -> dict[str, str]:
 withholds it from cross-site subrequests, though it does not replace CSRF protection for
 state-changing requests. The `__Host-` prefix makes the browser refuse the cookie unless it is
 `Secure`, has `Path=/` and no `Domain`. Frameworks default to none of this.
-
-**Example:**
-```python
-# WRONG — readable by any script on the page, and sent over plain HTTP
-def session_cookie_header(session_id: str, *, max_age_seconds: int) -> str:
-    return f"session={session_id}; Max-Age={max_age_seconds}; Path=/"
-
-
-# CORRECT — HTTPS only, invisible to JavaScript, withheld from cross-site subrequests
-def session_cookie_header(session_id: str, *, max_age_seconds: int) -> str:
-    return (
-        f"__Host-session={session_id}; Max-Age={max_age_seconds}; Path=/; "
-        "Secure; HttpOnly; SameSite=Lax"
-    )
-```
 
 ## Issuing Tokens and Guarding Credentials
 
