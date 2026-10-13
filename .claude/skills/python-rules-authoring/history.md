@@ -76,6 +76,16 @@ eye, after the always-loaded set had reached 806. That is why the count is now a
 (`scripts/check_rules.py`), and why the blank line after the front matter is counted: the model
 receives it.
 
+**The ceilings came down to 100 rules and 22,000 tokens, and 120 and 28,000 on a test file**, after
+a comparison with public skill collections — Claude Code's own guidance asks for under 200 lines in
+an always-loaded file, and the largest Go collection keeps everything loaded at once near 10,000
+tokens. The set then stood at 95 rules and 22,800 tokens. A duplicate of `python-contracts`' rule on
+`Protocol`, the two contract rules a subclass or a consumer's parameter signals, logging
+configuration, the environment-name rule, the naming self-check that restated its own file and a
+second pair beside the actor rule left it, for 90 rules and 20,500 tokens; the new ceilings are that
+plus headroom. Little of it was a tool's to decide — `core.md` already kept style out — so a deeper
+cut means fewer examples, the layout measured above that lost 38 to 42 of 42 runs.
+
 ## Examples
 
 **An audit found a dozen examples teaching the opposite of the rule above them** — a `WRONG` that

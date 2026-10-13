@@ -25,10 +25,10 @@ falls as the number of instructions grows, and an example is tokens but not an i
 
 | what | ceiling |
 |---|---|
-| **rules loaded on every `.py`** — `###` headings, or top-level bold bullets in a file not yet in that format | **120** |
-| **tokens loaded on every `.py`**, estimated at four characters each | **28,000** |
-| rules loaded on a test file — the set above plus `testing.md` | 140 |
-| tokens loaded on a test file | 36,000 |
+| **rules loaded on every `.py`** — `###` headings, or top-level bold bullets in a file not yet in that format | **100** |
+| **tokens loaded on every `.py`**, estimated at four characters each | **22,000** |
+| rules loaded on a test file — the set above plus `testing.md` | 120 |
+| tokens loaded on a test file | 28,000 |
 | lines in any one `SKILL.md`, after the front matter | 500 |
 | tokens in any one `SKILL.md`, after the front matter | 5,000 |
 

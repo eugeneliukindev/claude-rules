@@ -126,14 +126,14 @@ _LOAD_BUDGETS: Final = (
     _LoadBudget(
         label="every .py",
         sample=PurePosixPath("src/package/module.py"),
-        max_rules=120,
-        max_tokens=28_000,
+        max_rules=100,
+        max_tokens=22_000,
     ),
     _LoadBudget(
         label="a test file",
         sample=PurePosixPath("tests/unit/test_module.py"),
-        max_rules=140,
-        max_tokens=36_000,
+        max_rules=120,
+        max_tokens=28_000,
     ),
 )
 
