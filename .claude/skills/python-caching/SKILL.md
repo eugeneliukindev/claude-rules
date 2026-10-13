@@ -140,30 +140,6 @@ old ones expire on their TTL, so both versions run side by side during a rolling
 the carve-out from migrate-on-read in `python-boundaries` — a stored message is migrated, a cache
 entry is fetched again from the source.
 
-**Example:**
-```python
-# WRONG — the read and the invalidation spell the key differently, and the delete misses
-async def cached_profile(user_id: UserId, *, cache: Cache) -> bytes | None:
-    return await cache.get(f"profile:{user_id}")
-
-
-async def forget_profile(user_id: UserId, *, cache: Cache) -> None:
-    await cache.delete(f"profiles:{user_id}")
-
-
-# CORRECT — one function, versioned, so the two cannot disagree
-def _profile_key(user_id: UserId) -> str:
-    return f"{_PROFILE_KEY_NAMESPACE}:v{_PROFILE_PAYLOAD_VERSION}:{user_id}"
-
-
-async def cached_profile(user_id: UserId, *, cache: Cache) -> bytes | None:
-    return await cache.get(_profile_key(user_id))
-
-
-async def forget_profile(user_id: UserId, *, cache: Cache) -> None:
-    await cache.delete(_profile_key(user_id))
-```
-
 ### Every input the value depends on is in the key, and a free-form input is hashed
 
 **Why:** a value computed for one user under a key without the user's id is served to the next user
@@ -171,19 +147,6 @@ who asks — the same for the tenant, the locale, the permission set. A free-for
 phrase — is hashed with `hashlib.sha256`, so the key stays inside the store's limit and its content
 stays out of a key listing: measured on memcached 1.6, a key over 250 bytes is refused, and the
 adapter, treating a failure as a miss, then misses on that entry forever without an error.
-
-**Example:**
-```python
-# WRONG — no user, and the raw phrase: one user's results for everyone, and long phrases refused
-def _search_key(phrase: str) -> str:
-    return f"search:v{_SEARCH_PAYLOAD_VERSION}:{phrase}"
-
-
-# CORRECT — the user is in the key, and the phrase is a fixed-length digest
-def _search_key(user_id: UserId, phrase: str) -> str:
-    digest = hashlib.sha256(phrase.encode()).hexdigest()
-    return f"search:v{_SEARCH_PAYLOAD_VERSION}:{user_id}:{digest}"
-```
 
 ## Values
 
@@ -224,19 +187,6 @@ other service on the same cache. A pickle ties it to the class's import path and
 rename breaks every reader, and whoever can write to the cache runs code in every process that
 reads it. The payload follows `python-boundaries`; a library that pickles by default is
 configured not to.
-
-**Example:**
-```python
-# WRONG — a rename breaks every reader, and a forged entry runs code
-def _profile_to_payload(profile: Profile) -> bytes:
-    return pickle.dumps(profile)
-
-
-# CORRECT — named fields, the shape versioned in the key
-def _profile_to_payload(profile: Profile) -> bytes:
-    payload = {"user_id": str(profile.user_id), "display_name": profile.display_name}
-    return json.dumps(payload).encode()
-```
 
 ## Invalidation
 
