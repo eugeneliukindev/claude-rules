@@ -9,18 +9,3 @@ named after its contents. ruff `A005` agrees by default — it compares the full
 fires on a top-level `src/json.py` and not on `atlas/_internal/json.py` (measured on ruff 0.17);
 `flake8-builtins.strict-checking` stays off, or it reports every nested module and the package
 needs a suppression it has no reason for.
-
-**Example:**
-```text
-# WRONG — a DAG file on the scheduler's path: every task's `import json` now loads it
-dags/
-    json.py
-
-
-# CORRECT — named for what it does at the top level; nested, the stdlib name is fine
-dags/
-    export_places_json.py
-atlas/
-    _internal/
-        json.py
-```

@@ -13,22 +13,6 @@ that fails fast on an incompatible environment — `pydantic` checks its compile
 the first line and deletes the helper afterwards; a deprecation shim for a moved name
 (`deprecation.md`); and lazy exports, below.
 
-**Example:**
-```python
-# WRONG — atlas/__init__.py configures logging and reads the environment for every importer
-logging.basicConfig(level=os.environ.get("ATLAS_LOG_LEVEL", "INFO"))
-
-from atlas._places import Coordinates, Place
-
-__all__ = ["Coordinates", "Place"]
-
-
-# CORRECT — imports and the surface; configuration belongs to the entry point
-from atlas._places import Coordinates, Place
-
-__all__ = ["Coordinates", "Place"]
-```
-
 ### A facade over many or heavy submodules imports them on first access, declared for the checker
 
 **Why:** an eager facade makes `import yourpackage` pay for the whole library, including parts this

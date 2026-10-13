@@ -17,23 +17,3 @@ tier's `__init__.py` states the contract in one line, as `pydantic/experimental/
 release event, and a move of a file is what a reviewer sees.
 **Except:** a tier nobody needs — an application has one surface, and a library usually needs
 `_internal/` and nothing more until the first thing it regrets shipping.
-
-**Example:**
-```python
-# WRONG — atlas/routing.py: the promise lives in a docstring the caller never opens
-"""Routing. Experimental: may change in any release."""
-
-
-@final
-class Router:
-    def __init__(self, *, graph: RoadGraph) -> None:
-        self._graph = graph
-
-
-# CORRECT — atlas/experimental/routing.py: the path carries the promise, and
-# atlas/experimental/__init__.py says it once for the tier
-@final
-class Router:
-    def __init__(self, *, graph: RoadGraph) -> None:
-        self._graph = graph
-```

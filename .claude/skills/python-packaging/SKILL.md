@@ -65,49 +65,12 @@ __all__ = ["Coordinates", "Place"]
 `__all__` is contained in the facade's. One shape per package; the default is the flat facade of
 `httpx` and `attrs`, implementation in private modules and every public name exported once.
 
-**Example:**
-```python
-# WRONG — Place is importable from atlas and from atlas.places, and both are documented
-# atlas/places.py
-__all__ = ["Coordinates", "Place"]
-
-# atlas/__init__.py
-from atlas.places import Coordinates, Place
-
-__all__ = ["Coordinates", "Place"]
-
-
-# CORRECT — the module is private; the facade is the one path
-# atlas/__init__.py
-from atlas._places import Coordinates, Place
-
-__all__ = ["Coordinates", "Place"]
-```
-
 ### An internal module is imported only inside its package, and siblings import it directly
 
 **Why:** a reach-in from outside turns an implementation detail into surface nobody reviewed; when
 outside code needs it, it becomes a public module, renamed and reviewed. Inside, a sibling that
 imports through its own `__init__` makes load order significant and invites a cycle. An
 import-linter `protected` contract makes the reach-in fail the build (`python-layers`).
-
-**Example:**
-```python
-# WRONG — atlas/_routing.py imports a sibling through the package facade
-from atlas import Coordinates
-
-
-def distance_km(origin: Coordinates, destination: Coordinates) -> float:
-    return haversine_km(origin, destination)
-
-
-# CORRECT — atlas/_routing.py imports the internal module that defines the name
-from atlas._places import Coordinates
-
-
-def distance_km(origin: Coordinates, destination: Coordinates) -> float:
-    return haversine_km(origin, destination)
-```
 
 ## `__all__`
 
@@ -119,44 +82,12 @@ grouping under topic comments is what a reader navigates (`pydantic` exports 151
 comments). `from ._places import Place as Place` is PEP 484's other way to declare a re-export; one
 form per package. List or tuple is a project's choice.
 
-**Example:**
-```python
-# WRONG — the surface is whatever this loop produced at import
-from atlas import _places
-
-__all__ = [name for name in dir(_places) if not name.startswith("_")]
-
-
-# CORRECT — the surface is written down, and a diff shows every change to it
-from atlas._places import Coordinates, Place
-
-__all__ = ["Coordinates", "Place"]
-```
-
 ### A top-level name is either in `__all__` or private
 
 **Why:** a public-looking name that is not exported is a promise nobody made and everybody will
 rely on; a private name another package needs is promoted deliberately, with the deprecation
 guarantees that brings — copying it is worse. Deep paths that must stay importable, such as plugin
 entry points, are a documented part of the surface.
-
-**Example:**
-```python
-# WRONG — atlas/_places.py: snap_to_grid looks public, is not exported, and gets imported anyway
-def snap_to_grid(coordinates: Coordinates, *, cell_degrees: float) -> Coordinates:
-    return Coordinates(
-        latitude=round(coordinates.latitude / cell_degrees) * cell_degrees,
-        longitude=round(coordinates.longitude / cell_degrees) * cell_degrees,
-    )
-
-
-# CORRECT — used only in this module, and its name says so
-def _snap_to_grid(coordinates: Coordinates, *, cell_degrees: float) -> Coordinates:
-    return Coordinates(
-        latitude=round(coordinates.latitude / cell_degrees) * cell_degrees,
-        longitude=round(coordinates.longitude / cell_degrees) * cell_degrees,
-    )
-```
 
 ### A script finds the names that should be private; nobody reads for them
 
@@ -165,16 +96,6 @@ hits left — is mechanical, and a reading misses names. Run it after a move or 
 declaring `__all__`. Each `path:line: name` is a name to prefix, exit code 1 means there was one; a
 line marked `(decorated: unverifiable)` may be handed to a framework by its decorator, so it is
 decided by hand. `--exclude` drops a tree whose uses should not count.
-
-**Example:**
-```bash
-# WRONG — a grep per name, by eye, on the names someone remembered to check
-grep -rn "snap_to_grid" src/atlas
-
-# CORRECT — every top-level name, over sources and tests together
-python <this skill's directory>/scripts/find_unprefixed_names.py src/atlas tests \
-    --exclude "migrations/*"
-```
 
 ### A typed package ships `py.typed`, and a test pins its surface
 

@@ -104,12 +104,3 @@ def __getattr__(name: str) -> object:
 ### A removed module leaves a tombstone that names its replacement
 
 **Why:** the bare `ModuleNotFoundError` tells the caller nothing about where the code went.
-
-**Example:**
-```python
-# WRONG — atlas/geo.py deleted in 3.0: "No module named 'atlas.geo'"
-
-
-# CORRECT — atlas/geo.py, the whole file, kept for the 3.x series
-raise ImportError("atlas.geo was removed in 3.0; import geocode and Locality from atlas")
-```
