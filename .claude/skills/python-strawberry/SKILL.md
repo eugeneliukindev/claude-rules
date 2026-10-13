@@ -165,7 +165,7 @@ per batch, and the principal carried into a loader over owned data.
 
 ## The pydantic Integration
 
-**Before using `strawberry.experimental.pydantic`, read [pydantic.md](pydantic.md)** — for inputs
+**Before using `strawberry.experimental.pydantic`, read [with-pydantic.md](with-pydantic.md)** — for inputs
 whose boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and
 no `all_fields`.
 
