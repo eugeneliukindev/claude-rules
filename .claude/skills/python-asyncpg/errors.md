@@ -34,28 +34,28 @@ async def add_user(connection: PoolConnectionProxy, email: str) -> None:
         raise
 ```
 
-### A rollback raised at `COMMIT` is translated by the unit of work, not a repository
+### A rollback raised at `COMMIT` is translated where the transaction closes, not in a repository
 
 **Why:** `SerializationError` and `DeadlockDetectedError`, both `asyncpg.TransactionRollbackError`,
-can arrive at `COMMIT` — the unit of work's exit, after every repository call returned. So the unit
-of work turns it into the transient conflict that retries the whole use case
+can arrive at `COMMIT` — the transaction's exit, after every repository call returned. So the code
+that closes the transaction turns it into the transient conflict that retries the whole use case
 (`python-persistence`).
 
 **Example:**
 ```python
 # WRONG — the rollback escapes as a driver error the retry policy does not know
 @asynccontextmanager
-async def open_unit_of_work(pool: asyncpg.Pool) -> AsyncIterator[UnitOfWork]:
+async def serializable_transaction(pool: asyncpg.Pool) -> AsyncIterator[asyncpg.Connection]:
     async with pool.acquire() as connection, connection.transaction(isolation="serializable"):
-        yield UnitOfWork(playlists=PostgresPlaylistRepository(connection))
+        yield connection
 
 
 # CORRECT — the conflict becomes the package's transient error, wherever it was raised
 @asynccontextmanager
-async def open_unit_of_work(pool: asyncpg.Pool) -> AsyncIterator[UnitOfWork]:
+async def serializable_transaction(pool: asyncpg.Pool) -> AsyncIterator[asyncpg.Connection]:
     try:
         async with pool.acquire() as connection, connection.transaction(isolation="serializable"):
-            yield UnitOfWork(playlists=PostgresPlaylistRepository(connection))
+            yield connection
     except asyncpg.TransactionRollbackError as error:
         raise ConcurrentUpdateError(
             f"transaction rolled back by a concurrent one: SQLSTATE {error.sqlstate}"

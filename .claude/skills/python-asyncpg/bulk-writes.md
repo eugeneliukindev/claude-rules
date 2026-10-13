@@ -3,7 +3,7 @@
 ### Many plain rows go through `copy_records_to_table`; rows that need SQL, `executemany`
 
 **Why:** a loop of `execute` is a round trip per row. `copy_records_to_table` is `COPY`, far faster
-than inserts, inside the unit of work's transaction when it must be all or nothing; it cannot
+than inserts, inside the use case's transaction when it must be all or nothing; it cannot
 upsert or return rows, and asyncpg quotes the table and column names itself. `executemany` fits a
 row that needs `ON CONFLICT`, an expression or a lookup: one prepared statement, the rows pipelined,
 and atomic since 0.22 — a failing row leaves none of the others.

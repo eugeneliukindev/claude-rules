@@ -7,7 +7,7 @@ The container fixtures and the session event loop are `python-pytest`.
 **Why:** a fake cannot show a constraint, a cast or a codec. One `testcontainers` container per
 session runs the migrations once; asyncpg rejects the `postgresql+psycopg2://` URL the container
 returns by default, so it asks for `get_connection_url(driver=None)`. Each test runs in a
-transaction that is rolled back, so the unit of work's own transaction nests as a savepoint and
+transaction that is rolled back, so the code's own transaction nests as a savepoint and
 nothing a test writes reaches the next one.
 
 **Example:**

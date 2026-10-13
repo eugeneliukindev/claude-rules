@@ -77,12 +77,12 @@ async def managed_pool(settings: DatabaseSettings) -> AsyncIterator[asyncpg.Pool
         yield pool
 ```
 
-### A unit of work holds one connection and one transaction
+### A use case's statements share one connection and one transaction
 
 **Why:** `pool.fetch` and `pool.execute` acquire a connection per statement and give it back, so
 statements that must commit together share one connection and its `transaction()`. A
 `transaction()` inside another is a `SAVEPOINT` that commits nothing, so repositories never open
-one; `transaction(isolation="serializable")` or `readonly=True` is the unit of work's choice. The
+one; `transaction(isolation="serializable")` or `readonly=True` is the use case's choice. The
 pool's `max_size` is the number of use cases in flight, and `command_timeout` bounds statements,
 not the wait for a free connection — `pool.acquire(timeout=...)` or the request's deadline bounds
 that.
@@ -90,25 +90,20 @@ that.
 **Example:**
 ```python
 # WRONG — each repository acquires its own connection, so each write commits on its own
-@asynccontextmanager
-async def open_unit_of_work(pool: asyncpg.Pool) -> AsyncIterator[UnitOfWork]:
-    yield UnitOfWork(
-        playlists=PostgresPlaylistRepository(pool), tracks=PostgresTrackRepository(pool)
-    )
+async def add_track(playlist_id: PlaylistId, track: Track, *, pool: asyncpg.Pool) -> None:
+    await PostgresTrackRepository(pool).add(track)
+    await PostgresPlaylistRepository(pool).append(playlist_id, track.track_id)
 
 
 # CORRECT — one connection, one transaction: committed on a clean exit, rolled back on an
 # exception or a cancellation, and the connection returned either way
-@asynccontextmanager
-async def open_unit_of_work(pool: asyncpg.Pool) -> AsyncIterator[UnitOfWork]:
+async def add_track(playlist_id: PlaylistId, track: Track, *, pool: asyncpg.Pool) -> None:
     async with (
         pool.acquire(timeout=_ACQUIRE_TIMEOUT_SECONDS) as connection,
         connection.transaction(),
     ):
-        yield UnitOfWork(
-            playlists=PostgresPlaylistRepository(connection),
-            tracks=PostgresTrackRepository(connection),
-        )
+        await PostgresTrackRepository(connection).add(track)
+        await PostgresPlaylistRepository(connection).append(playlist_id, track.track_id)
 ```
 
 ## Records and Parameters
