@@ -56,9 +56,9 @@ def test_refund_round_trips_through_dict() -> None:
 
 ### `NaN` and `Infinity` are refused where a payload arrives
 
-**Why:** they are not JSON, yet `json.loads` turns them into floats, and a pydantic `float` accepts
-them even in strict mode — `allow_inf_nan=False` refuses them there. One bad number then poisons
-every sum it joins.
+**Why:** they are not JSON, yet `json.loads` turns them into floats, and a validator's `float` may
+accept them even in strict mode until it is told to refuse them. One bad number then poisons every
+sum it joins.
 
 **Example:**
 ```python

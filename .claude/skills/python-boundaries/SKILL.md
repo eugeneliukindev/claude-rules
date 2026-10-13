@@ -251,8 +251,8 @@ def cancel_subscription(subscription_id: SubscriptionId, *, subscriptions: Subsc
 
 **Why:** budgets nest multiplicatively — four attempts inside a caller that also makes four is
 sixteen, and a five-second budget becomes eighty. A service sees one call that succeeded or raised a
-final error; a gRPC channel's `retryPolicy` is that one level for its calls. The one retry above the
-adapter is a deadlock or serialization failure, which retries the whole transaction
+final error; a client's built-in retry policy, where it has one, is that level. The one retry above
+the adapter is a deadlock or serialization failure, which retries the whole transaction
 (`python-persistence`). When a dependency keeps failing, the adapter stops calling it and raises an
 unavailability error, so callers degrade deliberately instead of queueing timeouts.
 
