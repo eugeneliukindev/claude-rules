@@ -9,7 +9,7 @@ Functions are the default; a class is an upgrade that must be triggered.
 
 ## When a Class Earns Its Place
 
-### A class is written only when one of six triggers holds
+### A class is written only when one of seven triggers holds
 
 **Why:** a module is already a namespace with "methods"; a class without a trigger adds `self` and
 a constructor to code that needed neither.
@@ -21,6 +21,8 @@ a constructor to code that needed neither.
    or more collaborators; repeated *values* forming one concept are a parameter object instead.
 5. **There is a lifecycle** — acquire and release, `__enter__`/`__exit__`, `close()`.
 6. **A framework demands it** — `Enum`, `Exception`, a dataclass.
+7. **The composition root builds it with collaborators** — a service or an adapter that takes its
+   dependencies and settings in its constructor, one public method or several.
 
 **Example:**
 ```python
@@ -43,8 +45,8 @@ def recipe_calories(recipe: Recipe) -> int:
 
 **Why:** each pays the cost of a class and gets nothing a class gives.
 
-- `__init__` plus one method; only `@staticmethod`s; a box for constants; a stateless "service"
-  with no dependencies.
+- `__init__` plus one method over values it was handed, with no collaborator to hold; only
+  `@staticmethod`s; a box for constants; a stateless "service" with no dependencies.
 - **Methods that group by who asks for their changes** — two actors in one class: split the class,
   never reorder it (below).
 
@@ -64,29 +66,28 @@ MAX_DOCUMENT_SIZE_BYTES: Final = 20_000_000
 ### Before a class, try a partial, a closure, an options dataclass or a split module
 
 **Why:** each gives the one thing needed without a lifecycle; a long module of independent functions
-is idiomatic Python and does not improve by growing a `self`.
+is idiomatic Python and does not improve by growing a `self`. A collaborator the root wires in is
+the seventh trigger, not this case.
 
 **Example:**
 ```python
-# WRONG — a class whose only job is to remember one dependency
+# WRONG — a class whose only job is to remember one value for a sort key
 @final
-class ReminderSender:
-    def __init__(self, *, mailer: Mailer) -> None:
-        self._mailer = mailer
+class DistanceFrom:
+    def __init__(self, origin: Coordinate) -> None:
+        self._origin = origin
 
-    def send(self, invoice: Invoice) -> None:
-        self._mailer.send(invoice.customer_email, f"Invoice {invoice.number} is due")
-
-
-# CORRECT — a function; the composition root binds its dependency once
-def send_reminder(invoice: Invoice, *, mailer: Mailer) -> None:
-    mailer.send(invoice.customer_email, f"Invoice {invoice.number} is due")
+    def __call__(self, store: Store) -> float:
+        return distance_km(self._origin, store.location)
 
 
-def remind_overdue(invoices: Iterable[Invoice], *, mailer: Mailer) -> None:
-    remind = partial(send_reminder, mailer=mailer)
-    for invoice in invoices:
-        remind(invoice)
+def nearest_stores(stores: Iterable[Store], *, home: Coordinate) -> list[Store]:
+    return sorted(stores, key=DistanceFrom(home))
+
+
+# CORRECT — a closure remembers the value
+def nearest_stores(stores: Iterable[Store], *, home: Coordinate) -> list[Store]:
+    return sorted(stores, key=lambda store: distance_km(home, store.location))
 ```
 
 ## One Actor per Module and Class
