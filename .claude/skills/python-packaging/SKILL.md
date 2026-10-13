@@ -115,7 +115,7 @@ def test_atlas_imports() -> None:
 
 # CORRECT — the exports and the import cost are both asserted
 _PUBLIC_NAMES: Final = frozenset({"Coordinates", "Place"})
-_HEAVY_MODULES: Final = ("PIL", "sqlalchemy")
+_HEAVY_MODULES: Final = ("PIL", "numpy")
 
 
 def test_atlas_exports_exactly_its_surface() -> None:

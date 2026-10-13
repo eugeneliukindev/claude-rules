@@ -6,10 +6,10 @@ itself — the request it builds, the errors it translates, its timeouts — is 
 ### An adapter is tested against a real local server, never a patched client function
 
 **Why:** a patched `get` proves the code calls `get`, not that the adapter turns a real `404` into
-the domain's error. `pytest-httpserver` runs a real server on localhost, so the adapter goes
-through its real client, session and error translation, whichever library that is. `respx` patches
-`httpx` and `httpcore` only — not `httpx2`, which Starlette's `TestClient` now wants, and not
-`niquests` — so an adapter on those is tested against `pytest-httpserver`.
+the domain's error. `pytest-httpserver` runs a real server on localhost, so the adapter goes through
+its real client, session and error translation, whichever library that is. `respx` patches `httpx`
+and `httpcore` only — not `httpx2`, and not `niquests` — so an adapter on those is tested against
+`pytest-httpserver`.
 
 **Example:**
 ```python

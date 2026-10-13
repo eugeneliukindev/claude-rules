@@ -86,9 +86,8 @@ class RateFetcher:
 ### Tests never build `Settings`; they pass fields
 
 **Why:** the test root builds the graph from literals. `Settings` itself is tested alone, with
-`monkeypatch.setenv` and `delenv` — `_env_file=None` skips the `.env` file but still reads the
-environment; measured on pydantic-settings 2.15, a variable left in the shell filled a field the
-test never set.
+`monkeypatch.setenv` and `delenv`, because a settings loader reads the environment even when it
+skips the `.env` file — measured, a variable left in the shell filled a field the test never set.
 
 **Example:**
 ```python
