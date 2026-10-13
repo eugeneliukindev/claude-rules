@@ -40,7 +40,7 @@ class DocumentAccess:
         self._documents = documents
 
     async def open(self, token: str, document_id: DocumentId) -> Document:
-        claims = jwt.decode(token, self._signing_key, algorithms=["HS256"])
+        claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
         return await self._documents.get_for_owner(document_id, owner_id=UserId(claims["sub"]))
 
 
@@ -85,19 +85,20 @@ without telling you, so extra claims are ignored rather than refused.
 **Example:**
 ```python
 # WRONG — the provider adds a "sid" claim one morning, and every token is rejected
-class AccessClaims(BaseModel):
-    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
-
-    sub: str
-    scope: str = ""
+def parse_access_claims(claims: Mapping[str, object]) -> AccessClaims:
+    unexpected = claims.keys() - _READ_CLAIMS
+    if unexpected:
+        raise InvalidCredentialsError(f"unexpected claims: {sorted(unexpected)}")
+    return AccessClaims(
+        subject=_string_claim(claims, "sub"), scope=_string_claim(claims, "scope", default="")
+    )
 
 
 # CORRECT — the claims this service reads are validated; the provider's additions pass by
-class AccessClaims(BaseModel):
-    model_config = ConfigDict(strict=True, frozen=True, extra="ignore")
-
-    sub: str
-    scope: str = ""
+def parse_access_claims(claims: Mapping[str, object]) -> AccessClaims:
+    return AccessClaims(
+        subject=_string_claim(claims, "sub"), scope=_string_claim(claims, "scope", default="")
+    )
 ```
 
 ### A service takes the `Principal`, never the token or the claims
