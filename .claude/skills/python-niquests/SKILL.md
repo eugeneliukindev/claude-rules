@@ -22,7 +22,7 @@ redirect is `python-security`.
 **Why:** `niquests.get(url)` opens a connection, uses it once and throws it away — no pooling, no
 shared configuration, nothing to close. One `AsyncSession` per application is where headers,
 timeouts and TLS are configured once, and connection reuse is most of the performance difference.
-It is closed by a `with` in the composition root or the lifespan, never `atexit`.
+It is closed by a `with` in the composition root, never `atexit`.
 
 **Example:**
 ```python
