@@ -234,7 +234,8 @@ grace period, and `--forwarded-allow-ips` set to the proxy's network behind one.
 ## With Other Libraries
 
 **Before using SQLAlchemy in a FastAPI app, read [with-sqlalchemy.md](with-sqlalchemy.md)** — the
-engine in the lifespan, a session per request on `scope="function"`, the service commits.
+engine and a `partial` service factory in the lifespan, a session per request on
+`scope="function"`, the service commits.
 
 **Before running a gRPC server beside a FastAPI app, read [with-grpc.md](with-grpc.md)** — the
 server entered in the lifespan, under one worker.
