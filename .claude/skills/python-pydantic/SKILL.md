@@ -58,7 +58,9 @@ def parse_loan(body: bytes) -> LoanRequest:
 `NaN` and `Infinity` from JSON (`python-boundaries`). It is configured once, on a shared base. Two
 kinds of model take `extra="ignore"` instead: a stored or queued payload, read by code older or
 newer than its writer, and the claims of a token, whose set the identity provider owns
-(`python-auth`). With an alias generator, `validate_by_name=True` — it replaces `populate_by_name`.
+(`python-auth`). An instant is `AwareDatetime`, which refuses a value without an offset, and a
+queued payload pins its version with `Literal[1]`. With an alias generator, `validate_by_name=True`
+— it replaces `populate_by_name`.
 
 **Example:**
 ```python
