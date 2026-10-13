@@ -1,12 +1,7 @@
 # Threads
 
-## Contents
-
-- `run_in_executor` does not carry `contextvars`; `to_thread` does
-- A thread reaches the loop only through the thread-safe calls
-- State a thread also touches is guarded by `threading.Lock`
-- A lock is held for the data, never for the I/O
-- `threading.local` only for per-thread resources; thread-safety is documented
+The pools, locks between threads and process pools themselves are `python-sync`; this file is the
+seam between them and the loop.
 
 ### Work submitted to an executor carries the caller's context explicitly
 
@@ -49,12 +44,11 @@ def on_sensor_reading(
     loop.call_soon_threadsafe(readings.put_nowait, reading)
 ```
 
-### State a thread also touches is guarded by `threading.Lock`; `asyncio.Lock` only orders tasks
+### `asyncio.Lock` only orders tasks; state a thread also touches takes a `threading.Lock`
 
 **Why:** `asyncio.Lock` is not thread-safe — measured, a coroutine waiting on it from a loop in
-another thread hung forever in one run and acquired it in the next. The GIL is not a lock either: a
-check-then-set on a shared dict races between threads today, and on a free-threaded `3.13t` or
-`3.14t` build every compound operation does. A `threading.Lock` is never held across an `await`:
+another thread hung forever in one run and acquired it in the next. A `threading.Lock` is never held
+across an `await`:
 it blocks every other task that needs it, and a thread waiting on it from the loop's own thread
 stalls the loop.
 
@@ -83,51 +77,3 @@ class RenderedReports:
         with self._lock:
             self._report_by_id[report_id] = report
 ```
-
-### A lock covers the data, never the slow call that fills it
-
-**Why:** a lock held across I/O makes every thread that wants any entry wait behind the slowest
-fetch. The fetch runs outside; the lock covers the read and the write, and `setdefault` keeps the
-first value if two threads fetched at once. No shared state at all is better still.
-
-**Example:**
-```python
-# WRONG — every thread asking for any price waits behind one slow catalog call
-@final
-class PriceCache:
-    def __init__(self, *, catalog: PriceCatalog) -> None:
-        self._catalog = catalog
-        self._lock = threading.Lock()
-        self._price_by_sku: dict[Sku, Decimal] = {}
-
-    def price(self, sku: Sku) -> Decimal:
-        with self._lock:
-            if sku not in self._price_by_sku:
-                self._price_by_sku[sku] = self._catalog.fetch_price(sku)
-            return self._price_by_sku[sku]
-
-
-# CORRECT — the lock covers the dictionary only; the fetch runs outside it
-@final
-class PriceCache:
-    def __init__(self, *, catalog: PriceCatalog) -> None:
-        self._catalog = catalog
-        self._lock = threading.Lock()
-        self._price_by_sku: dict[Sku, Decimal] = {}
-
-    def price(self, sku: Sku) -> Decimal:
-        with self._lock:
-            cached = self._price_by_sku.get(sku)
-        if cached is not None:
-            return cached
-        fetched = self._catalog.fetch_price(sku)
-        with self._lock:
-            return self._price_by_sku.setdefault(sku, fetched)
-```
-
-### `threading.local` is for per-thread resources only, and thread-safety is documented
-
-**Why:** in async code many tasks share one thread, so a thread-local leaks between them —
-`contextvars` is the per-task store. A thread-local fits a resource that must not cross threads, a
-connection a non-thread-safe driver hands out. Whether a class may be shared between threads is a
-property its docstring states, never an assumption its callers make.

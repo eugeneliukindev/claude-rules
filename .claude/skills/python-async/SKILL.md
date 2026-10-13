@@ -2,8 +2,8 @@
 name: python-async
 description: >-
   Writes asyncio code that never blocks the loop, bounds every await and fan-out, and cleans up on
-  cancellation; chooses between async, threads and processes. Use when writing async def, awaiting
-  I/O, or using create_task, gather, a semaphore, a queue, anyio, threads or a process pool.
+  cancellation. Use when writing async def, awaiting I/O, using create_task, gather, a semaphore, a
+  queue or anyio, or handing work from a coroutine to a thread or a process pool.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -213,21 +213,16 @@ async def handle(request: Request, *, handler: Handler) -> Response:
     return await handler(request)
 ```
 
-## Threads
+## Threads and the Loop
 
-**Before running work on a thread pool, sharing state between threads and tasks, or calling into
-the loop from a thread, read [threads.md](threads.md)** — `contextvars` through `run_in_executor`,
-`run_coroutine_threadsafe`, `threading.Lock` against `asyncio.Lock`, the GIL is not a lock, a lock
-held only for the data, `threading.local`.
-
-## Processes
-
-**Before choosing between async, threads and processes, creating an executor or a process pool, or
-picking a `multiprocessing` start method, read [processes.md](processes.md)** — the workload table,
-shared injected executors, small picklable arguments, `spawn` or `forkserver`.
+**Before handing work from a coroutine to a thread or a process pool, sharing state between threads
+and tasks, or calling into the loop from a thread, read [threads.md](threads.md)** — `contextvars`
+through `run_in_executor`, `run_coroutine_threadsafe`, `asyncio.Lock` against `threading.Lock`.
+Which workload needs threads or processes, the pools themselves and locks between threads are
+`python-sync`.
 
 ## Shutdown
 
-**Before handling `SIGTERM` or `SIGINT`, starting a thread that does work, or writing the stop
-path of a service, read [shutdown.md](shutdown.md)** — a signal that sets an event, drain with a
-deadline, no daemon threads, signals in the main thread only.
+**Before handling `SIGTERM` or `SIGINT` or writing the stop path of a service, read
+[shutdown.md](shutdown.md)** — a signal that sets an event, drain with a deadline, signals in the
+main thread only; a thread's stop event is `python-sync`.
