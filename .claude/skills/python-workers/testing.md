@@ -15,7 +15,7 @@ async def test_on_booking_confirmed_holds_room() -> None:
     inventory = InMemoryRoomInventory()
     message = make_booking_confirmed_v1()
 
-    await on_booking_confirmed(message.model_dump_json().encode(), inventory=inventory)
+    await on_booking_confirmed(message.to_json(), inventory=inventory)
 
     assert inventory.held_booking_ids == [BookingId(message.booking_id)]
 
@@ -38,7 +38,7 @@ class InMemoryRoomInventory(RoomInventory):
 async def test_on_booking_confirmed_redelivered_message_holds_room_once() -> None:
     inventory = InMemoryRoomInventory()
     message = make_booking_confirmed_v1()
-    body = message.model_dump_json().encode()
+    body = message.to_json()
 
     await on_booking_confirmed(body, inventory=inventory)
     await on_booking_confirmed(body, inventory=inventory)

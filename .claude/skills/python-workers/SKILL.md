@@ -17,8 +17,8 @@ contracts; the broker library is only what calls them — FastStream on RabbitMQ
 `python-faststream`, and Celery 5.6, taskiq 0.13, aiokafka 0.14 and arq 0.28 are mapped in
 [libraries.md](libraries.md). The rules a consumer shares with every adapter — idempotent
 consumers, one retry level, versioned payloads — are in `python-boundaries`; this file is what a
-worker adds. The adapter's retry policy is `python-tenacity`, and validating a wire model as JSON
-is `python-pydantic`.
+worker adds. The adapter's retry policy is `python-tenacity`, and the wire model's
+strict, versioned JSON parsing in pydantic is `python-pydantic`.
 
 ## The Handler
 
@@ -41,7 +41,7 @@ async def on_booking_confirmed(message: RabbitMessage) -> None:
 
 # CORRECT — the body and the contract in; the library's wrapper only passes them
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 
@@ -81,7 +81,7 @@ async def hold_room(event: BookingConfirmed, *, inventory: RoomInventory) -> Non
 
 **Why:** an acknowledgement tells the broker to forget the message. Given before the transaction
 commits, a crash in between loses it; given after, the crash costs one redelivery, which
-idempotency absorbs. So the unit of work closes inside the handler, and nothing is handed to a task
+idempotency absorbs. So the transaction commits inside the handler, and nothing is handed to a task
 it does not await. Every library also has a mode that acknowledges on receipt — Celery's default,
 aiokafka's auto-commit, FastStream's `ACK_FIRST` — and each is switched to acknowledge when the
 handler returns ([libraries.md](libraries.md)).
@@ -92,13 +92,13 @@ handler returns ([libraries.md](libraries.md)).
 async def on_booking_confirmed(
     body: bytes, /, *, inventory: RoomInventory, tasks: asyncio.TaskGroup
 ) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     tasks.create_task(hold_room(event, inventory=inventory))
 
 
 # CORRECT — returns once the room is held, so the ack that follows is true
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 ```
@@ -120,7 +120,7 @@ topic and commits, since a partition retrying one record blocks every record beh
 ```python
 # WRONG — the error is logged and swallowed: the handler returns, and the ack drops the booking
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     try:
         async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
             await hold_room(event, inventory=inventory)
@@ -130,7 +130,7 @@ async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> N
 
 # CORRECT — the error escapes: a failed delivery, counted toward the dead-letter queue
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 ```
@@ -149,16 +149,16 @@ it bounds crashes, not exceptions.
 **Example:**
 ```python
 # WRONG — the handler retries an adapter that retries, under a broker that redelivers
-@retry(stop=stop_after_attempt(_HANDLER_ATTEMPTS), wait=wait_exponential_jitter())
+@_RETRY_TRANSIENT
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 
 
 # CORRECT — the adapter behind RoomInventory retries inside the deadline; the handler does not
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 ```
@@ -170,7 +170,7 @@ async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> N
 **Why:** a message is a boundary — a wire model validated where it is consumed and converted to a
 domain object, never a domain or ORM object and never a pickle (`python-boundaries`); Celery's
 `pickle` in `accept_content` lets anyone who can publish run code in the worker. The raw body goes
-to `model_validate_json`, never a dict a library decoded first; a task library
+to the wire model whole, never a dict a library decoded first; a task library
 that decodes its arguments itself is handed the JSON text as its one argument. Queued payloads
 ignore added fields and pin their version with a `Literal`; a consumer that also knows v2
 validates a union discriminated on `version`. A request that enqueues work writes an outbox row in
@@ -188,22 +188,9 @@ def parse_booking_confirmed(body: bytes) -> BookingConfirmed:
     )
 
 
-# CORRECT — the wire model names its version, and the JSON is validated in one step
-@final
-class BookingConfirmedV1(BaseModel):
-    model_config = ConfigDict(strict=True, extra="ignore", frozen=True)
-
-    version: Literal[1]
-    event_id: UUID
-    booking_id: UUID
-    confirmed_at: AwareDatetime
-
-    def to_domain(self) -> BookingConfirmed:
-        return BookingConfirmed(
-            event_id=EventId(self.event_id),
-            booking_id=BookingId(self.booking_id),
-            confirmed_at=self.confirmed_at,
-        )
+# CORRECT — the wire model of a pinned version parses the whole body in one step
+def parse_booking_confirmed(body: bytes) -> BookingConfirmed:
+    return BookingConfirmedV1.from_json(body).to_domain()
 ```
 
 ## Deadlines Nest
@@ -229,13 +216,13 @@ unbounded prefetch pulls the whole queue into one worker while the others idle.
 ```python
 # WRONG — an inventory service that stops answering holds the delivery until the broker takes it
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     await hold_room(event, inventory=inventory)
 
 
 # CORRECT — the handler gives up at its own deadline, well inside the broker's
 async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = BookingConfirmedV1.model_validate_json(body).to_domain()
+    event = parse_booking_confirmed(body)
     async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
         await hold_room(event, inventory=inventory)
 ```

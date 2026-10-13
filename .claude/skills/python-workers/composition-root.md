@@ -39,7 +39,7 @@ built before the fork is shared by every child — and closed in the matching sh
 ```python
 # WRONG — the pool is created at import, before the fork: every child shares its sockets
 celery_app = Celery("bookings")
-_ENGINE: Final = create_engine(os.environ["DATABASE_URL"])
+_POOL: Final = open_database_pool(os.environ["DATABASE_URL"])
 
 
 # CORRECT — each prefork child builds its own pool after the fork, and disposes it on exit
