@@ -112,7 +112,7 @@ field names come out one guess at a time even with introspection off.
 ```python
 # WRONG — introspection off, while GraphiQL and the suggestions still publish the schema
 schema = strawberry.Schema(query=Query, extensions=[DisableIntrospection])
-graphql_router = GraphQLRouter(schema, context_getter=get_context)
+graphql_app = GraphQL(schema, context_getter=build_context)
 
 # CORRECT — all three discovery paths closed together
 schema = strawberry.Schema(
@@ -120,5 +120,5 @@ schema = strawberry.Schema(
     extensions=[DisableIntrospection],
     config=StrawberryConfig(disable_field_suggestions=True),
 )
-graphql_router = GraphQLRouter(schema, context_getter=get_context, graphql_ide=None)
+graphql_app = GraphQL(schema, context_getter=build_context, graphql_ide=None)
 ```

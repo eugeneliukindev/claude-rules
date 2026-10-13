@@ -12,11 +12,11 @@ paths:
 
 # Strawberry GraphQL
 
-Checked against strawberry-graphql 0.333, graphql-core 3.3, FastAPI 0.143, Starlette 1.7 and
-pydantic 2.14, by reading the installed source and running every `CORRECT` below. Strawberry is
-0.x and renames and deprecates between minor versions — check the source of the version you pin.
-The factory, the lifespan and `Depends` are `python-fastapi`; construction and lifetime
-`python-wiring`. This file is where strawberry's mechanisms meet those rules.
+Checked against strawberry-graphql 0.333, graphql-core 3.3 and pydantic 2.14, by reading the
+installed source and running every `CORRECT` below. Strawberry is 0.x and renames and deprecates
+between minor versions — check the source of the version you pin. Mounting the GraphQL app in a web
+framework is that framework's skill (`python-fastapi`); construction and lifetime are
+`python-wiring`.
 
 ### The GraphQL package turns off `disallow_untyped_decorators` in one mypy override
 
@@ -97,7 +97,7 @@ Python name carries the family suffix, the schema the domain word.
 
 ### A resolver translates and calls one service method
 
-**Why:** a resolver is an adapter, as a FastAPI route is (`python-fastapi`); a rule written in it is
+**Why:** a resolver is an adapter, like a web route or a queue handler; a rule written in it is
 reachable only through GraphQL, and a REST route or a worker that performs the same operation skips
 it.
 
@@ -126,10 +126,11 @@ class Mutation:
 
 ### A resolver that blocks is `async` and offloads: a `def` resolver runs on the event loop
 
-**Why:** unlike a FastAPI `def` route, a `def` resolver is not sent to a thread pool; strawberry
-calls it inside the event loop. Measured: three concurrent queries of a `def` resolver sleeping 0.5
-s took 1.5 s, all on the main thread. Anything that blocks is offloaded (`python-async`); a `def`
-resolver that only computes from what it already holds blocks nothing and stays a `def`.
+**Why:** unlike a web framework's `def` handler, a `def` resolver is not sent to a thread pool;
+strawberry calls it inside the event loop. Measured: three concurrent queries of a `def` resolver
+sleeping 0.5 s took 1.5 s, all on the main thread. Anything that blocks is offloaded
+(`python-async`); a `def` resolver that only computes from what it already holds blocks nothing and
+stays a `def`.
 
 **Example:**
 ```python
@@ -154,8 +155,8 @@ class Query:
 ## The Context
 
 **Before writing the `context_getter` or the context class, read [context.md](context.md)** — a
-`BaseContext` subclass behind one `GraphQLInfo` alias, built from what the lifespan built,
-authentication once in the getter, and `HTTPConnection` so subscriptions work.
+typed class behind one `GraphQLInfo` alias, built from the root's services plus what is
+request-scoped.
 
 ## DataLoaders
 
@@ -200,8 +201,8 @@ protocol, and per-connection limits.
 
 ## Testing
 
-**Before testing resolvers, the router or the limits, read [testing.md](testing.md)** —
-`schema.execute` with fakes, the app with its lifespan, and each limit answered visibly.
+**Before testing resolvers or the limits, read [testing.md](testing.md)** —
+`schema.execute` with fakes, and each limit answered visibly.
 
 ## The Schema as a Contract
 

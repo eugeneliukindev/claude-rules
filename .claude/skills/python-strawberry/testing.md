@@ -33,42 +33,6 @@ async def test_approve_claim_answers_foreign_claim_as_not_found() -> None:
     assert result.data == {"approveClaim": {"__typename": "ClaimNotFound"}}
 ```
 
-### The wiring is tested through the app, with the lifespan running, asserting `data` and `errors`
-
-**Why:** the context getter, the authentication dependency and the router only run through the
-app: `with TestClient(app)`, on `httpx2`, or the async client and `LifespanManager`
-(`python-fastapi`). A GraphQL failure is still a 200, so a test that asserts only the status passes
-on an error.
-
-**Example:**
-```python
-# WRONG — 200 is also what a failed query returns
-def test_claim_query_through_the_app(app: FastAPI, claim: Claim) -> None:
-    with TestClient(app) as client:
-        response = client.post(
-            "/graphql",
-            json={"query": _CLAIM_QUERY, "variables": {"claimId": str(claim.claim_id)}},
-            headers=_AUTHORIZATION,
-        )
-
-    assert response.status_code == HTTPStatus.OK
-
-
-# CORRECT — the status, no errors, and the data the client reads
-def test_claim_query_through_the_app(app: FastAPI, claim: Claim) -> None:
-    with TestClient(app) as client:
-        response = client.post(
-            "/graphql",
-            json={"query": _CLAIM_QUERY, "variables": {"claimId": str(claim.claim_id)}},
-            headers=_AUTHORIZATION,
-        )
-
-    assert response.status_code == HTTPStatus.OK
-    body = response.json()
-    assert "errors" not in body
-    assert body["data"] == {"claim": {"id": str(claim.claim_id)}}
-```
-
 ### Each limit is tested: one past it is answered with a visible error
 
 **Why:** a limit nobody tests is found missing in production, and one answered with a masked
