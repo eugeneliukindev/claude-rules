@@ -23,7 +23,7 @@ dependency injection and is used, in most tutorials, as a service locator.
 
 ### `create_app(settings)` builds the app, and its lifespan builds and closes every resource
 
-**Why:** a module-level `app = FastAPI()` with an engine beside it is the global singleton
+**Why:** a module-level `app = FastAPI()` with a pool beside it is the global singleton
 `python-wiring` forbids, and the documentation's `@lru_cache def get_settings()` is one with extra
 steps — a test that needs another value has to clear a cache. The factory takes the settings its
 caller built; the server runs it with `uvicorn --factory`. The lifespan holds one `async with` with
@@ -34,22 +34,22 @@ acquire. Every worker runs the lifespan, so a server it starts — gRPC — need
 
 **Example:**
 ```python
-# WRONG — a cached global for settings, and an engine built on every request
+# WRONG — a cached global for settings, and a pool built on every request
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
 
 
 def task_service(settings: Annotated[Settings, Depends(get_settings)]) -> TaskService:
-    return TaskService(PostgresTaskRepository(create_async_engine(settings.database_url)))
+    return TaskService(PostgresTaskRepository(open_database_pool(settings.database_url)))
 
 
 # CORRECT — the factory's lifespan builds once; the dependency only hands it over
 def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-        async with managed_engine(settings.database_url) as engine:
-            yield {"task_service": TaskService(PostgresTaskRepository(engine))}
+        async with managed_pool(settings.database_url) as pool:
+            yield {"task_service": TaskService(PostgresTaskRepository(pool))}
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(tasks_router)
@@ -61,19 +61,20 @@ def create_app(settings: Settings) -> FastAPI:
 
 ### A dependency is an `async def` accessor to what the lifespan built, named once as an alias
 
-**Why:** a dependency that constructs an engine, a pool or a client constructs it per request; it
+**Why:** a dependency that constructs a pool or a client constructs it per request; it
 reads, holds no business logic and reads no settings — three lines at most, the seam between
 FastAPI and the service. A plain `def` runs in the thread pool on every request, so an accessor that
 only reads `request.state` is `async def`; one that blocks — a verifier fetching a key set — stays a
 `def`. `request.state` is untyped: the accessor states the type once on an annotated local —
 returning the attribute directly is `no-any-return` — and the `Annotated` alias gives every route a
-real class to read. A request-scoped object, a unit of work, may be built here from those parts.
+real class to read. A request-scoped object — the caller's locale, a scratch directory — may be
+built here from those parts.
 
 **Example:**
 ```python
 # WRONG — the dependency builds the service, and returns an Any the checker cannot see through
 def get_task_service(request: Request) -> TaskService:
-    return TaskService(PostgresTaskRepository(request.state.engine))
+    return TaskService(PostgresTaskRepository(request.state.pool))
 
 
 # CORRECT — an async accessor to what the lifespan built, typed once, named once
@@ -88,27 +89,25 @@ type TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 ### A dependency with `yield` releases in `finally`
 
 **Why:** without `try`/`finally` the release after `yield` is skipped when the route raises, and
-the unit of work stays open on its connection. A dependency cached for the life of the app is a
-lazy singleton — it belongs in the lifespan.
+whatever the dependency acquired — a scratch directory, a lease — is never released. A dependency
+cached for the life of the app is a lazy singleton — it belongs in the lifespan.
 
 **Example:**
 ```python
-# WRONG — a route that raises never reaches the close
-async def get_unit_of_work(request: Request) -> AsyncIterator[UnitOfWork]:
-    factory: UnitOfWorkFactory = request.state.unit_of_work_factory
-    unit = factory()
-    yield unit
-    await unit.close()
+# WRONG — a route that raises never reaches the cleanup, and the directory stays on disk
+def get_scratch_directory() -> Iterator[Path]:
+    directory = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX))
+    yield directory
+    shutil.rmtree(directory)
 
 
-# CORRECT — released whether the route returned or raised
-async def get_unit_of_work(request: Request) -> AsyncIterator[UnitOfWork]:
-    factory: UnitOfWorkFactory = request.state.unit_of_work_factory
-    unit = factory()
+# CORRECT — removed whether the route returned or raised
+def get_scratch_directory() -> Iterator[Path]:
+    directory = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX))
     try:
-        yield unit
+        yield directory
     finally:
-        await unit.close()
+        shutil.rmtree(directory)
 ```
 
 ## Routers

@@ -71,7 +71,7 @@ as a parameter and the tests pass the fakes' builder.
 
 **Example:**
 ```python
-# WRONG — the service module is patched, and the app still builds its real engine
+# WRONG — the service module is patched, and the app still builds its real pool
 def test_close_task_closes_it(mocker: MockerFixture, app: FastAPI) -> None:
     mocker.patch("tracker.api.tasks.PostgresTaskRepository", InMemoryTaskRepository)
     with TestClient(app) as client:

@@ -5,7 +5,7 @@
 - SSE through `EventSourceResponse`, FastAPI's or sse-starlette's
 - `Last-Event-ID` as a header parameter
 - How a disconnect reaches the route, and `request.is_disconnected()`
-- No unit of work from `Depends` in a streaming route
+- No connection from `Depends` in a streaming route
 - The WebSocket handler: one `TaskGroup`, a close code per ending
 - `WebSocketDisconnect` ends the reader
 - Handshake checks as router dependencies; `CORSMiddleware` skips WebSockets
@@ -110,27 +110,26 @@ async def report_pages(
         yield await reports.render_page(report_id, page_number)
 ```
 
-### A streaming route takes no unit of work through `Depends`
+### A streaming route takes no connection through `Depends`
 
 **Why:** a dependency with `yield` stays open until the response finishes — measured: its
-`finally` ran after the stream ended — so a unit of work taken through `Depends` is held, with its
-pooled connection, for the stream's whole life. The route takes a factory and the replay opens its
-own short unit of work (`python-streaming`).
+`finally` ran after the stream ended — so a connection taken through `Depends` is held, out of the
+pool, for the stream's whole life. The route takes the history, whose every read borrows a
+connection and returns it (`python-streaming`).
 
 **Example:**
 ```python
-# WRONG — the unit of work from Depends stays open, with its connection, until the client leaves
+# WRONG — the connection from Depends stays out of the pool until the client leaves
 @tracking_router.get("/parcels/{tracking_number}/events", response_class=EventSourceResponse)
 async def parcel_events(
-    tracking_number: TrackingNumber, unit_of_work: UnitOfWorkDep, feed: ParcelFeedDep
+    tracking_number: TrackingNumber, connection: ConnectionDep, feed: ParcelFeedDep
 ) -> AsyncIterator[ParcelEvent]:
-    async for event in stream_parcel(
-        tracking_number, after=0, history=unit_of_work.parcel_history, feed=feed
-    ):
+    history = PostgresParcelHistory(connection)
+    async for event in stream_parcel(tracking_number, after=0, history=history, feed=feed):
         yield event
 
 
-# CORRECT — the history opens a short unit of work per read and closes it before the live part
+# CORRECT — the history borrows a connection per read and returns it before the live part
 @tracking_router.get("/parcels/{tracking_number}/events", response_class=EventSourceResponse)
 async def parcel_events(
     tracking_number: TrackingNumber, history: ParcelHistoryDep, feed: ParcelFeedDep
