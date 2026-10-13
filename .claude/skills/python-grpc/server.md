@@ -124,32 +124,11 @@ channel = grpc.aio.secure_channel(target, channel_credentials, options=_MESSAGE_
 **Why:** the default is no limit, so a burst queues without end in one process and every call slows
 together; past the bound the server answers `RESOURCE_EXHAUSTED`, which the client sees at once.
 
-**Example:**
-```python
-# WRONG — no bound: a burst is held in memory until every call is slow
-server = grpc.aio.server(interceptors=[StatusInterceptor()])
-
-# CORRECT — past the bound, a call is refused at once
-server = grpc.aio.server(
-    interceptors=[StatusInterceptor()], maximum_concurrent_rpcs=_MAX_CONCURRENT_CALLS
-)
-```
-
 ### The port is TLS, unless a mesh sidecar terminates TLS inside the pod
 
 **Why:** plaintext carries every call's metadata, tokens included, in the clear. Behind a mesh
 sidecar `add_insecure_port` on the pod's address is the one exception, and a setting names it;
 tests use `grpc.local_server_credentials()`.
-
-**Example:**
-```python
-# WRONG — plaintext on every interface, wherever it is deployed
-port = server.add_insecure_port("[::]:50051")
-
-# CORRECT — the service's key and certificate chain
-credentials = grpc.ssl_server_credentials([(private_key, certificate_chain)])
-port = server.add_secure_port(address, credentials)
-```
 
 ### Beside FastAPI, the server lives in the lifespan, and the app runs one worker
 

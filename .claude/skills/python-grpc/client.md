@@ -55,23 +55,6 @@ a second, with `time_remaining()` `None`. The deadline reaches the server, which
 handler when it passed. Serving one call while making another, pass the smaller of your own timeout
 and `context.time_remaining()`, which is `None` when the caller set no deadline.
 
-**Example:**
-```python
-# WRONG — a stalled server holds the caller forever
-async def fetch_flight(stub: FlightServiceAsyncStub, flight_id: FlightId) -> Flight:
-    response = await stub.GetFlight(flights_pb2.GetFlightRequest(flight_id=str(flight_id)))
-    return flight_from_wire(response.flight)
-
-
-# CORRECT — the call fails as DEADLINE_EXCEEDED when its time is up, on both sides
-async def fetch_flight(
-    stub: FlightServiceAsyncStub, flight_id: FlightId, *, timeout_seconds: float
-) -> Flight:
-    request = flights_pb2.GetFlightRequest(flight_id=str(flight_id))
-    response = await stub.GetFlight(request, timeout=timeout_seconds)
-    return flight_from_wire(response.flight)
-```
-
 ### Status codes are translated at the adapter, with the cause kept
 
 **Why:** an `AioRpcError` that escapes makes every caller know gRPC to tell a missing flight from an
@@ -166,19 +149,6 @@ _SERVICE_CONFIG: Final = json.dumps(
 — by default no more than every five minutes without data. A client that pings more often is sent
 `GOAWAY` with `too_many_pings`, as gRPC's keepalive guide documents, and its calls fail. The
 interval is agreed with the service's owners, and no lower than about a minute.
-
-**Example:**
-```python
-# WRONG — every ten seconds: the server answers GOAWAY too_many_pings and drops the connection
-channel = grpc.aio.secure_channel(
-    target, channel_credentials, options=[("grpc.keepalive_time_ms", 10_000)]
-)
-
-# CORRECT — the interval agreed with the server's owners
-channel = grpc.aio.secure_channel(
-    target, channel_credentials, options=[("grpc.keepalive_time_ms", _KEEPALIVE_INTERVAL_MS)]
-)
-```
 
 ### TLS verifies the target's name, and nothing overrides it
 

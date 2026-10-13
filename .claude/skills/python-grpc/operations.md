@@ -76,16 +76,6 @@ readinessProbe:
 **Why:** reflection publishes the whole schema — every service, method and field — to whoever
 connects. It helps a developer with `grpcurl`; in production it is a map for an attacker.
 
-**Example:**
-```python
-# WRONG — the schema served to every caller, in every environment
-reflection.enable_server_reflection((_FLIGHT_SERVICE_NAME, reflection.SERVICE_NAME), server)
-
-# CORRECT — on only where the setting turns it on
-if settings.grpc_reflection_enabled:
-    reflection.enable_server_reflection((_FLIGHT_SERVICE_NAME, reflection.SERVICE_NAME), server)
-```
-
 ### Traces come from the instrumentation; metrics from a plugin the entry point registers
 
 **Why:** `opentelemetry-instrumentation-grpc` — `aio_server_interceptor()`,

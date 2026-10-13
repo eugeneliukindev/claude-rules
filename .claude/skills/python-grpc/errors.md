@@ -133,27 +133,6 @@ the state. `FAILED_PRECONDITION`: the state forbids it — the flight has alread
 `PERMISSION_DENIED` as 401 versus 403 (`python-auth`). `UNAVAILABLE` only for "try again", since
 clients and the retry policy retry it — never for a domain error. `UNKNOWN` never on purpose.
 
-**Example:**
-```python
-# WRONG — a departed flight as UNAVAILABLE: every client retries a request that cannot succeed
-_CODE_BY_ERROR: Final[Mapping[type[Exception], grpc.StatusCode]] = MappingProxyType(
-    {
-        InvalidRequestError: grpc.StatusCode.INVALID_ARGUMENT,
-        FlightNotFoundError: grpc.StatusCode.NOT_FOUND,
-        FlightAlreadyDepartedError: grpc.StatusCode.UNAVAILABLE,
-    }
-)
-
-# CORRECT — the state forbids it, and no retry changes the state
-_CODE_BY_ERROR: Final[Mapping[type[Exception], grpc.StatusCode]] = MappingProxyType(
-    {
-        InvalidRequestError: grpc.StatusCode.INVALID_ARGUMENT,
-        FlightNotFoundError: grpc.StatusCode.NOT_FOUND,
-        FlightAlreadyDepartedError: grpc.StatusCode.FAILED_PRECONDITION,
-    }
-)
-```
-
 ### Field-level detail a client acts on travels as a `google.rpc.Status`
 
 **Why:** details joined into the text can only be shown, not acted on. A `BadRequest` packed into

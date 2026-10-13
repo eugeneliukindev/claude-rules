@@ -27,23 +27,6 @@ message Flight {
 once, and the deploy order of server and clients cannot fix it. A new package — `airapis.flights.v2`
 — is a new service name; `v1` keeps answering until nobody calls it.
 
-**Example:**
-```protobuf
-// WRONG — v1's fare changed from Money to an int64 of cents, under every existing client
-package airapis.flights.v1;
-
-message Flight {
-  int64 fare_cents = 3;
-}
-
-// CORRECT — the new shape in v2, served beside v1
-package airapis.flights.v2;
-
-message Flight {
-  int64 fare_cents = 3;
-}
-```
-
 ### `buf breaking` and `buf lint` run in CI against the main branch
 
 **Why:** a reviewer misses a reused number; buf does not.
@@ -51,14 +34,3 @@ message Flight {
 reported the deletion above even when reserved — right for a package whose generated modules other
 code imports. `WIRE_JSON` accepted it only once number and name were both reserved — right for a
 service whose clients generate their own code.
-
-**Example:**
-```bash
-# WRONG — style is checked, and a reused field number merges unseen
-buf lint
-
-# CORRECT — the schema compared with main's, failing on a breaking change
-git fetch origin main:main
-buf lint
-buf breaking --against '.git#branch=main'
-```

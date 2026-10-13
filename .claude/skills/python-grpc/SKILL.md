@@ -187,24 +187,6 @@ plus nanos as in `google.type.Money`, converts to `Decimal` exactly; identifiers
 canonical string (`python-boundaries`). `int64` is a Python `int`, range-checked on assignment, and
 its JSON mapping is a string.
 
-**Example:**
-```protobuf
-// WRONG — a binary fraction: 19.99 arrives as 19.989999999999998
-message Flight {
-  double fare = 3;
-}
-
-// CORRECT — the amount as a decimal string beside its currency
-message Money {
-  string currency_code = 1;
-  string amount = 2;
-}
-
-message Flight {
-  Money fare = 3;
-}
-```
-
 ## Generating and Typing the Code
 
 **Before running protoc, laying out the generated package or adding gRPC's dev dependencies, read
