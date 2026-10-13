@@ -14,8 +14,7 @@
 **Why:** an exception that escapes a handler reaches the client with its message: `UNKNOWN`, details
 `Unexpected <class 'ValueError'>: ` and whatever the message held — a hostname and a user name, in
 the run that measured it. Mapping in each method repeats the table and misses the method added next
-year; one interceptor on the server — the gRPC form of the exception handler in `python-fastapi` —
-covers every method, unary and streaming.
+year; one interceptor on the server covers every method, unary and streaming.
 
 **Example:**
 ```python

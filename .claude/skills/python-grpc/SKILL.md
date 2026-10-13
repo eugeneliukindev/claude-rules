@@ -14,13 +14,12 @@ paths:
 # gRPC
 
 Checked against grpcio, grpcio-tools, grpcio-health-checking, grpcio-status, grpcio-reflection and
-grpcio-observability 1.84, protobuf 7.36, mypy-protobuf 5.1, types-grpcio 1.84, buf 1.73, FastAPI
-0.143 and uvicorn 0.54, on Python 3.13. Validate at the edge, give every call a deadline, retry only
-transient failures and only idempotent writes, keep time aware UTC and money `Decimal` (why:
-`python-boundaries`); the composition root builds and closes every resource (`python-wiring`);
-shutdown drains with a deadline, then closes in reverse (`python-async`); the grace period and the
-probes are `python-container`. A script that calls a gRPC service once still sets a deadline and
-verifies TLS.
+grpcio-observability 1.84, protobuf 7.36, mypy-protobuf 5.1, types-grpcio 1.84, buf 1.73, on Python
+3.13. Validate at the edge, give every call a deadline, retry only transient failures and only
+idempotent writes, keep time aware UTC and money `Decimal` (why: `python-boundaries`); the
+composition root builds and closes every resource (`python-wiring`); shutdown drains with a
+deadline, then closes in reverse (`python-async`); the grace period and the probes are
+`python-container`. A script that calls a gRPC service once still sets a deadline and verifies TLS.
 
 ### The servicer converts at the edge: messages never reach the service
 
@@ -98,6 +97,27 @@ def flight_from_wire(message: flights_pb2.Flight) -> Flight:
         departs_at=_departs_at_from_wire(message),
         gate=message.gate if message.HasField("gate") else None,
     )
+```
+
+### A converter checks what the message cannot, and raises the error that maps to `INVALID_ARGUMENT`
+
+**Why:** the message parses the wire but not a UUID's format, a positive amount or a known enum
+value. A `ValueError` that escapes the converter is unclassified and reaches the client as
+`INTERNAL`; the converter's own error is mapped to `INVALID_ARGUMENT` by the interceptor.
+
+**Example:**
+```python
+# WRONG — a malformed id escapes as ValueError, and the client sees INTERNAL
+def flight_id_from_wire(value: str) -> FlightId:
+    return FlightId(UUID(value))
+
+
+# CORRECT — the client is told which field is wrong
+def flight_id_from_wire(value: str) -> FlightId:
+    try:
+        return FlightId(UUID(value))
+    except ValueError as error:
+        raise InvalidRequestError("flight_id: must be a UUID") from error
 ```
 
 ### A scalar whose absence means something is declared `optional` and read through `HasField`
@@ -197,8 +217,7 @@ tree's top-level name, the runtime floors it pins, and regeneration in CI.
 
 **Before writing the code that builds, starts or stops a `grpc.aio` server, read
 [server.md](server.md)** — one context manager in the root, the shutdown grace, `so_reuseport`
-off, message and concurrency limits, TLS, and the server inside a FastAPI lifespan or a process of
-its own.
+off, message and concurrency limits, TLS.
 
 ## Errors and Status Codes
 
@@ -230,12 +249,6 @@ a stream's lifetime, and cancelling a call left early.
 **Before testing a servicer or a client adapter, read [in-process-tests.md](in-process-tests.md)**
 — the servicer called directly, one in-process server for everything else, a Unix socket for the
 shutdown tests, and the whole test module with its fakes.
-
-## Beside FastAPI and pydantic
-
-**Before serving the same service over HTTP and gRPC, or bringing pydantic near a message, read
-[fastapi.md](fastapi.md)** — why no bridging library is used, two adapters over one service, and
-what the converter checks instead of a model.
 
 ## Changing the Schema
 

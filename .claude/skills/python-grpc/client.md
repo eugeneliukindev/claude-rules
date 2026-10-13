@@ -109,8 +109,8 @@ def _translate_status(error: grpc.aio.AioRpcError, flight_id: FlightId) -> Excep
 
 **Why:** without a config nothing is retried; with one, the server saw attempts one to three and the
 deadline covered all of them. `DEADLINE_EXCEEDED` is never retryable: the budget is spent and the
-server may have done the work. This is the one retry layer for the call — no tenacity around it
-(`python-boundaries`, `python-tenacity`); the opposite choice turns it off with
+server may have done the work. This is the one retry layer for the call — no second retry around it
+(`python-boundaries`); the opposite choice turns it off with
 `("grpc.enable_retries", 0)`. The channel takes it as
 `options=[("grpc.service_config", _SERVICE_CONFIG)]`, and it absorbs the `UNAVAILABLE` a server
 answers between `SIGTERM` and its removal from the load balancer.

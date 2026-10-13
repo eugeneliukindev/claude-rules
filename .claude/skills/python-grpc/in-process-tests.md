@@ -10,9 +10,7 @@
 
 One real server per test on an ephemeral port or a Unix socket, a real channel, and the real client
 adapter. The module below ran green under pytest-asyncio 1.4 in auto mode with
-`filterwarnings = ["error"]`, and passes `mypy --strict`. The lifespan variant is the same tests'
-shape under `asgi-lifespan`'s `LifespanManager` (`python-fastapi`), with a channel on the Unix
-socket address the factory was given.
+`filterwarnings = ["error"]`, and passes `mypy --strict`.
 
 ### A servicer method is called directly, with grpc's context autospecced
 
