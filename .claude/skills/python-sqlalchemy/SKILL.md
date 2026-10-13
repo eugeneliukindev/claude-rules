@@ -124,27 +124,31 @@ def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int
     )
 ```
 
-### A transaction opens its session with `session_factory.begin()`
+### A session is opened in a `with`, and closing it rolls back what the service did not commit
 
-**Why:** `begin()` commits on a clean exit, rolls back on an error and closes the session either
-way; a session opened and committed by hand leaves the transaction open on its connection when the
-use case raises.
+**Why:** the edge opens one session per request or message and the service commits it
+(`python-persistence`); a session opened without a `with` is never closed when the use case raises,
+and its transaction stays open on its connection. Closing a session rolls back whatever was not
+committed, so an error needs no rollback written by hand. `session_factory.begin()` commits on the
+way out, which takes the commit away from the service.
 
 **Example:**
 ```python
-# WRONG — an error in the use case skips commit and leaves the transaction open
-@contextmanager
-def transaction(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+# WRONG — an error in the use case skips the close: the transaction stays open on its connection
+def handle_enrollment(
+    message: EnrollmentRequested, *, session_factory: sessionmaker[Session]
+) -> None:
     session = session_factory()
-    yield session
-    session.commit()
+    enroll(message, enrollments=SqlEnrollmentRepository(session), transaction=session)
+    session.close()
 
 
-# CORRECT — commit on a clean exit, rollback on an error, close either way
-@contextmanager
-def transaction(session_factory: sessionmaker[Session]) -> Iterator[Session]:
-    with session_factory.begin() as session:
-        yield session
+# CORRECT — closed whatever happens; enroll commits, and anything it did not commit rolls back
+def handle_enrollment(
+    message: EnrollmentRequested, *, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session:
+        enroll(message, enrollments=SqlEnrollmentRepository(session), transaction=session)
 ```
 
 ### A session whose rows are read after commit sets `expire_on_commit=False`
