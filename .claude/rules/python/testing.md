@@ -425,6 +425,8 @@ def test_import_reads_legacy_csv() -> None:
 **Why:** a shared object a dozen tests silently depend on changes for all of them the day one test
 needs it different; a factory hands each test a valid default it overrides in one place. Shared
 fixtures and factories live in the nearest `conftest.py`; one a single module uses lives there.
+**Except:** a frozen value every test only reads — an id, an instant, a record no test varies — is
+a module constant.
 
 **Example:**
 ```python
