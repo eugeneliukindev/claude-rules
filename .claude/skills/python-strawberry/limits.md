@@ -45,9 +45,11 @@ alias limit stops one field being asked for a thousand times under different nam
 **Example:**
 ```python
 # WRONG — depth alone: a shallow query with a thousand aliases passes
-def build_schema(*, is_introspection_enabled: bool) -> strawberry.Schema:
+def build_schema(
+    *, is_introspection_enabled: bool, limits: QueryLimits = QueryLimits()
+) -> strawberry.Schema:
     extensions: list[Callable[[], SchemaExtension]] = [
-        partial(QueryDepthLimiter, max_depth=_MAX_QUERY_DEPTH),
+        partial(QueryDepthLimiter, max_depth=limits.max_depth),
     ]
     if not is_introspection_enabled:
         extensions.append(DisableIntrospection)
@@ -55,11 +57,13 @@ def build_schema(*, is_introspection_enabled: bool) -> strawberry.Schema:
 
 
 # CORRECT — depth, size and aliases bounded before any resolver runs
-def build_schema(*, is_introspection_enabled: bool) -> strawberry.Schema:
+def build_schema(
+    *, is_introspection_enabled: bool, limits: QueryLimits = QueryLimits()
+) -> strawberry.Schema:
     extensions: list[Callable[[], SchemaExtension]] = [
-        partial(QueryDepthLimiter, max_depth=_MAX_QUERY_DEPTH),
-        partial(MaxTokensLimiter, max_token_count=_MAX_QUERY_TOKENS),
-        partial(MaxAliasesLimiter, max_alias_count=_MAX_ALIASES),
+        partial(QueryDepthLimiter, max_depth=limits.max_depth),
+        partial(MaxTokensLimiter, max_token_count=limits.max_tokens),
+        partial(MaxAliasesLimiter, max_alias_count=limits.max_aliases),
     ]
     if not is_introspection_enabled:
         extensions.append(DisableIntrospection)
