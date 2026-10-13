@@ -45,9 +45,11 @@ skill after its first heading below the title.
 an `AsyncSession` in the caching skill taught one storage design to every task that touched a cache,
 a stream or a route. Each skill's examples run against contracts in its own domain — a
 `ProfileRepository`, a `ParcelHistory`, a `ConnectionPool` — and only the library skill writes the
-library's calls. `scripts/check_rules.py` reports a library's API in any other file's example,
-except where one library is built on another — alembic on SQLAlchemy, strawberry on FastAPI — the
-pairs it lists as integrations.
+library's calls. Where two libraries really meet — SQLAlchemy in a FastAPI app, strawberry mounted
+in it — the seam is one file in the host's skill, `with-<library>.md`, reached by a "Before…"
+section; every other file shows no second library at all. `scripts/check_rules.py` reports a
+library's API anywhere else; alembic, built on SQLAlchemy, is the one skill that speaks another's
+API throughout.
 
 **Example:**
 ```python

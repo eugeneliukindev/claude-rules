@@ -74,14 +74,10 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
         "python-alembic": re.compile(r"\balembic\b"),
     }
 )
-# A library built on another shows the other's API where the two meet, and nowhere else.
-_LIBRARY_INTEGRATIONS: Final = frozenset(
-    {
-        ("python-alembic", "python-sqlalchemy"),
-        ("python-fastapi", "python-pydantic"),
-        ("python-strawberry", "python-pydantic"),
-    }
-)
+# Two libraries meet only in the host's integration file, `with-<library>.md`; alembic is built on
+# SQLAlchemy, so every alembic file speaks it.
+_INTEGRATION_FILE: Final = re.compile(r"^with-([a-z0-9]+)\.md$")
+_BUILT_ON: Final = frozenset({("python-alembic", "python-sqlalchemy")})
 # A description says what the skill does and when to use it; the listing every session pays for
 # is capped at 1% of the context window, so a description is a trigger, not a table of contents.
 _DESCRIPTION_MAX_CHARACTERS: Final = 400
@@ -549,20 +545,25 @@ def _library_api_findings(document: _Document) -> Iterator[_Finding]:
     owner = document.path.parent.name
     if owner in _META_SKILLS:
         return
+    integration = _INTEGRATION_FILE.match(document.path.name)
+    guest = f"{_SKILL_PREFIX}{integration.group(1)}" if integration else None
     for block in _code_blocks(document.lines):
         if block.language != "python":
             continue
         for offset, line in enumerate(block.body, start=1):
             for library, api in _LIBRARY_API.items():
                 if (
-                    owner != library
-                    and (owner, library) not in _LIBRARY_INTEGRATIONS
+                    library not in {owner, guest}
+                    and (owner, library) not in _BUILT_ON
                     and api.search(line)
                 ):
                     yield _Finding(
                         path=document.path,
                         line=block.start_line + offset,
-                        message=f"{library}'s API in another file's example; use a contract here",
+                        message=(
+                            f"{library}'s API outside its skill; show it in a"
+                            f" with-{library.removeprefix(_SKILL_PREFIX)}.md file, or use a contract"
+                        ),
                     )
 
 
