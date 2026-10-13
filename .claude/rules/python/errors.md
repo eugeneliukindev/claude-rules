@@ -64,26 +64,25 @@ without `from` loses its cause, and `None` for an error makes every caller guess
 **Example:**
 ```python
 # WRONG — broad catch, swallowed cause, a try around everything, the error returned as None
-def load_user(user_id: UserId, *, client: httpx.Client) -> User | None:
+def load_user(user_id: UserId, *, base_url: str) -> User | None:
     try:
-        response = client.get(f"/users/{user_id}")
-        response.raise_for_status()
-        return User.from_payload(response.json())
+        with urlopen(f"{base_url}/users/{user_id}", timeout=_TIMEOUT_SECONDS) as response:
+            return User.from_payload(json.load(response))
     except Exception:
         logger.error("failed")
         return None
 
 
 # CORRECT — narrow try, translated with its cause, an error is never a return value
-def load_user(user_id: UserId, *, client: httpx.Client) -> User:
+def load_user(user_id: UserId, *, base_url: str) -> User:
     try:
-        response = client.get(f"/users/{user_id}")
-        response.raise_for_status()
-    except httpx.HTTPStatusError as error:
-        if error.response.status_code == HTTPStatus.NOT_FOUND:
+        with urlopen(f"{base_url}/users/{user_id}", timeout=_TIMEOUT_SECONDS) as response:
+            payload = json.load(response)
+    except HTTPError as error:
+        if error.code == HTTPStatus.NOT_FOUND:
             raise UserNotFoundError(user_id) from error
         raise UserServiceError(f"Fetching user {user_id} failed") from error
-    return User.from_payload(response.json())
+    return User.from_payload(payload)
 ```
 
 ### A message carries the identifying values, and the exception carries them as attributes
