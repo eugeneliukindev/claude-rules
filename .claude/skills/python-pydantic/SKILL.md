@@ -221,3 +221,8 @@ discriminator instead of trying every member.
 
 **Before defining a `BaseSettings` or a credential field, read [settings.md](settings.md)** — built
 once at the root and validated at startup, `SecretStr` for credentials.
+
+## With SQLAlchemy
+
+**Before building a model from a database row, read [with-sqlalchemy.md](with-sqlalchemy.md)** — no
+`from_attributes` on an ORM row; the model is built from the domain object.
