@@ -58,3 +58,31 @@ skill after its first heading below the title.
 
 The redis implementation is `python-redis`, the decorator layer `python-cashews`.
 ```
+
+### An example uses its own library and the application's contracts, never another library's API
+
+**Why:** the model copies examples, the surface included: a unit of work shown in eight skills and
+an `AsyncSession` in the caching skill taught one storage design to every task that touched a cache,
+a stream or a route. Each skill's examples run against contracts in its own domain — a
+`ProfileRepository`, a `ParcelHistory`, a `ConnectionPool` — and only the library skill writes the
+library's calls. `scripts/check_rules.py` reports a library's API in any other file's example,
+except where one library is built on another — alembic on SQLAlchemy, strawberry on FastAPI — the
+pairs it lists as integrations.
+
+**Example:**
+```python
+# WRONG — the caching skill's example is written in SQLAlchemy
+@final
+class ProfileLookup:
+    def __init__(self, *, session_factory: async_sessionmaker[AsyncSession], cache: Cache) -> None:
+        self._session_factory = session_factory
+        self._cache = cache
+
+
+# CORRECT — the caching skill's example knows only its own contracts
+@final
+class ProfileLookup:
+    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+        self._profiles = profiles
+        self._cache = cache
+```
