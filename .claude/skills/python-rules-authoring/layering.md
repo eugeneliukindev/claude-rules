@@ -21,13 +21,13 @@ as that line; it earns a skill when its traps fill a screen.
 **Example:**
 ```python
 # WRONG — a topic's example written against one library's client
-async def cached_profile(redis: Redis, user_id: UserId) -> Profile | None:
+async def cached_profile(user_id: UserId, *, redis: Redis) -> Profile | None:
     raw = await redis.get(f"profile:{user_id}")
     return None if raw is None else Profile.model_validate_json(raw)
 
 
 # CORRECT — against the application's contract, which any library can implement
-async def cached_profile(cache: Cache, user_id: UserId) -> Profile | None:
+async def cached_profile(user_id: UserId, *, cache: Cache) -> Profile | None:
     raw = await cache.get(f"profile:{user_id}")
     return None if raw is None else Profile.model_validate_json(raw)
 ```

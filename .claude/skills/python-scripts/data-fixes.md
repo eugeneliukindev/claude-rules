@@ -84,7 +84,7 @@ received, and the update skips the rows that carry it.
 **Example:**
 ```python
 # WRONG — re-run after a crash, every fee the first run reached is raised again
-def raise_monthly_fees(connection: sqlite3.Connection, *, percent: int) -> int:
+def raise_monthly_fees(*, connection: sqlite3.Connection, percent: int) -> int:
     with connection:
         cursor = connection.execute(
             "UPDATE plan SET monthly_fee_cents = monthly_fee_cents * (100 + ?) / 100",
@@ -94,7 +94,7 @@ def raise_monthly_fees(connection: sqlite3.Connection, *, percent: int) -> int:
 
 
 # CORRECT — each row is marked with the fix; a second run changes only what the first did not
-def raise_monthly_fees(connection: sqlite3.Connection, *, percent: int, fix_id: str) -> int:
+def raise_monthly_fees(*, connection: sqlite3.Connection, percent: int, fix_id: str) -> int:
     with connection:
         cursor = connection.execute(
             "UPDATE plan SET monthly_fee_cents = monthly_fee_cents * (100 + ?) / 100,"
@@ -113,7 +113,7 @@ new id the consumers' idempotency cannot recognise them, and they are applied tw
 **Example:**
 ```python
 # WRONG — a new id: every consumer that already applied the event applies it again
-def replay_dead_letters(dead_letters: DeadLetterStore, publisher: EventPublisher) -> int:
+def replay_dead_letters(*, dead_letters: DeadLetterStore, publisher: EventPublisher) -> int:
     replayed_count = 0
     for dead_letter in dead_letters.pending():
         publisher.publish(Event(event_id=uuid.uuid4(), payload=dead_letter.payload))
@@ -122,7 +122,7 @@ def replay_dead_letters(dead_letters: DeadLetterStore, publisher: EventPublisher
 
 
 # CORRECT — the original id, which the consumers' idempotency already knows
-def replay_dead_letters(dead_letters: DeadLetterStore, publisher: EventPublisher) -> int:
+def replay_dead_letters(*, dead_letters: DeadLetterStore, publisher: EventPublisher) -> int:
     replayed_count = 0
     for dead_letter in dead_letters.pending():
         publisher.publish(Event(event_id=dead_letter.event_id, payload=dead_letter.payload))

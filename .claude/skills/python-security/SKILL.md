@@ -29,7 +29,7 @@ too, never a joined string.
 **Example:**
 ```python
 # WRONG — the sort column arrives from the query string, so the query string writes SQL
-def open_tickets(connection: sqlite3.Connection, *, queue_id: int, sort_by: str) -> list[Row]:
+def open_tickets(*, connection: sqlite3.Connection, queue_id: int, sort_by: str) -> list[Row]:
     query = f"SELECT ticket_id, subject FROM tickets WHERE queue_id = ? ORDER BY {sort_by}"
     return connection.execute(query, (queue_id,)).fetchall()
 
@@ -41,7 +41,7 @@ _ORDER_BY: Final = MappingProxyType(
 
 
 def open_tickets(
-    connection: sqlite3.Connection, *, queue_id: int, sort_by: TicketSort
+    *, connection: sqlite3.Connection, queue_id: int, sort_by: TicketSort
 ) -> list[Row]:
     order_by = _ORDER_BY[sort_by]
     query = (

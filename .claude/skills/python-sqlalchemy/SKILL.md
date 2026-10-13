@@ -28,20 +28,20 @@ style per codebase is this one. `session.scalars(...)` unwraps whole entities �
 **Example:**
 ```python
 # WRONG — the legacy Query API, and a round trip for a course the session may already hold
-def published_courses(session: Session) -> list[Course]:
+def published_courses(*, session: Session) -> list[Course]:
     return session.query(Course).filter(Course.is_published).all()
 
 
-def course(session: Session, course_id: int) -> Course | None:
+def course(course_id: int, *, session: Session) -> Course | None:
     return session.query(Course).filter(Course.id == course_id).one_or_none()
 
 
 # CORRECT — 2.0 style; the identity map answers a primary-key lookup first
-def published_courses(session: Session) -> list[Course]:
+def published_courses(*, session: Session) -> list[Course]:
     return list(session.scalars(select(Course).where(Course.is_published)).all())
 
 
-def course(session: Session, course_id: int) -> Course | None:
+def course(course_id: int, *, session: Session) -> Course | None:
     return session.get(Course, course_id)
 ```
 
@@ -54,13 +54,13 @@ enrollment is silently ignored. `.one()` and `.one_or_none()` on `session.scalar
 **Example:**
 ```python
 # WRONG — a duplicate certificate goes unnoticed
-def certificate_for(session: Session, enrollment_id: int) -> Certificate | None:
+def certificate_for(enrollment_id: int, *, session: Session) -> Certificate | None:
     statement = select(Certificate).where(Certificate.enrollment_id == enrollment_id)
     return session.scalars(statement).first()
 
 
 # CORRECT — anything but zero or one row raises
-def certificate_for(session: Session, enrollment_id: int) -> Certificate | None:
+def certificate_for(enrollment_id: int, *, session: Session) -> Certificate | None:
     statement = select(Certificate).where(Certificate.enrollment_id == enrollment_id)
     return session.scalars(statement).one_or_none()
 ```

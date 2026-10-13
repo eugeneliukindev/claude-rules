@@ -15,14 +15,14 @@ writes each one back. `.returning(...)` gets the written rows back in the same r
 **Example:**
 ```python
 # WRONG — loads every expired enrollment to change one column, then writes each row back
-def expire_enrollments(session: Session, *, now: datetime) -> None:
+def expire_enrollments(*, session: Session, now: datetime) -> None:
     expired = select(EnrollmentRow).where(EnrollmentRow.expires_at < now)
     for enrollment in session.scalars(expired):
         enrollment.status = EnrollmentStatus.EXPIRED
 
 
 # CORRECT — one UPDATE; the rows change where they are
-def expire_enrollments(session: Session, *, now: datetime) -> None:
+def expire_enrollments(*, session: Session, now: datetime) -> None:
     session.execute(
         update(EnrollmentRow)
         .where(EnrollmentRow.expires_at < now)
@@ -40,7 +40,7 @@ fails on the unique key (`python-persistence`). PostgreSQL and SQLite spell it
 **Example:**
 ```python
 # WRONG — two requests both find no row, and the second INSERT fails on the unique key
-def record_progress(session: Session, *, student_id: int, lesson_id: int, percent: int) -> None:
+def record_progress(*, session: Session, student_id: int, lesson_id: int, percent: int) -> None:
     progress = session.scalars(
         select(LessonProgress).where(
             LessonProgress.student_id == student_id, LessonProgress.lesson_id == lesson_id
@@ -53,7 +53,7 @@ def record_progress(session: Session, *, student_id: int, lesson_id: int, percen
 
 
 # CORRECT — one statement; the database settles the conflict atomically
-def record_progress(session: Session, *, student_id: int, lesson_id: int, percent: int) -> None:
+def record_progress(*, session: Session, student_id: int, lesson_id: int, percent: int) -> None:
     statement = insert(LessonProgress).values(
         student_id=student_id, lesson_id=lesson_id, percent=percent
     )

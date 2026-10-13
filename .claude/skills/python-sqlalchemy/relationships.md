@@ -42,13 +42,13 @@ multiplication. `subqueryload` is the older shape and rarely the right answer no
 **Example:**
 ```python
 # WRONG — the collection is joined and the many-to-one is a second query
-def courses_with_lessons(session: Session) -> list[Course]:
+def courses_with_lessons(*, session: Session) -> list[Course]:
     statement = select(Course).options(joinedload(Course.lessons), selectinload(Course.instructor))
     return list(session.scalars(statement).all())
 
 
 # CORRECT — the collection is a second IN query; the many-to-one rides the join
-def courses_with_lessons(session: Session) -> list[Course]:
+def courses_with_lessons(*, session: Session) -> list[Course]:
     statement = select(Course).options(selectinload(Course.lessons), joinedload(Course.instructor))
     return list(session.scalars(statement).all())
 ```
@@ -61,7 +61,7 @@ def courses_with_lessons(session: Session) -> list[Course]:
 **Example:**
 ```python
 # WRONG — joinedload adds a second join to the table the query already joined
-def courses_taught_in(session: Session, country: str) -> list[Course]:
+def courses_taught_in(country: str, *, session: Session) -> list[Course]:
     statement = (
         select(Course)
         .join(Course.instructor)
@@ -72,7 +72,7 @@ def courses_taught_in(session: Session, country: str) -> list[Course]:
 
 
 # CORRECT — the instructor is populated from the join the query already has
-def courses_taught_in(session: Session, country: str) -> list[Course]:
+def courses_taught_in(country: str, *, session: Session) -> list[Course]:
     statement = (
         select(Course)
         .join(Course.instructor)
