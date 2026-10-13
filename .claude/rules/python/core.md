@@ -13,7 +13,7 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 | `python-boundaries` | HTTP, queues, caches, files, serialization, timeouts, retries, time, money, identifiers |
 | `python-wiring` | an entry point, where an object is built, a resource's lifetime, a settings field |
 | `python-layers` | which layer may import which, an import-linter contract |
-| `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
+| `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a subclass, what a consumer is handed, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
 | `python-async`, `python-sync`, `python-streaming` | `async def`; a thread, a process pool, a lock, a signal without a loop; an SSE or WebSocket endpoint, a streamed response |
 | `python-persistence` | a transaction boundary, a repository |
 | `python-migrations` | a schema change, planning a backfill |
@@ -75,7 +75,7 @@ The formatter, the linters, the strict type checker and the tests run first, in 
 clean with no new suppression. Then the eight checks no tool makes, skipped first under pressure —
 `/python-review` runs the whole list over a diff:
 
-- [ ] Every new identifier passes `naming.md`'s Self-Check and survives the relocation test
+- [ ] Every new identifier follows `naming.md` and survives the relocation test
 - [ ] Every new module and class answers to one actor — name who would ask to change it
 - [ ] Every helper has a reason from `functions.md`, every class a trigger from `classes.md`
 - [ ] Constants sit at the top of the module, and **every name used only inside its module or

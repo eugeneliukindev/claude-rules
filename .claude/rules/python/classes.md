@@ -137,50 +137,9 @@ def report_hours(timesheet: Timesheet, *, working_days: int) -> HoursReport:
     regular = timesheet.regular_hours
     return HoursReport(regular=regular, total=timesheet.hours_worked, working_days=working_days)
 
-
-# WRONG — one class, two actors: finance's tax change and HR's calendar change both edit it
-@final
-class EmployeeService:
-    def __init__(
-        self, *, timesheets: TimesheetRepository, tax_tables: TaxTables, calendar: WorkCalendar
-    ) -> None:
-        self._timesheets = timesheets
-        self._tax_tables = tax_tables
-        self._calendar = calendar
-
-    def net_pay(self, employee_id: EmployeeId, week: Week) -> Decimal:  # finance
-        gross = calculate_pay(self._timesheets.get(employee_id, week))
-        return gross - self._tax_tables.withholding(gross)
-
-    def hours_report(self, employee_id: EmployeeId, week: Week) -> HoursReport:  # HR
-        timesheet = self._timesheets.get(employee_id, week)
-        return report_hours(timesheet, working_days=self._calendar.working_days(week))
-
-
-# CORRECT — one class per actor, each built with only its own dependencies
-@final
-class Payroll:
-    def __init__(self, *, timesheets: TimesheetRepository, tax_tables: TaxTables) -> None:
-        self._timesheets = timesheets
-        self._tax_tables = tax_tables
-
-    def net_pay(self, employee_id: EmployeeId, week: Week) -> Decimal:
-        gross = calculate_pay(self._timesheets.get(employee_id, week))
-        return gross - self._tax_tables.withholding(gross)
-
-
-@final
-class HoursReporting:
-    def __init__(self, *, timesheets: TimesheetRepository, calendar: WorkCalendar) -> None:
-        self._timesheets = timesheets
-        self._calendar = calendar
-
-    def hours_report(self, employee_id: EmployeeId, week: Week) -> HoursReport:
-        timesheet = self._timesheets.get(employee_id, week)
-        return report_hours(timesheet, working_days=self._calendar.working_days(week))
 ```
 
-## Inversion, Substitution, Contracts, Composition
+## Inversion and Composition
 
 ### Collaborators arrive through the constructor, never built inside
 
@@ -206,78 +165,6 @@ class DocumentService:
 
     def archive(self, document_id: DocumentId) -> None:
         self._documents.mark_archived(document_id)
-```
-
-### A subclass accepts at least what its parent accepts and returns nothing wider
-
-**Why:** code written against the parent must work with the subclass; mypy's `[override]` checks the
-types, and nothing checks the behaviour — no new precondition, no dropped promise, no new exception.
-
-**Example:**
-```python
-class Archive(ABC):
-    @abstractmethod
-    def store(self, document: Document) -> StoredDocument: ...
-
-
-# WRONG — narrows the parameter: a caller passing any Document to an Archive fails here
-@final
-class PdfArchive(Archive):
-    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
-        self._storage = storage
-        self._prefix = prefix
-
-    @override
-    def store(self, document: PdfDocument) -> StoredDocument:
-        key = f"{self._prefix}/{document.document_id}.pdf"
-        return StoredDocument(location=self._storage.put(key, document.content))
-
-
-# CORRECT — accepts what the parent accepts, and promises something narrower back
-@final
-class PdfArchive(Archive):
-    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
-        self._storage = storage
-        self._prefix = prefix
-
-    @override
-    def store(self, document: Document) -> StoredPdf:
-        key = f"{self._prefix}/{document.document_id}.pdf"
-        location = self._storage.put(key, document.content)
-        return StoredPdf(location=location, page_count=document.page_count)
-```
-
-### A contract holds only what its consumer calls
-
-**Why:** a consumer handed more depends on it — its fake must implement it, and a change to a method
-it never calls reaches it anyway. One class may implement several contracts; the split is in what
-the consumer is given, not in the storage.
-**Except:** split when a consumer that needs a different set exists, not in advance — a repository
-every caller uses whole stays one contract.
-
-**Example:**
-```python
-# WRONG — the report receives the whole repository, writes included
-class DocumentRepository(ABC):
-    @abstractmethod
-    def add(self, document: Document) -> None: ...
-
-    @abstractmethod
-    def expired_on(self, day: date) -> list[Document]: ...
-
-
-def build_retention_report(day: date, *, documents: DocumentRepository) -> RetentionReport:
-    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
-
-
-# CORRECT — the report depends on the one capability it uses
-class ExpiredDocuments(ABC):
-    @abstractmethod
-    def expired_on(self, day: date) -> list[Document]: ...
-
-
-def build_retention_report(day: date, *, documents: ExpiredDocuments) -> RetentionReport:
-    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
 ```
 
 ### A class inherits only what it is; reuse is composition
@@ -323,41 +210,3 @@ class SlackNotifier(Notifier):
         self._client.post_json(self._post_message_path, {"channel": recipient, "text": message})
 ```
 
-### A contract is a base class with `@abstractmethod` by default
-
-**Why:** a missing method then fails where the class is defined, not at a distant call site, and
-`class SmsNotifier(Notifier)` states the intent on the line that defines the class.
-**Except:** `Protocol` serves code you cannot make inherit, or a project that chose structural
-typing once, for every contract (`python-contracts`).
-
-**Example:**
-```python
-# WRONG — a Protocol for our own contract: SmsNotifier misspells send, and nothing says so here
-class Notifier(Protocol):
-    def send(self, recipient: UserId, message: Message) -> None: ...
-
-
-@final
-class SmsNotifier:
-    def __init__(self, *, gateway: SmsGateway) -> None:
-        self._gateway = gateway
-
-    def sent(self, recipient: UserId, message: Message) -> None:
-        self._gateway.deliver(recipient, message)
-
-
-# CORRECT — implementations inherit it: the misspelling is an error on SmsNotifier's own line
-class Notifier(ABC):
-    @abstractmethod
-    def send(self, recipient: UserId, message: Message) -> None: ...
-
-
-@final
-class SmsNotifier(Notifier):
-    def __init__(self, *, gateway: SmsGateway) -> None:
-        self._gateway = gateway
-
-    @override
-    def send(self, recipient: UserId, message: Message) -> None:
-        self._gateway.deliver(recipient, message)
-```

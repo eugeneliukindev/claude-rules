@@ -207,6 +207,78 @@ def send_receipt(receipt: Receipt, *, notifier: Notifier) -> None:
     notifier.send(receipt.recipient, receipt.as_message())
 ```
 
+### A subclass accepts at least what its parent accepts and returns nothing wider
+
+**Why:** code written against the parent must work with the subclass; mypy's `[override]` checks the
+types, and nothing checks the behaviour — no new precondition, no dropped promise, no new exception.
+
+**Example:**
+```python
+class Archive(ABC):
+    @abstractmethod
+    def store(self, document: Document) -> StoredDocument: ...
+
+
+# WRONG — narrows the parameter: a caller passing any Document to an Archive fails here
+@final
+class PdfArchive(Archive):
+    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
+        self._storage = storage
+        self._prefix = prefix
+
+    @override
+    def store(self, document: PdfDocument) -> StoredDocument:
+        key = f"{self._prefix}/{document.document_id}.pdf"
+        return StoredDocument(location=self._storage.put(key, document.content))
+
+
+# CORRECT — accepts what the parent accepts, and promises something narrower back
+@final
+class PdfArchive(Archive):
+    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
+        self._storage = storage
+        self._prefix = prefix
+
+    @override
+    def store(self, document: Document) -> StoredPdf:
+        key = f"{self._prefix}/{document.document_id}.pdf"
+        location = self._storage.put(key, document.content)
+        return StoredPdf(location=location, page_count=document.page_count)
+```
+
+### A contract holds only what its consumer calls
+
+**Why:** a consumer handed more depends on it — its fake must implement it, and a change to a method
+it never calls reaches it anyway. One class may implement several contracts; the split is in what
+the consumer is given, not in the storage.
+**Except:** split when a consumer that needs a different set exists, not in advance — a repository
+every caller uses whole stays one contract.
+
+**Example:**
+```python
+# WRONG — the report receives the whole repository, writes included
+class DocumentRepository(ABC):
+    @abstractmethod
+    def add(self, document: Document) -> None: ...
+
+    @abstractmethod
+    def expired_on(self, day: date) -> list[Document]: ...
+
+
+def build_retention_report(day: date, *, documents: DocumentRepository) -> RetentionReport:
+    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
+
+
+# CORRECT — the report depends on the one capability it uses
+class ExpiredDocuments(ABC):
+    @abstractmethod
+    def expired_on(self, day: date) -> list[Document]: ...
+
+
+def build_retention_report(day: date, *, documents: ExpiredDocuments) -> RetentionReport:
+    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
+```
+
 ## Naming
 
 **Before naming a contract, a base class or an implementation, read [naming.md](naming.md)** —
