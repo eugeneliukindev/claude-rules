@@ -220,7 +220,8 @@ discriminator instead of trying every member.
 ## Settings
 
 **Before defining a `BaseSettings` or a credential field, read [settings.md](settings.md)** — built
-once at the root and validated at startup, `SecretStr` for credentials.
+once at the root and validated at startup, `SecretStr` for credentials, `extra="ignore"` on
+classes that share a `.env` file.
 
 ## With SQLAlchemy
 

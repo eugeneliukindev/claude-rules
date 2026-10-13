@@ -24,3 +24,30 @@ class Settings(BaseSettings):
 class Settings(BaseSettings):
     catalog_api_key: SecretStr
 ```
+
+### Settings classes that share one `.env` file each set `extra="ignore"`
+
+**Why:** `BaseSettings` forbids extra input, and every line of its `env_file` is input to it —
+measured on pydantic-settings 2.15, a `ServerSettings` and an `AppSettings` reading one file each
+failed on the other's lines with `Extra inputs are not permitted`, with an `env_prefix` or without.
+The environment is never checked for extras, so a class read from the environment alone keeps the
+default.
+
+**Example:**
+```python
+# WRONG — each class rejects the other's lines in the shared file
+@final
+class ServerSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
+    host: str
+    port: int
+
+
+# CORRECT — each reads its own fields from the file and leaves the rest
+@final
+class ServerSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    host: str
+    port: int
