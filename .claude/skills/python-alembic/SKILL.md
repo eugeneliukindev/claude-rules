@@ -51,24 +51,6 @@ class Base(DeclarativeBase):
 renames it never sees — a renamed table or column is generated as a drop plus an add, which the
 author edits into a rename (`python-migrations`).
 
-**Example:**
-```python
-# WRONG — a changed server default never reaches a revision
-def run_migrations(connection: Connection, *, target_metadata: MetaData) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-# CORRECT — the server default is part of the diff
-def run_migrations(connection: Connection, *, target_metadata: MetaData) -> None:
-    context.configure(
-        connection=connection, target_metadata=target_metadata, compare_server_default=True
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-```
-
 ### A revision touches data through inline tables, never the application's models
 
 **Why:** a revision that imports today's model stops running when the model changes. `sa.table`
@@ -121,14 +103,3 @@ def upgrade() -> None:
 
 **Why:** `alembic check` fails on drift between the models and the revisions; `upgrade head` then
 `downgrade base` on an empty database proves every revision and every downgrade still runs.
-
-**Example:**
-```bash
-# WRONG — only upgrade, on a database that already has most of the schema
-alembic upgrade head
-
-# CORRECT — drift, then the whole chain from empty, up and back down
-alembic check
-alembic upgrade head
-alembic downgrade base
-```
