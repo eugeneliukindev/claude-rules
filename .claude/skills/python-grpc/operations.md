@@ -87,15 +87,18 @@ so only the entry point registers it, before any server or channel exists (`pyth
 ```python
 # WRONG — the tracing interceptor alone: spans, and no call durations at all
 def main() -> None:
-    settings = Settings()
-    asyncio.run(serve(settings))
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
+    asyncio.run(serve(address=server_settings.address, database_url=app_settings.database_url))
 
 
 # CORRECT — the entry point registers the metrics plugin once, for the whole process
 def main() -> None:
-    settings = Settings()
-    OpenTelemetryPlugin(meter_provider=build_meter_provider(settings)).register_global()
-    asyncio.run(serve(settings))
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
+    meter_provider = build_meter_provider(otlp_endpoint=server_settings.otlp_endpoint)
+    OpenTelemetryPlugin(meter_provider=meter_provider).register_global()
+    asyncio.run(serve(address=server_settings.address, database_url=app_settings.database_url))
 ```
 
 ### Cross-cutting work is a server interceptor, and authentication leaves health and reflection open
