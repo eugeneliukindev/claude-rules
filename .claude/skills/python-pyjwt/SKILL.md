@@ -27,7 +27,8 @@ token signed by a retired key, a client's mistake, becomes a 500 (measured: `isi
 InvalidTokenError)` is `False`). `PyJWKClientConnectionError` subclasses it and means the key set
 could not be fetched — the service's failure, so it is caught first. A key set fetched but empty
 raises `PyJWKSetError`, neither of the two — `{"keys": []}` escaped in the measured run — and is
-answered like an unreachable key set. A claim of the wrong shape is a `ValidationError`.
+answered like an unreachable key set. A claim of the wrong shape is rejected by
+`parse_access_claims` as the client's mistake.
 
 **Example:**
 ```python
@@ -52,7 +53,7 @@ class JwtTokenVerifier(TokenVerifier):
             )
         except InvalidTokenError as error:
             raise InvalidCredentialsError(type(error).__name__) from error
-        return _AccessTokenClaims.model_validate(claims).to_principal()
+        return parse_access_claims(claims).to_principal()
 
 
 # CORRECT — the key set's failures are the service's; every other rejection is the client's
@@ -76,10 +77,10 @@ class JwtTokenVerifier(TokenVerifier):
                 leeway=_CLOCK_SKEW,
                 options={"require": ["exp", "iat", "sub"]},
             )
-            access_claims = _AccessTokenClaims.model_validate(claims)
+            access_claims = parse_access_claims(claims)
         except (PyJWKClientConnectionError, PyJWKSetError) as error:
             raise KeySetUnavailableError(self._signing_keys.uri) from error
-        except (PyJWKClientError, InvalidTokenError, ValidationError) as error:
+        except (PyJWKClientError, InvalidTokenError) as error:
             raise InvalidCredentialsError(type(error).__name__) from error
         return access_claims.to_principal()
 ```
