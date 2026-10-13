@@ -85,10 +85,9 @@ class ReminderService:
 **Why:** `clock: Clock | None = None` then `clock or SystemClock()` is what pydantic
 (`ns_resolver or NsResolver()`) and the OpenTelemetry SDK (`span_limits or SpanLimits()`) do: the
 parameter is a seam for a test or a second root, and the default costs the caller nothing. A default
-that needs a setting wastes that setting whenever the collaborator is passed.
-**Except:** `is None` instead of `or` when a valid value can be falsy — an empty mapping, `0`; a
-plain value such as a path or a limit takes its default in the signature, where `""` cannot slip
-through `or` to the default.
+that needs a setting wastes that setting whenever the collaborator is passed. **Except:** `is None`
+instead of `or` when a valid value can be falsy — an empty mapping, `0`. A plain value — a path, a
+limit — is no collaborator: it is defaulted in the signature (`functions.md`).
 
 **Example:**
 ```python
