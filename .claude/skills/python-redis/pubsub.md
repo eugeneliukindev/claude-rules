@@ -6,13 +6,13 @@
 - A `ConnectionError` while listening is a gap too
 - The subscription is live before `subscribe` yields
 - What is not a gap, and what redis drops
-- The wire model and the root that builds the channel
+- The root that builds the channel
 
 The channel contract, the relay and the fake are in `python-streaming`; the contract's promise is
 that **a subscription that may have missed an event raises `ParcelEventChannelLostError` while
 iterating** — not only on leaving the `async with`, where the relay's loop would never see it.
 `RedisConnectionError` is `redis.exceptions.ConnectionError`, imported under that name so it does
-not shadow the builtin. The wire model's settings are `python-pydantic`.
+not shadow the builtin. The wire format in pydantic is `python-pydantic`.
 
 **What a dropped connection looks like depends on how the client was built** (*measured*, with
 `CLIENT KILL TYPE pubsub` from a second client). Through the constructor's retry,
@@ -32,7 +32,7 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEv
     async for received in messages:
         match received:
             case {"type": "message", "data": bytes() as payload}:
-                yield _ParcelEventMessage.model_validate_json(payload).to_domain()
+                yield decode_parcel_event(payload)
             case _:
                 continue  # unsubscribe confirmations and pattern messages carry no event
 
@@ -44,7 +44,7 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEv
             case {"type": "subscribe"}:
                 raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
             case {"type": "message", "data": bytes() as payload}:
-                yield _ParcelEventMessage.model_validate_json(payload).to_domain()
+                yield decode_parcel_event(payload)
             case _:
                 continue  # unsubscribe confirmations and pattern messages carry no event
 ```
@@ -65,7 +65,7 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEv
             case {"type": "subscribe"}:
                 raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
             case {"type": "message", "data": bytes() as payload}:
-                yield _ParcelEventMessage.model_validate_json(payload).to_domain()
+                yield decode_parcel_event(payload)
             case _:
                 continue  # unsubscribe confirmations and pattern messages carry no event
 
@@ -79,11 +79,11 @@ async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEv
                     raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
                 case {"type": "message", "data": bytes() as payload}:
                     try:
-                        decoded = _ParcelEventMessage.model_validate_json(payload)
-                    except ValidationError:
+                        event = decode_parcel_event(payload)
+                    except UndecodableEventError:
                         logger.warning("parcel event dropped", extra={"payload_size": len(payload)})
                         continue
-                    yield decoded.to_domain()
+                    yield event
                 case _:
                     continue  # unsubscribe confirmations and pattern messages carry no event
     except RedisConnectionError as error:
@@ -106,8 +106,7 @@ class RedisParcelEventChannel(ParcelEventChannel):
 
     @override
     async def publish(self, event: ParcelEvent) -> None:
-        message = _ParcelEventMessage.from_domain(event)
-        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, message.model_dump_json())
+        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, encode_parcel_event(event))
 
     @override
     @asynccontextmanager
@@ -125,8 +124,7 @@ class RedisParcelEventChannel(ParcelEventChannel):
 
     @override
     async def publish(self, event: ParcelEvent) -> None:
-        message = _ParcelEventMessage.from_domain(event)
-        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, message.model_dump_json())
+        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, encode_parcel_event(event))
 
     @override
     @asynccontextmanager
@@ -150,38 +148,13 @@ class RedisParcelEventChannel(ParcelEventChannel):
   32mb 8mb 60` disconnects one whose unread output passes 32 MiB, or 8 MiB for a minute — which
   the implementation reports as a gap. A relay that never awaits a socket keeps it reading.
 
-## The Wire Model and the Root
+## The Root
 
-In `parcel_events/redis_pubsub.py`, named for its mechanism — a Redis Streams implementation, which
-would also replay what a dropped subscriber missed, is a second file beside it:
-
-```python
-@final
-class _ParcelEventMessage(BaseModel):
-    model_config = ConfigDict(strict=True, frozen=True, extra="ignore")
-
-    version: Literal[1] = 1
-    tracking_number: str
-    sequence: int
-    status: ParcelStatus
-
-    @classmethod
-    def from_domain(cls, event: ParcelEvent) -> Self:
-        return cls(
-            tracking_number=event.tracking_number, sequence=event.sequence, status=event.status
-        )
-
-    def to_domain(self) -> ParcelEvent:
-        return ParcelEvent(
-            tracking_number=TrackingNumber(self.tracking_number),
-            sequence=self.sequence,
-            status=self.status,
-        )
-```
-
-`RedisParcelEventChannel` and `_decode_events` are the last `CORRECT`s above. The composition root
-builds the client once and both implementations on it, runs the relay in its task group and cancels
-it at shutdown — in a FastAPI service that root is the lifespan:
+The wire format is the application's own — `encode_parcel_event` and `decode_parcel_event`,
+versioned, raising `UndecodableEventError` for a payload they refuse — so the channel carries bytes
+and knows no schema. `RedisParcelEventChannel` and `_decode_events` are the last `CORRECT`s above.
+The composition root builds the client once and both implementations on it, runs the relay in its
+task group and cancels it at shutdown — in a FastAPI service that root is the lifespan:
 
 ```python
 @asynccontextmanager
