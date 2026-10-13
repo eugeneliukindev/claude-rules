@@ -52,15 +52,15 @@ connection's state; the getter adds the principal and the loaders, which belong 
 
 **Example:**
 ```python
-# WRONG — an engine and its pool built for every request, never closed
+# WRONG — a pool built for every request, never closed
 async def get_context(
     connection: HTTPConnection, principal: Annotated[Principal, Depends(require_principal)]
 ) -> GraphQLContext:
-    engine = create_async_engine(connection.app.state.database_url)
-    policyholders = PostgresPolicyholderRepository(engine)
+    pool = open_database_pool(connection.app.state.database_url)
+    policyholders = PostgresPolicyholderRepository(pool)
     return GraphQLContext(
         principal=principal,
-        claims=ClaimService(PostgresClaimRepository(engine)),
+        claims=ClaimService(PostgresClaimRepository(pool)),
         policyholder_loader=DataLoader(load_fn=partial(_load_policyholders, policyholders)),
     )
 

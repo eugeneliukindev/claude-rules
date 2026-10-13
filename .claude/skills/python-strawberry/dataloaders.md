@@ -95,8 +95,8 @@ next, grows without end, and never sees a change.
 # WRONG — one loader for the process: its cache outlives every request and every update
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-    async with managed_engine(settings.database_url) as engine:
-        policyholders = PostgresPolicyholderRepository(engine)
+    async with managed_pool(settings.database_url) as pool:
+        policyholders = PostgresPolicyholderRepository(pool)
         loader = DataLoader(load_fn=partial(_load_policyholders, policyholders))
         yield {"policyholder_loader": loader}
 
@@ -104,8 +104,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
 # CORRECT — the lifespan holds the repository; the context getter builds a loader per request
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
-    async with managed_engine(settings.database_url) as engine:
-        yield {"policyholder_repository": PostgresPolicyholderRepository(engine)}
+    async with managed_pool(settings.database_url) as pool:
+        yield {"policyholder_repository": PostgresPolicyholderRepository(pool)}
 ```
 
 ### A loader over owned data calls a service method that takes the principal
