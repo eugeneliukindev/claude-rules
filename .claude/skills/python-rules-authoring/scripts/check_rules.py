@@ -56,7 +56,7 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
         "python-persistence": re.compile(r"UnitOfWork|unit_of_work"),
         "python-pydantic": re.compile(
             r"\b(BaseModel|BaseSettings|ConfigDict|TypeAdapter|SecretStr|AwareDatetime|HttpUrl"
-            r"|model_validate\w*|model_dump\w*)\b"
+            r"|model_validate\w*|model_dump\w*|model_copy|model_fields\w*|model_json_schema)\b"
         ),
         "python-fastapi": re.compile(
             r"\b(FastAPI|APIRouter|HTTPException|JSONResponse)\b|Depends\("

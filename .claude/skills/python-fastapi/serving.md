@@ -11,10 +11,10 @@ orchestrator's grace period into `SIGKILL`, so the lifespan's shutdown never run
 **Example:**
 ```bash
 # WRONG — the drain waits for every open request
-uvicorn --factory tracker.api:create_app --host 0.0.0.0 --port 8000
+uvicorn --factory tracker.api:app_from_environment --host 0.0.0.0 --port 8000
 
 # CORRECT — open requests get 25 seconds, inside Kubernetes' default 30, then the lifespan closes
-uvicorn --factory tracker.api:create_app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 25
+uvicorn --factory tracker.api:app_from_environment --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 25
 ```
 
 ### Behind a proxy, `--forwarded-allow-ips` names the proxy's network

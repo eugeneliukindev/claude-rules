@@ -239,7 +239,7 @@ server entered in the lifespan, under one worker.
 
 **Before declaring a request or response model, or answering a validation error, read
 [with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
-domain and named by the return annotation.
+domain and named by the return annotation, and the zero-argument factory uvicorn calls.
 
 **Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
 cache entered in the lifespan, and no middleware that lets a client clear it.
