@@ -31,18 +31,6 @@ the stubs pin the asyncpg minor they describe, so an upgrade of one forces the o
 `pool.acquire()` yields is a `PoolConnectionProxy` (`asyncpg.pool`), not an `asyncpg.Connection`,
 and a column read from a `Record` is `Any` — so one function per type names each column once.
 
-**Example:**
-```toml
-# WRONG — no stubs: every query result is Any, and None slips through
-[dependency-groups]
-dev = ["mypy>=1.18"]
-
-
-# CORRECT — the stubs pinned beside the version they describe
-[dependency-groups]
-dev = ["mypy>=1.18", "asyncpg-stubs>=0.32,<0.33"]
-```
-
 ## The Pool
 
 ### One pool per database, sized and bounded from settings, built and closed by the root
@@ -54,28 +42,6 @@ instead of the first request. `close()` waits for every acquired connection, so 
 connection hangs shutdown; under `asyncio.timeout` a cancelled `close()` terminates the pool. TLS
 is `ssl="verify-full"` or an `ssl.SSLContext` — the default `prefer` falls back to plaintext and
 verifies nothing (`python-security`).
-
-**Example:**
-```python
-# WRONG — ten connections whatever the server allows, and no statement ever times out
-@asynccontextmanager
-async def managed_pool(settings: DatabaseSettings) -> AsyncIterator[asyncpg.Pool]:
-    async with asyncpg.create_pool(settings.url) as pool:
-        yield pool
-
-
-# CORRECT — sized from settings, every statement bounded, the certificate verified
-@asynccontextmanager
-async def managed_pool(settings: DatabaseSettings) -> AsyncIterator[asyncpg.Pool]:
-    async with asyncpg.create_pool(
-        settings.url,
-        min_size=settings.min_connections,
-        max_size=settings.max_connections,
-        command_timeout=settings.command_timeout_seconds,
-        ssl="verify-full",
-    ) as pool:
-        yield pool
-```
 
 ### A use case's statements share one connection and one transaction
 
