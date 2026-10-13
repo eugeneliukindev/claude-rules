@@ -63,8 +63,8 @@ def free_rooms(stay: Stay, *, rooms: RoomRepository) -> list[Room]:
 ### What every caller would repeat lives inside the function
 
 **Why:** a parameter is for a value callers actually vary; a retry, an encoding or a reshaping that
-every caller passes or does the same way belongs in the body, written once. A value a caller may
-still need to change is not repeated either: it is defaulted in the signature (below).
+every caller passes or does the same way belongs in the body, written once. A setting of a
+factory or of a class the root builds is defaulted in its signature instead (below).
 
 **Example:**
 ```python
@@ -152,30 +152,42 @@ def is_expired(token: AccessToken, *, now: datetime, lifetime: timedelta) -> boo
     return now > token.issued_at + lifetime
 ```
 
-### A plain value the body depends on — a limit, a path — is a keyword parameter with a default
+### A setting of a factory or of a class the root builds is a keyword parameter with a default
 
-**Why:** a constant read inside the body is a setting no caller sees and no test or second entry
-point can change without patching the module; defaulted in the signature, callers still repeat
-nothing, and the value is visible where the function is called.
+**Why:** a limit, a path, a name, a TTL — the factory or the constructor is where a test or a
+second entry point builds the object, so a value read inside it instead can be changed only by
+patching the module; defaulted in the signature, the root passes nothing and a test passes what it
+needs. Inside an ordinary function a constant stays, as what every caller would repeat.
 **Except:** a value fixed by a format or a protocol — a file's magic bytes, a header's name — is not
-a choice, and stays in the body.
+a setting, and stays in the body.
 
 **Example:**
 ```python
 # WRONG — the limit is read inside: a test of the rejection must upload twenty megabytes
-def accept_upload(upload: Upload, *, storage: ObjectStorage) -> str:
-    if upload.size_bytes > _MAX_UPLOAD_BYTES:
-        raise UploadTooLargeError(upload.name, limit_bytes=_MAX_UPLOAD_BYTES)
-    return storage.put(upload.name, upload.content)
+@final
+class UploadInbox:
+    def __init__(self, *, storage: ObjectStorage) -> None:
+        self._storage = storage
+
+    def accept(self, upload: Upload) -> str:
+        if upload.size_bytes > _MAX_UPLOAD_BYTES:
+            raise UploadTooLargeError(upload.name, limit_bytes=_MAX_UPLOAD_BYTES)
+        return self._storage.put(upload.name, upload.content)
 
 
-# CORRECT — defaulted in the signature: no caller repeats it, any caller can replace it
-def accept_upload(
-    upload: Upload, *, storage: ObjectStorage, max_upload_bytes: int = _MAX_UPLOAD_BYTES
-) -> str:
-    if upload.size_bytes > max_upload_bytes:
-        raise UploadTooLargeError(upload.name, limit_bytes=max_upload_bytes)
-    return storage.put(upload.name, upload.content)
+# CORRECT — the root passes nothing, and a test of the rejection passes ten bytes
+@final
+class UploadInbox:
+    def __init__(
+        self, *, storage: ObjectStorage, max_upload_bytes: int = _MAX_UPLOAD_BYTES
+    ) -> None:
+        self._storage = storage
+        self._max_upload_bytes = max_upload_bytes
+
+    def accept(self, upload: Upload) -> str:
+        if upload.size_bytes > self._max_upload_bytes:
+            raise UploadTooLargeError(upload.name, limit_bytes=self._max_upload_bytes)
+        return self._storage.put(upload.name, upload.content)
 ```
 
 ## Results
