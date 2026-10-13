@@ -134,5 +134,6 @@ stamps it, the trace id as the id.
 
 ## Log Output
 
-**Before configuring logging in an entry point, read [log-output.md](log-output.md)** — JSON lines
-with every `extra=` field, the filter attached to the handler.
+**Before configuring logging — `basicConfig`, a handler, a formatter — read
+[log-output.md](log-output.md)** — once, in the entry point and never on import, JSON lines with
+every `extra=` field, the filter attached to the handler.

@@ -5,6 +5,8 @@ paths:
 
 # Python — Logging
 
+Where logging is configured and the format it writes are `python-observability`.
+
 ### One logger per module, from `getLogger(__name__)`; `ERROR` only when someone must look
 
 **Why:** the module name is what lets a handler filter by package; `ERROR` that also fires for an
@@ -55,28 +57,6 @@ logger.info("payment captured", extra={"payment_id": payment.payment_id, "amount
 
 **Why:** `"payment captured"` reads and greps the same in every module; `"Captured the payment
 successfully!"` is the same event in a spelling nobody searches for.
-
-### Logging is configured once, at the entry point, and writes JSON
-
-**Why:** a library or an import that configures the root logger reconfigures every application that
-imports it — a framework that did took a major version to undo; JSON, one object per line, turns
-every `extra=` field into a field a search can filter on.
-
-**Example:**
-```python
-# WRONG — configured on import, in a module others import
-logging.basicConfig(level=logging.INFO)
-
-
-def capture(payment: Payment) -> None:
-    logger.info("payment captured", extra={"payment_id": payment.payment_id})
-
-
-# CORRECT — the entry point configures it, once (the JSON formatter: python-observability)
-def main() -> None:
-    configure_json_logging(level=logging.INFO)
-    run_worker()
-```
 
 ### Timing and counting are metrics, not log lines
 

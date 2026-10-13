@@ -1,10 +1,33 @@
 # Log Output
 
+### Logging is configured once, at the entry point, and writes JSON
+
+**Why:** a library or an import that configures the root logger reconfigures every application that
+imports it — a framework that did took a major version to undo; JSON, one object per line, turns
+every `extra=` field into a field a search can filter on.
+
+**Example:**
+```python
+# WRONG — configured on import, in a module others import
+logging.basicConfig(level=logging.INFO)
+
+
+def capture(payment: Payment) -> None:
+    logger.info("payment captured", extra={"payment_id": payment.payment_id})
+
+
+# CORRECT — the entry point configures it, once
+def main() -> None:
+    configure_json_logging(level=logging.INFO)
+    run_worker()
+```
+
+
 ### A log line is one JSON object, from a formatter that keeps every `extra=` field
 
 **Why:** a format string prints only the fields it names, so every `extra=` field and the filter's
 id are dropped. A JSON formatter writes every attribute the call sites and the filters add; it is
-attached with the filter in the entry point (`logging.md`).
+attached with the filter in the entry point, as above.
 
 **Example:**
 ```python
