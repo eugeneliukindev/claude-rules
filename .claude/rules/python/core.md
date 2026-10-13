@@ -14,7 +14,7 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 | `python-wiring` | an entry point, where an object is built, a resource's lifetime, a settings field |
 | `python-layers` | which layer may import which, an import-linter contract |
 | `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
-| `python-async`, `python-streaming` | `async def`, threads, processes; an SSE or WebSocket endpoint, a streamed response |
+| `python-async`, `python-sync`, `python-streaming` | `async def`; a thread, a process pool, a lock, a signal without a loop; an SSE or WebSocket endpoint, a streamed response |
 | `python-persistence` | a transaction boundary, a repository |
 | `python-migrations` | a schema change, planning a backfill |
 | `python-workers`, `python-caching` | a queue consumer or a background job; a cache in front of a database or an API |
