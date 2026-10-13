@@ -28,7 +28,7 @@ class ProfileLookup:
         return await self._load_and_cache(user_id)
 
     async def _load_and_cache(self, user_id: UserId) -> Profile | None:
-        profile = await self._profiles.get(user_id)
+        profile = await self._profiles.find(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
             await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)
@@ -58,7 +58,7 @@ class ProfileLookup:
         return await asyncio.shield(load)
 
     async def _load_and_cache(self, user_id: UserId) -> Profile | None:
-        profile = await self._profiles.get(user_id)
+        profile = await self._profiles.find(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
             await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)

@@ -172,6 +172,9 @@ write behind a `get_`. Normal absence is `-> User | None`, which the checker mak
 handle; absence that is a bug raises behind `-> User`, so no prefix repeats the annotation.
 Conversions read `to_`, `from_`, `as_`, and classmethod constructors are `from_…`; an `async def`
 is not renamed, since the checker enforces the `await`.
+**Except:** a method of a store contract keeps its family's verbs, and the contract says it does
+I/O — a repository's `get` raises when the row is missing and its `find` returns `None`; a cache's
+`get` returns `None` on a miss, as `dict.get` does.
 
 **Example:**
 ```python

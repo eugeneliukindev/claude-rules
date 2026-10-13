@@ -75,11 +75,11 @@ class CachingProfileRepository(ProfileRepository):
         self._cache = cache
 
     @override
-    async def get(self, user_id: UserId) -> Profile | None:
+    async def find(self, user_id: UserId) -> Profile | None:
         payload = await self._cache.get(_profile_key(user_id))
         if payload is not None:
             return _profile_from_payload(payload)
-        return await self._inner.get(user_id)
+        return await self._inner.find(user_id)
 
 
 # CORRECT — the service reads through the cache, and invalidates after its own commit
@@ -96,7 +96,7 @@ class ProfileLookup:
         payload = await self._cache.get(_profile_key(user_id))
         if payload is not None:
             return _profile_from_payload(payload)
-        profile = await self._profiles.get(user_id)
+        profile = await self._profiles.find(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
             await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)

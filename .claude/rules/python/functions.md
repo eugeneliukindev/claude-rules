@@ -100,6 +100,8 @@ def rank(readings: Sequence[SensorReading], *, descending: bool = False) -> list
 
 **Why:** global mutable state, an imported `settings`, a clock or randomness read inside are inputs
 no caller can see and no test can fix.
+**Except:** a fresh identifier or token whose value no test compares, and a monotonic reading that
+only measures a duration, are made inside.
 
 **Example:**
 ```python
