@@ -16,8 +16,8 @@ The composition root and resource lifetime are in `SKILL.md`; the settings model
 ### Configuration is one typed settings object, built once at the root and passed in
 
 **Why:** anything that varies by environment read from `os.environ` across the code is a dependency
-nobody declared; a module-level settings instance — or a cached `get_settings()`, the `@lru_cache`
-getter FastAPI's documentation teaches — is that instance by another name, global, and changed in a
+nobody declared; a module-level settings instance — or a cached `get_settings()` behind `@lru_cache`
+— is that instance by another name, global, and changed in a
 test only through `cache_clear()` and the environment.
 
 **Example:**

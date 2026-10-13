@@ -284,8 +284,8 @@ def main() -> None:
 
 **Why:** `asyncio.run(main())` once, `async with` an item per resource, `AsyncExitStack` only for a
 runtime count. A pool created with a bare `await` and never entered is closed by nobody: the
-process exits with its connections open and the server logs them as dropped. In an ASGI service the
-application's lifespan is this root.
+process exits with its connections open and the server logs them as dropped. In a web service the
+framework's startup and shutdown hook is this root.
 
 **Example:**
 ```python
