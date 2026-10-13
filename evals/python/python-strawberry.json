@@ -1,0 +1,27 @@
+{
+  "cases": [
+    {
+      "id": "strawberry-blocking-resolver",
+      "prompt": "Add a payout(payout_id) field to Query in graphql_api/schema.py that returns the payout from info.context.payments.fetch_payout.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"strawberry-graphql>=0.333\",\n]\n",
+        "graphql_api/__init__.py": "",
+        "graphql_api/schema.py": "import strawberry\n\nfrom graphql_api.context import GraphQLInfo\n\n\n@strawberry.type(name=\"Payout\")\nclass PayoutObject:\n    id: strawberry.ID\n    amount: str\n\n\n@strawberry.type\nclass Query:\n    @strawberry.field\n    def ping(self) -> str:\n        return \"pong\"\n",
+        "graphql_api/context.py": "from dataclasses import dataclass\nfrom typing import Protocol\n\nfrom strawberry.types import Info\n\n\nclass Payments(Protocol):\n    def fetch_payout(self, payout_id: str) -> dict[str, str]:\n        \"\"\"Call the payments API over HTTP with a blocking client.\"\"\"\n        ...\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass GraphQLContext:\n    payments: Payments\n\n\ntype GraphQLInfo = Info[GraphQLContext, None]\n"
+      },
+      "skills": [
+        "python-strawberry"
+      ],
+      "code": [
+        {
+          "files": "graphql_api/schema.py",
+          "match": "async def payout"
+        },
+        {
+          "files": "graphql_api/schema.py",
+          "match": "to_thread|run_in_executor"
+        }
+      ]
+    }
+  ]
+}

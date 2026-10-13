@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "faststream-idempotency-key",
+      "prompt": "Payments are sometimes recorded twice when RabbitMQ redelivers a message. Make the handler in billing/consumer.py idempotent.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"faststream[rabbit]>=0.6\",\n]\n",
+        "billing/__init__.py": "",
+        "billing/consumer.py": "from faststream.rabbit import RabbitRouter\n\nfrom billing.ledger import Ledger, PaymentCaptured\n\n\ndef build_router(*, ledger: Ledger) -> RabbitRouter:\n    router = RabbitRouter()\n\n    @router.subscriber(\"payments.captured\")\n    async def on_payment_captured(event: PaymentCaptured) -> None:\n        await ledger.record(event)\n\n    return router\n",
+        "billing/ledger.py": "from decimal import Decimal\nfrom typing import Protocol\n\nfrom pydantic import BaseModel\n\n\nclass PaymentCaptured(BaseModel):\n    payment_id: str\n    amount: Decimal\n\n\nclass Ledger(Protocol):\n    async def record(self, event: PaymentCaptured) -> None: ...\n"
+      },
+      "skills": [
+        "python-faststream"
+      ],
+      "code": [
+        {
+          "files": "**/*.py",
+          "no_match": "message_id",
+          "why": "message_id is invented per delivery when unset"
+        },
+        {
+          "files": "**/*.py",
+          "match": "payment_id"
+        }
+      ]
+    }
+  ]
+}

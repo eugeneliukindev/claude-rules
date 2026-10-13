@@ -1,0 +1,73 @@
+{
+  "cases": [
+    {
+      "id": "core-units-in-names",
+      "prompt": "Add a 20 MB size limit and a request timeout to upload() in storage/upload.py.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "storage/__init__.py": "",
+        "storage/upload.py": "from typing import Protocol\n\n\nclass ObjectStorage(Protocol):\n    def put(self, key: str, content: bytes, *, timeout: float) -> str: ...\n\n\ndef upload(key: str, content: bytes, *, storage: ObjectStorage) -> str:\n    return storage.put(key, content, timeout=30)\n"
+      },
+      "code": [
+        {
+          "files": "**/*.py",
+          "match": "[A-Z_]*BYTES|_bytes\\b",
+          "why": "the size carries its unit"
+        },
+        {
+          "files": "**/*.py",
+          "match": "SECONDS|_seconds\\b",
+          "why": "the timeout carries its unit"
+        }
+      ]
+    },
+    {
+      "id": "core-value-object-dataclass",
+      "prompt": "Add a Money value object, an amount and a currency, to billing/money.py, with addition that refuses to add two currencies.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "billing/__init__.py": "",
+        "billing/money.py": "\"\"\"Money.\"\"\"\n"
+      },
+      "code": [
+        {
+          "files": "billing/money.py",
+          "match": "frozen=True"
+        },
+        {
+          "files": "billing/money.py",
+          "match": "slots=True"
+        },
+        {
+          "files": "billing/money.py",
+          "match": "kw_only=True"
+        },
+        {
+          "files": "billing/money.py",
+          "no_match": "\\bfloat\\b"
+        }
+      ]
+    },
+    {
+      "id": "core-nothing-at-import",
+      "prompt": "Add notifications/redis_queue.py that pushes notifications onto a Redis list. The Redis URL comes from the REDIS_URL environment variable.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"redis>=6\",\n]\n",
+        "notifications/__init__.py": "",
+        "notifications/model.py": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Notification:\n    recipient: str\n    text: str\n"
+      },
+      "code": [
+        {
+          "files": "notifications/redis_queue.py",
+          "no_match": "(?m)^\\w+\\s*(:[^=]+)?=\\s*.*(Redis|from_url)\\(",
+          "why": "no client at import"
+        },
+        {
+          "files": "notifications/redis_queue.py",
+          "no_match": "(?m)^\\w+\\s*(:[^=]+)?=\\s*os\\.(environ|getenv)",
+          "why": "no environment read at import"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "id": "integration-fastapi-sqlalchemy",
+      "prompt": "Add POST /tasks to tasks/app.py: it stores a Task in PostgreSQL through SQLAlchemy's async session and returns the stored task.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"sqlalchemy[asyncio]>=2.0\",\n    \"asyncpg>=0.32\",\n]\n",
+        "tasks/__init__.py": "",
+        "tasks/models.py": "from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column\n\n\nclass Base(DeclarativeBase):\n    pass\n\n\nclass TaskRow(Base):\n    __tablename__ = \"tasks\"\n\n    id: Mapped[int] = mapped_column(primary_key=True)\n    title: Mapped[str]\n",
+        "tasks/app.py": "from fastapi import FastAPI\n\n\ndef create_app(*, database_url: str) -> FastAPI:\n    return FastAPI()\n"
+      },
+      "skills": [
+        "python-fastapi",
+        "python-sqlalchemy"
+      ],
+      "reads": [
+        "python-integrations/fastapi-sqlalchemy.md"
+      ],
+      "code": [
+        {
+          "files": "**/*.py",
+          "match": "async_sessionmaker"
+        },
+        {
+          "files": "**/*.py",
+          "no_match": "from_attributes"
+        }
+      ]
+    },
+    {
+      "id": "integration-cashews-fastapi",
+      "prompt": "Cache the responses of GET /products/{product_id} in catalog/app.py in Redis for 60 seconds with cashews.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"cashews[redis]>=7.6\",\n]\n",
+        "catalog/__init__.py": "",
+        "catalog/app.py": "from fastapi import FastAPI\n\nfrom catalog.service import Product, ProductService\n\n\ndef create_app(*, products: ProductService) -> FastAPI:\n    app = FastAPI()\n\n    @app.get(\"/products/{product_id}\")\n    async def get_product(product_id: int) -> Product:\n        return await products.get_product(product_id)\n\n    return app\n",
+        "catalog/service.py": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Product:\n    product_id: int\n    name: str\n\n\nclass ProductService:\n    async def get_product(self, product_id: int) -> Product:\n        return Product(product_id=product_id, name=\"lamp\")\n"
+      },
+      "skills": [
+        "python-cashews"
+      ],
+      "reads": [
+        "python-integrations/cashews-fastapi.md"
+      ],
+      "code": [
+        {
+          "files": "**/*.py",
+          "no_match": "CacheDeleteMiddleware|CacheRequestControlMiddleware",
+          "why": "no middleware a client can clear the cache through"
+        }
+      ]
+    }
+  ]
+}

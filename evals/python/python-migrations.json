@@ -1,0 +1,27 @@
+{
+  "cases": [
+    {
+      "id": "alembic-index-concurrently",
+      "prompt": "Add an alembic migration that indexes orders.customer_id. The orders table holds 200 million rows and the service stays online during deploys.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"alembic>=1.16\",\n    \"sqlalchemy>=2.0\",\n]\n",
+        "alembic.ini": "[alembic]\nscript_location = migrations\n",
+        "migrations/env.py": "\"\"\"Alembic environment.\"\"\"\n",
+        "migrations/versions/0001_orders.py": "\"\"\"Create orders.\"\"\"\n\nimport sqlalchemy as sa\nfrom alembic import op\n\nrevision = \"0001\"\ndown_revision = None\n\n\ndef upgrade() -> None:\n    op.create_table(\"orders\", sa.Column(\"id\", sa.BigInteger, primary_key=True), sa.Column(\"customer_id\", sa.BigInteger, nullable=False))\n\n\ndef downgrade() -> None:\n    op.drop_table(\"orders\")\n"
+      },
+      "skills": [
+        "python-alembic"
+      ],
+      "code": [
+        {
+          "files": "migrations/versions/*.py",
+          "match": "postgresql_concurrently\\s*=\\s*True|CONCURRENTLY"
+        },
+        {
+          "files": "migrations/versions/*.py",
+          "match": "autocommit_block"
+        }
+      ]
+    }
+  ]
+}

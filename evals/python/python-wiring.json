@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "id": "wiring-server-settings-apart",
+      "prompt": "Add tracker/server.py with a main() console entry point that serves the app with uvicorn. The host, the port and the database URL come from environment variables.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"uvicorn>=0.38\",\n    \"pydantic-settings>=2.15\",\n]\n",
+        "tracker/__init__.py": "",
+        "tracker/app.py": "from fastapi import FastAPI\n\n\ndef create_app(*, database_url: str) -> FastAPI:\n    app = FastAPI()\n    app.state.database_url = database_url\n    return app\n"
+      },
+      "skills": [
+        "python-fastapi"
+      ],
+      "code": [
+        {
+          "files": "**/*.py",
+          "match": "class \\w*Server\\w*Settings",
+          "why": "the server's settings are their own class"
+        },
+        {
+          "files": "**/*.py",
+          "no_match": "--factory|factory\\s*=\\s*True"
+        },
+        {
+          "files": "**/*.py",
+          "no_match": "def create_app\\([^)]*[Ss]ettings"
+        }
+      ]
+    },
+    {
+      "id": "wiring-no-settings-parameter",
+      "prompt": "Write a RateFetcher class in rates/fetcher.py that downloads the rate table from the configured URL with the configured timeout through the HttpClient protocol.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"pydantic-settings>=2.15\",\n]\n",
+        "rates/__init__.py": "",
+        "rates/settings.py": "from pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    rates_url: str\n    rates_timeout_seconds: float = 5.0\n",
+        "rates/http.py": "from typing import Protocol\n\n\nclass HttpClient(Protocol):\n    def get_json(self, url: str, *, timeout_seconds: float) -> dict[str, str]: ...\n"
+      },
+      "code": [
+        {
+          "files": "rates/fetcher.py",
+          "no_match": ":\\s*\\w*Settings\\b",
+          "why": "plain values, never the settings object"
+        }
+      ]
+    },
+    {
+      "id": "wiring-no-environment-branch",
+      "prompt": "Production must use the payment gateway at https://api.payments.example.com and every other environment the sandbox at https://sandbox.payments.example.com. Wire the gateway in checkout/main.py.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"pydantic-settings>=2.15\",\n]\n",
+        "checkout/__init__.py": "",
+        "checkout/main.py": "from pydantic_settings import BaseSettings\n\nfrom checkout.gateway import CardGateway, run_checkout\n\n\nclass Settings(BaseSettings):\n    environment: str\n\n\ndef main() -> None:\n    settings = Settings()\n    run_checkout(gateway=CardGateway(base_url=\"https://sandbox.payments.example.com\"))\n",
+        "checkout/gateway.py": "class CardGateway:\n    def __init__(self, *, base_url: str) -> None:\n        self.base_url = base_url\n\n\ndef run_checkout(*, gateway: CardGateway) -> None: ...\n"
+      },
+      "code": [
+        {
+          "files": "**/*.py",
+          "no_match": "[\\\"']production[\\\"']|[\\\"']prod[\\\"']",
+          "why": "the difference is a setting, not a branch"
+        }
+      ]
+    }
+  ]
+}
