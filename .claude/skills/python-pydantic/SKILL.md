@@ -37,18 +37,6 @@ each required field. `model_config = ConfigDict(...)` replaces the inner `class 
 | `.schema()` | `.model_json_schema()` |
 | `.copy()` | `.model_copy()` |
 
-**Example:**
-```python
-# WRONG — v1 names, each a deprecation warning and a future break
-def parse_loan(body: bytes) -> LoanRequest:
-    return LoanRequest.parse_raw(body)
-
-
-# CORRECT — the v2 name
-def parse_loan(body: bytes) -> LoanRequest:
-    return LoanRequest.model_validate_json(body)
-```
-
 ## Configuration
 
 ### Boundary models share one strict, closed, frozen base
@@ -200,21 +188,6 @@ type Isbn = Annotated[str, AfterValidator(_check_isbn)]
 **Why:** construction compiles a validator and is the expensive part; one per call in a loop is the
 most common pydantic performance bug. `model_construct()` skips validation — only for data already
 validated, such as rows just written; it will build an invalid model without a word.
-
-**Example:**
-```python
-# WRONG — compiles a validator on every call
-def parse_loans(payload: bytes) -> list[LoanLine]:
-    return TypeAdapter(list[LoanLine]).validate_json(payload)
-
-
-# CORRECT — compiled once, when the module loads
-_LOANS_ADAPTER: Final = TypeAdapter(list[LoanLine])
-
-
-def parse_loans(payload: bytes) -> list[LoanLine]:
-    return _LOANS_ADAPTER.validate_json(payload)
-```
 
 ## Serialization
 

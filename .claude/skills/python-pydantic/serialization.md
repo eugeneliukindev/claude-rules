@@ -24,15 +24,3 @@ def loan_receipt_body(receipt: LoanReceipt) -> str:
 **Why:** each changes what a consumer sees. `exclude_unset` is the one for a PATCH payload — exactly
 the fields that were set, an explicit `null` included; `exclude_none` drops that `null`, so a PATCH
 can never clear a field.
-
-**Example:**
-```python
-# WRONG — exclude_none drops an explicit null, so a PATCH can never clear the note
-def patch_body(changes: MemberChanges) -> str:
-    return changes.model_dump_json(exclude_none=True)
-
-
-# CORRECT — exactly the fields that were set, an explicit null included
-def patch_body(changes: MemberChanges) -> str:
-    return changes.model_dump_json(exclude_unset=True)
-```
