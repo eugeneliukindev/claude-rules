@@ -23,9 +23,10 @@ import ast
 import re
 import sys
 import textwrap
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Final
 
 _EXIT_CLEAN: Final = 0
@@ -44,6 +45,49 @@ _LIBRARY_ROW_MARKER: Final = "`python-<library>`"
 # Skills about the skills themselves, which name the others by design.
 _META_SKILLS: Final = frozenset({"python-rules-authoring", "python-review"})
 _SECTION_HEADING: Final = re.compile(r"^#{2,3} ")
+# What a library's examples are written in; any other file shows the work against its own contracts.
+_LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
+    {
+        "python-sqlalchemy": re.compile(
+            r"(?<![.\w])(AsyncSession|async_sessionmaker|sessionmaker|mapped_column|DeclarativeBase"
+            r"|create_async_engine|create_engine|AsyncEngine|Mapped\[|select\()|(?<![.\w])Session\b"
+        ),
+        "python-persistence": re.compile(r"UnitOfWork|unit_of_work"),
+        "python-pydantic": re.compile(
+            r"\b(BaseModel|BaseSettings|ConfigDict|TypeAdapter|SecretStr|AwareDatetime|HttpUrl"
+            r"|model_validate\w*|model_dump\w*)\b"
+        ),
+        "python-fastapi": re.compile(
+            r"\b(FastAPI|APIRouter|HTTPException|JSONResponse)\b|Depends\("
+        ),
+        "python-niquests": re.compile(r"\b(niquests|httpx)\b"),
+        "python-asyncpg": re.compile(r"\b(asyncpg|fetchrow|fetchval)\b"),
+        "python-redis": re.compile(r"\bredis\.|\bRedis\b"),
+        "python-cashews": re.compile(r"\bcashews\b|\bcache\.setup\b"),
+        "python-faststream": re.compile(r"\b(faststream|RabbitBroker|RabbitRouter|AckPolicy)\b"),
+        "python-tenacity": re.compile(r"\b(tenacity|stop_after_\w+|wait_random\w*)\b"),
+        "python-orjson": re.compile(r"\borjson\b"),
+        "python-pyjwt": re.compile(r"\bjwt\.|\bPyJWKClient\b"),
+        "python-strawberry": re.compile(r"\bstrawberry\b"),
+        "python-grpc": re.compile(r"\bgrpc\b|_pb2\b"),
+        "python-alembic": re.compile(r"\balembic\b"),
+    }
+)
+# A library built on another shows the other's API where the two meet, and nowhere else.
+_LIBRARY_INTEGRATIONS: Final = frozenset(
+    {
+        ("python-alembic", "python-sqlalchemy"),
+        ("python-cashews", "python-fastapi"),
+        ("python-fastapi", "python-pydantic"),
+        ("python-faststream", "python-fastapi"),
+        ("python-faststream", "python-pydantic"),
+        ("python-grpc", "python-fastapi"),
+        ("python-grpc", "python-pydantic"),
+        ("python-pydantic", "python-fastapi"),
+        ("python-strawberry", "python-fastapi"),
+        ("python-strawberry", "python-pydantic"),
+    }
+)
 # A description says what the skill does and when to use it; the listing every session pays for
 # is capped at 1% of the context window, so a description is a trigger, not a table of contents.
 _DESCRIPTION_MAX_CHARACTERS: Final = 400
@@ -117,7 +161,10 @@ def main() -> None:
     """Parse the command line, run the checks, and exit with their code."""
     parser = argparse.ArgumentParser(description="Check the Python rules and skills.")
     parser.add_argument(
-        "root", type=Path, metavar="ROOT", help="directory holding rules/python and skills"
+        "root",
+        type=Path,
+        metavar="ROOT",
+        help="directory holding rules/python and skills",
     )
     arguments = parser.parse_args()
     root: Path = arguments.root
@@ -134,7 +181,10 @@ def run(*, root: Path) -> int:
     rules_directory = root / "rules" / "python"
     skills_directory = root / "skills"
     if not rules_directory.is_dir() or not skills_directory.is_dir():
-        print(f"error: {root} holds no rules/python and skills directories", file=sys.stderr)
+        print(
+            f"error: {root} holds no rules/python and skills directories",
+            file=sys.stderr,
+        )
         return _EXIT_ERROR
 
     rules = tuple(_read_document(path) for path in sorted(rules_directory.glob("*.md")))
@@ -157,6 +207,11 @@ def run(*, root: Path) -> int:
         ),
         *_map_findings(rules_directory / "core.md", skill_names),
         *_layering_findings(rules_directory / "core.md", skill_files),
+        *(
+            finding
+            for document in (*rules, *skill_files)
+            for finding in _library_api_findings(document)
+        ),
         *(
             finding
             for document in skill_files
@@ -342,7 +397,9 @@ def _reference_findings(
         for skill_name in _SKILL_REFERENCE.findall(line):
             if skill_name not in skill_names:
                 yield _Finding(
-                    path=document.path, line=line_number, message=f"no skill {skill_name}"
+                    path=document.path,
+                    line=line_number,
+                    message=f"no skill {skill_name}",
                 )
         for bare_name, linked_path in _FILE_REFERENCE.findall(line):
             reference = bare_name or linked_path
@@ -368,6 +425,27 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
         if skill_name in library_skills or skill_name in _META_SKILLS:
             continue
         yield from _library_names_past_introduction(document, library_skills)
+
+
+def _library_api_findings(document: _Document) -> Iterator[_Finding]:
+    owner = document.path.parent.name
+    if owner in _META_SKILLS:
+        return
+    for block in _code_blocks(document.lines):
+        if block.language != "python":
+            continue
+        for offset, line in enumerate(block.body, start=1):
+            for library, api in _LIBRARY_API.items():
+                if (
+                    owner != library
+                    and (owner, library) not in _LIBRARY_INTEGRATIONS
+                    and api.search(line)
+                ):
+                    yield _Finding(
+                        path=document.path,
+                        line=block.start_line + offset,
+                        message=f"{library}'s API in another file's example; use a contract here",
+                    )
 
 
 def _library_skill_names(core_text: str) -> frozenset[str]:
@@ -411,7 +489,9 @@ def _front_matter_findings(document: _Document) -> Iterator[_Finding]:
     }
     if fields.get("name") != document.path.parent.name:
         yield _Finding(
-            path=document.path, line=1, message="front matter name differs from the directory"
+            path=document.path,
+            line=1,
+            message="front matter name differs from the directory",
         )
     if "description" not in fields:
         yield _Finding(path=document.path, line=1, message="front matter has no description")
