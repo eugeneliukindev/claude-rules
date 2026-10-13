@@ -27,18 +27,6 @@ duration in a log line is a metric someone recovers with a regular expression. A
 request across processes. "How many transcodes failed per minute" is a counter; "why did video 42
 fail" is a log line, once, at the boundary that handled it.
 
-**Example:**
-```python
-# WRONG — a log line per job to be grepped for a number, keyed by an unbounded id
-def record_transcode(job: TranscodeJob, *, elapsed_seconds: float) -> None:
-    logger.info("transcode finished", extra={"video_id": job.video_id, "seconds": elapsed_seconds})
-
-
-# CORRECT — a histogram, with an attribute whose values can be listed
-def record_transcode(job: TranscodeJob, *, elapsed_seconds: float) -> None:
-    _TRANSCODE_DURATION.record(elapsed_seconds, {"codec": job.codec.value})
-```
-
 ## Metrics
 
 ### A metric's attributes have bounded cardinality
@@ -115,23 +103,6 @@ choose; a module that installs a provider on import refuses the application's ow
 exporters and sampling are set up once in `main()`, like logging — never in a library, on import,
 or in a test helper. Frameworks and clients are instrumented with their instrumentation packages
 before spans are written by hand; a manual span earns its place around a unit no library sees.
-
-**Example:**
-```python
-# WRONG — transcoding/jobs.py installs a provider on import; the application's own is refused
-trace.set_tracer_provider(TracerProvider())
-_TRACER: Final = trace.get_tracer(__name__)
-
-
-# CORRECT — the module asks the API for a tracer; main() alone installs the SDK
-_TRACER: Final = trace.get_tracer(__name__)
-
-
-def configure_tracing(*, exporter: SpanExporter) -> None:
-    provider = TracerProvider()
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-```
 
 ### Recording a signal never fails the work it observes
 
