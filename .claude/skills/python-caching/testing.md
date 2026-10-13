@@ -101,7 +101,6 @@ async def test_in_memory_cache_add_sets_only_absent_key() -> None:
     params=[
         pytest.param("memory", id="memory"),
         pytest.param("redis", id="redis", marks=pytest.mark.integration),
-        pytest.param("cashews", id="cashews", marks=pytest.mark.integration),
     ]
 )
 def cache(request: pytest.FixtureRequest) -> Cache:

@@ -16,24 +16,22 @@ holder, only expired, so a slow holder cannot delete the next holder's marker.
 ```python
 # WRONG — the check-then-insert is safe only while the marker holds, and it can expire mid-way
 async def issue_certificate(
-    enrollment_id: EnrollmentId, *, cache: Cache, unit_of_work: Callable[[], UnitOfWork]
+    enrollment_id: EnrollmentId, *, cache: Cache, certificates: CertificateRegistry
 ) -> None:
     if not await cache.add(_certificate_lock_key(enrollment_id), b"", ttl=_CERTIFICATE_LOCK_TTL):
         return
-    async with unit_of_work() as unit:
-        if not await unit.certificates.exists_for(enrollment_id):
-            await unit.certificates.add_for(enrollment_id)
+    if not await certificates.exists_for(enrollment_id):
+        await certificates.add_for(enrollment_id)
 
 
 # CORRECT — the unique constraint on enrollment_id decides; the marker only spares the work
 async def issue_certificate(
-    enrollment_id: EnrollmentId, *, cache: Cache, unit_of_work: Callable[[], UnitOfWork]
+    enrollment_id: EnrollmentId, *, cache: Cache, certificates: CertificateRegistry
 ) -> None:
     if not await cache.add(_certificate_lock_key(enrollment_id), b"", ttl=_CERTIFICATE_LOCK_TTL):
         return
     try:
-        async with unit_of_work() as unit:
-            await unit.certificates.add_for(enrollment_id)
+        await certificates.add_for(enrollment_id)
     except DuplicateCertificateError:
         logger.info("certificate already issued", extra={"enrollment_id": str(enrollment_id)})
 ```

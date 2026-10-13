@@ -58,7 +58,7 @@ class Cache(ABC):
     async def delete(self, key: str) -> None: ...
 ```
 
-### Cache-aside is the default, and it lives in the service beside the unit of work
+### Cache-aside is the default, and it lives in the service beside the repository
 
 **Why:** read the cache; on a miss load from the source and set the value; a write goes to the
 source and deletes the key. A caching repository cannot see the commit it must invalidate after
@@ -85,16 +85,15 @@ class CachingProfileRepository(ProfileRepository):
 # CORRECT — the service reads through the cache, and invalidates after its own commit
 @final
 class ProfileLookup:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork], cache: Cache) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+        self._profiles = profiles
         self._cache = cache
 
     async def find(self, user_id: UserId) -> Profile | None:
         payload = await self._cache.get(_profile_key(user_id))
         if payload is not None:
             return _profile_from_payload(payload)
-        async with self._unit_of_work() as unit:
-            profile = await unit.profiles.get(user_id)
+        profile = await self._profiles.get(user_id)
         if profile is not None:
             payload = _profile_to_payload(profile)
             await self._cache.set(_profile_key(user_id), payload, ttl=_PROFILE_TTL)
@@ -232,7 +231,8 @@ def _profile_to_payload(profile: Profile) -> bytes:
 
 # CORRECT — named fields, the shape versioned in the key
 def _profile_to_payload(profile: Profile) -> bytes:
-    return orjson.dumps({"user_id": str(profile.user_id), "display_name": profile.display_name})
+    payload = {"user_id": str(profile.user_id), "display_name": profile.display_name}
+    return json.dumps(payload).encode()
 ```
 
 ## Invalidation
@@ -247,29 +247,27 @@ A narrow race remains — a read that began before the commit can put the old va
 
 **Example:**
 ```python
-# WRONG — deleted inside the transaction: a concurrent miss re-caches the old name
+# WRONG — deleted before the write: a concurrent miss re-caches the old name before it changes
 @final
 class ProfileEditing:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork], cache: Cache) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+        self._profiles = profiles
         self._cache = cache
 
     async def rename(self, user_id: UserId, display_name: str) -> None:
-        async with self._unit_of_work() as unit:
-            await unit.profiles.set_display_name(user_id, display_name)
-            await self._cache.delete(_profile_key(user_id))
+        await self._cache.delete(_profile_key(user_id))
+        await self._profiles.set_display_name(user_id, display_name)
 
 
 # CORRECT — deleted once the new name is committed
 @final
 class ProfileEditing:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork], cache: Cache) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, profiles: ProfileRepository, cache: Cache) -> None:
+        self._profiles = profiles
         self._cache = cache
 
     async def rename(self, user_id: UserId, display_name: str) -> None:
-        async with self._unit_of_work() as unit:
-            await unit.profiles.set_display_name(user_id, display_name)
+        await self._profiles.set_display_name(user_id, display_name)
         await self._cache.delete(_profile_key(user_id))
 ```
 
