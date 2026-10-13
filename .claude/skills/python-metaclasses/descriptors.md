@@ -103,28 +103,6 @@ class SubscriberRow(CsvRow):
 **Why:** from 3.12 it reaches the import unwrapped — 3.11 wrapped it in `RuntimeError` — so the
 message is what the author of the class statement reads, like a hook's.
 
-**Example:**
-```python
-# WRONG — a bare ValueError that names neither the class nor the attribute
-class Column[T]:
-    header: str
-
-    def __set_name__(self, owner: type[object], name: str) -> None:
-        if name.startswith("_"):
-            raise ValueError("bad name")
-        self.header = name
-
-
-# CORRECT — the package's error, naming the class statement that broke the rule
-class Column[T]:
-    header: str
-
-    def __set_name__(self, owner: type[object], name: str) -> None:
-        if name.startswith("_"):
-            raise CsvSchemaError(f"{owner.__qualname__}.{name}: a column cannot be private")
-        self.header = name
-```
-
 ### A descriptor that caches into the instance needs a `__dict__`, which `slots=True` removes
 
 **Why:** `functools.cached_property` on a slotted dataclass imports cleanly and fails at first

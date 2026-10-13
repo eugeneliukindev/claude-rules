@@ -257,26 +257,6 @@ def index_by_format(exporters: Iterable[Exporter]) -> dict[str, Exporter]:
 keywords a metaclass consumes are not checked at all. An attribute a metaclass adds is declared the
 same way.
 
-**Example:**
-```python
-# WRONG — the checker has never heard of queue_name on a Job
-class Job(ABC):
-    @override
-    def __init_subclass__(cls, *, queue_name: str, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        cls.queue_name = queue_name  # error: "type[Job]" has no attribute "queue_name"
-
-
-# CORRECT — declared where every subclass inherits it
-class Job(ABC):
-    queue_name: ClassVar[str]
-
-    @override
-    def __init_subclass__(cls, *, queue_name: str, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        cls.queue_name = queue_name
-```
-
 ### A hook that synthesizes `__init__` is marked `@dataclass_transform`
 
 **Why:** without it mypy rejects every constructor call — `Unexpected keyword argument "user_id"`.
@@ -315,19 +295,6 @@ classmethod constructor on the base returns `Self`, so each subclass gets its ow
 `__class_getitem__` is what makes `Cls[int]` work at runtime, and a PEP 695 class gets it without
 writing it; written by hand for a lookup, `Exporter["csv"]` is a registry with operator syntax,
 rejected by mypy and found by nobody who searches for a call.
-
-**Example:**
-```python
-# WRONG — a lookup disguised as a type subscription
-class Exporter(ABC):
-    def __class_getitem__(cls, format_name: str) -> type["Exporter"]:
-        return _EXPORTER_CLASS_BY_FORMAT[format_name]
-
-
-# CORRECT — a plain mapping the root built, looked up like one
-def exporter_for(format_name: str, *, exporter_by_format: Mapping[str, Exporter]) -> Exporter:
-    return exporter_by_format[format_name]
-```
 
 ## Run Order
 
