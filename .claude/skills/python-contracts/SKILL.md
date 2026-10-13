@@ -77,40 +77,10 @@ class ExportPlugin(Plugin):
 **Why:** `Iterable`, `Mapping`, `Sized` are the contract; a `Protocol` restating one makes a reader
 open it to learn it is a `for` loop, and every list, tuple and generator already fits the original.
 
-**Example:**
-```python
-# WRONG — a Protocol restating Iterable
-class DocumentSource(Protocol):
-    def __iter__(self) -> Iterator[Document]: ...
-
-
-def total_pages(documents: DocumentSource) -> int:
-    return sum(document.page_count for document in documents)
-
-
-# CORRECT — the stdlib ABC is the contract
-def total_pages(documents: Iterable[Document]) -> int:
-    return sum(document.page_count for document in documents)
-```
-
 ### A class with no abstract method is not a contract
 
 **Why:** an implementation that does not define the method is accepted by the checker and fails at
 the first call, with `NotImplementedError` where a type error should have been.
-
-**Example:**
-```python
-# WRONG — no abstract method: an implementation without send is accepted and fails when called
-class Notifier(ABC):
-    def send(self, recipient: UserId, message: Message) -> None:
-        raise NotImplementedError
-
-
-# CORRECT — abstract: the checker refuses an implementation that does not define send
-class Notifier(ABC):
-    @abstractmethod
-    def send(self, recipient: UserId, message: Message) -> None: ...
-```
 
 ## The Shapes a Contract Method Takes
 
@@ -149,22 +119,6 @@ class InMemoryMessageFeed(MessageFeed):
 
 **Why:** the other order fails when the class is defined — `attribute '__isabstractmethod__' of
 'property' objects is not writable`.
-
-**Example:**
-```python
-# WRONG — fails at class definition
-class Renderer(ABC):
-    @abstractmethod
-    @property
-    def media_type(self) -> str: ...
-
-
-# CORRECT — property outermost
-class Renderer(ABC):
-    @property
-    @abstractmethod
-    def media_type(self) -> str: ...
-```
 
 ### A generic contract binds its parameter in each implementation
 

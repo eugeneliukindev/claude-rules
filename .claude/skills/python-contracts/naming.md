@@ -52,56 +52,7 @@ nothing down. The test is mechanical: delete the base and see what the subclasse
 working methods make it a `Base`, only a promise the checker was already making makes it a
 contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
-**Example:**
-```python
-# WRONG — Base on a contract: nothing is inherited but the promise
-class BaseNotifier(ABC):
-    @abstractmethod
-    def send(self, recipient: UserId, message: Message) -> None: ...
-
-
-# CORRECT — a Base that hands down a field and a working method; a contract named for the capability
-class BaseHttpNotifier(Notifier):
-    def __init__(self, *, client: JsonClient, path: str) -> None:
-        self._client = client
-        self._path = path
-
-    def _post(self, payload: Mapping[str, object]) -> None:
-        self._client.post_json(self._path, payload)
-
-
-@final
-class SlackNotifier(BaseHttpNotifier):
-    @override
-    def send(self, recipient: UserId, message: Message) -> None:
-        self._post({"channel": recipient, "text": message})
-```
-
 ### An implementation is named for what makes it concrete, never `Default` or `Impl`
 
 **Why:** `DefaultNotifier` and `NotifierImpl` say nothing; the driver, the transport or the storage
 does. If nothing distinguishes the implementation, there was no contract worth writing.
-
-**Example:**
-```python
-# WRONG — Impl says only that it is not the contract
-@final
-class DocumentRepositoryImpl(DocumentRepository):
-    def __init__(self, *, connection: DatabaseConnection) -> None:
-        self._connection = connection
-
-    @override
-    def get(self, document_id: DocumentId) -> Document:
-        return _document_from_row(self._connection.fetch_one(_SELECT_DOCUMENT, document_id))
-
-
-# CORRECT — named for its storage
-@final
-class PostgresDocumentRepository(DocumentRepository):
-    def __init__(self, *, connection: DatabaseConnection) -> None:
-        self._connection = connection
-
-    @override
-    def get(self, document_id: DocumentId) -> Document:
-        return _document_from_row(self._connection.fetch_one(_SELECT_DOCUMENT, document_id))
-```
