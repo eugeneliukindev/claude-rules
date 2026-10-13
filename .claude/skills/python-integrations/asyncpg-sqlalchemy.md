@@ -1,6 +1,6 @@
-# SQLAlchemy With asyncpg
+# asyncpg and SQLAlchemy
 
-asyncpg used on its own — its pool, its records, its errors — is `python-asyncpg`.
+The seam between `python-asyncpg` and `python-sqlalchemy`, linked from both skills.
 
 ### On `postgresql+asyncpg`, the engine owns the pool, and the statement timeout is a server setting
 

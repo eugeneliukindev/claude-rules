@@ -228,24 +228,27 @@ built there and handed to `create_app`, the drain bounded below the grace period
 
 ## With Other Libraries
 
-**Before using SQLAlchemy in a FastAPI app, read [with-sqlalchemy.md](with-sqlalchemy.md)** — the
-engine and a `partial` service factory in the lifespan, a session per request on
-`scope="function"`, the service commits.
+**Before caching with cashews in a FastAPI app, read
+[cashews-fastapi.md](../python-integrations/cashews-fastapi.md)** — the cache entered in the
+lifespan, no middleware that lets a client clear it, decorators on the service and not the route,
+and 429 and 503 for its rate limit and circuit breaker.
 
-**Before running a gRPC server beside a FastAPI app, read [with-grpc.md](with-grpc.md)** — the
-server entered in the lifespan, under one worker.
+**Before publishing a FastStream message from a FastAPI app, read
+[fastapi-faststream.md](../python-integrations/fastapi-faststream.md)** — the event written to the
+outbox by the service, never published from the route.
+
+**Before running a gRPC server beside a FastAPI app, read
+[fastapi-grpc.md](../python-integrations/fastapi-grpc.md)** — the server entered in the lifespan,
+under one worker.
+
+**Before declaring a FastAPI request or response model, or answering a validation error, read
+[fastapi-pydantic.md](../python-integrations/fastapi-pydantic.md)** — `input` dropped from the 422,
+the response built from the domain and named by the return annotation.
+
+**Before using SQLAlchemy in a FastAPI app, read
+[fastapi-sqlalchemy.md](../python-integrations/fastapi-sqlalchemy.md)** — the engine and a `partial`
+service factory in the lifespan, a session per request on `scope="function"`, the service commits.
 
 **Before mounting a strawberry GraphQL app in FastAPI, read
-[with-strawberry.md](with-strawberry.md)** — the context getter as an authenticating dependency, on
-`HTTPConnection`.
-
-**Before declaring a request or response model, or answering a validation error, read
-[with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
-domain and named by the return annotation.
-
-**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
-cache entered in the lifespan, no middleware that lets a client clear it, decorators on the service
-and not the route, and 429 and 503 for its rate limit and circuit breaker.
-
-**Before publishing a message from a FastAPI app, read [with-faststream.md](with-faststream.md)** —
-the event written to the outbox by the service, never published from the route.
+[fastapi-strawberry.md](../python-integrations/fastapi-strawberry.md)** — the context getter as an
+authenticating dependency, on `HTTPConnection`.

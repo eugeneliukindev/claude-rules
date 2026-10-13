@@ -1,7 +1,7 @@
-# FastAPI With pydantic
+# FastAPI and pydantic
 
-A model's strictness, its fields and its validators are `python-pydantic`; a body the framework
-decodes relaxes its string-carried fields there.
+The seam between `python-fastapi` and `python-pydantic`, linked from both skills. A body the
+framework decodes relaxes its string-carried fields in `python-pydantic`.
 
 ### The validation error handler drops `input` from what it returns
 

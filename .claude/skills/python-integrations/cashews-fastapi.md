@@ -1,6 +1,6 @@
-# FastAPI With cashews
+# cashews and FastAPI
 
-The cache instance, its setup and how each decorator behaves are `python-cashews`.
+The seam between `python-cashews` and `python-fastapi`, linked from both skills.
 
 ### The lifespan enters the cache and closes it when the app stops
 
@@ -55,7 +55,7 @@ app.add_middleware(CacheEtagMiddleware)
 **Why:** a route's arguments are the request's — the principal, the headers, the dependencies — and
 a key built from some of them serves one caller's answer to another: a route keyed on the account id
 that also depends on who asks is a data leak. On the service or the adapter, the key is built from
-the arguments that decide the value, and the route stays an adapter (`SKILL.md`).
+the arguments that decide the value, and the route stays an adapter (`python-fastapi`).
 
 **Example:**
 ```python

@@ -202,3 +202,9 @@ transaction, `QueryCanceledError`.
 
 **Before testing a repository against PostgreSQL, read [testing.md](testing.md)** — testcontainers
 with the right URL, a transaction per test rolled back.
+
+## With Other Libraries
+
+**Before building a SQLAlchemy engine on `postgresql+asyncpg`, read
+[asyncpg-sqlalchemy.md](../python-integrations/asyncpg-sqlalchemy.md)** — the engine's pool instead
+of asyncpg's, and the statement timeout through `server_settings`.

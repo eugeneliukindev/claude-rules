@@ -1,6 +1,6 @@
-# FastAPI With FastStream
+# FastAPI and FastStream
 
-The broker, its subscribers and its publishers are `python-faststream`; the outbox is
+The seam between `python-fastapi` and `python-faststream`, linked from both skills. The outbox is
 `python-persistence`.
 
 ### A route never publishes to the broker; the service writes an outbox row in its transaction

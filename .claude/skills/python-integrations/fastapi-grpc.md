@@ -1,6 +1,6 @@
-# FastAPI With a gRPC Server
+# FastAPI and gRPC
 
-How the server is built, drained and stopped is `python-grpc`.
+The seam between `python-fastapi` and `python-grpc`, linked from both skills.
 
 ### Beside FastAPI, the gRPC server lives in the lifespan, and the app runs one worker
 

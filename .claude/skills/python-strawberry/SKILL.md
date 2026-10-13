@@ -163,11 +163,16 @@ request-scoped.
 [dataloaders.md](dataloaders.md)** — one loader per request, results in key order, one statement
 per batch, and the principal carried into a loader over owned data.
 
-## The pydantic Integration
+## With Other Libraries
 
-**Before using `strawberry.experimental.pydantic`, read [with-pydantic.md](with-pydantic.md)** — for inputs
-whose boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and
-no `all_fields`.
+**Before mounting a strawberry GraphQL app in FastAPI, read
+[fastapi-strawberry.md](../python-integrations/fastapi-strawberry.md)** — the context getter as an
+authenticating dependency, on `HTTPConnection`.
+
+**Before using `strawberry.experimental.pydantic`, read
+[pydantic-strawberry.md](../python-integrations/pydantic-strawberry.md)** — for inputs whose
+boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and no
+`all_fields`.
 
 ## Query Limits and Discovery
 

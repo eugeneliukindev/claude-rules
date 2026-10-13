@@ -223,7 +223,21 @@ discriminator instead of trying every member.
 once at the root and validated at startup, `SecretStr` for credentials, `extra="ignore"` on
 classes that share a `.env` file.
 
-## With SQLAlchemy
+## With Other Libraries
 
-**Before building a model from a database row, read [with-sqlalchemy.md](with-sqlalchemy.md)** — no
-`from_attributes` on an ORM row; the model is built from the domain object.
+**Before declaring a FastAPI request or response model, or answering a validation error, read
+[fastapi-pydantic.md](../python-integrations/fastapi-pydantic.md)** — `input` dropped from the 422,
+the response built from the domain and named by the return annotation.
+
+**Before typing a FastStream subscriber's message as a pydantic model, read
+[faststream-pydantic.md](../python-integrations/faststream-pydantic.md)** — the raw body to the
+handler, validated there in JSON mode.
+
+**Before building a pydantic model from a SQLAlchemy row, read
+[pydantic-sqlalchemy.md](../python-integrations/pydantic-sqlalchemy.md)** — no `from_attributes` on
+an ORM row; the model is built from the domain object.
+
+**Before using `strawberry.experimental.pydantic`, read
+[pydantic-strawberry.md](../python-integrations/pydantic-strawberry.md)** — for inputs whose
+boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and no
+`all_fields`.

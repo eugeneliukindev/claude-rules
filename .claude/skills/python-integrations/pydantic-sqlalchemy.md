@@ -1,6 +1,6 @@
-# pydantic With SQLAlchemy
+# pydantic and SQLAlchemy
 
-Rows, relationships and their loading are `python-sqlalchemy`.
+The seam between `python-pydantic` and `python-sqlalchemy`, linked from both skills.
 
 ### A model is never validated from an ORM row with `from_attributes`
 

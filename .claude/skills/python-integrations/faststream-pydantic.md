@@ -1,6 +1,6 @@
-# FastStream With pydantic
+# FastStream and pydantic
 
-A wire model's strictness and its JSON-mode parsing are `python-pydantic`.
+The seam between `python-faststream` and `python-pydantic`, linked from both skills.
 
 ### The subscriber takes the raw message, and the handler validates its body as JSON
 

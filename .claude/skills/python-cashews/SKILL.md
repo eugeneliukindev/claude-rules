@@ -200,3 +200,10 @@ invalidation after the function returns, what tags and the client-side cache cos
 **Before testing code that uses cashews, read [testing.md](testing.md)** — the adapter in the
 contract suite against redis, why `mem://` proves nothing about serialization, `disabling()`, and
 the deprecated `close()` under warnings as errors.
+
+## With Other Libraries
+
+**Before caching with cashews in a FastAPI app, read
+[cashews-fastapi.md](../python-integrations/cashews-fastapi.md)** — the cache entered in the
+lifespan, no middleware that lets a client clear it, decorators on the service and not the route,
+and 429 and 503 for its rate limit and circuit breaker.

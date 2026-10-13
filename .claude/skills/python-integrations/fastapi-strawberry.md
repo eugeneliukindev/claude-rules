@@ -1,6 +1,6 @@
-# FastAPI With Strawberry
+# FastAPI and strawberry
 
-The schema, the context class and the loaders are `python-strawberry`.
+The seam between `python-fastapi` and `python-strawberry`, linked from both skills.
 
 ### The GraphQL router's context getter is a dependency, and it is where authentication happens
 

@@ -178,7 +178,12 @@ from them, resources opened in `lifespan`, what each hook is not for.
 [testing.md](testing.md)** — what the in-memory broker checks and what it cannot, one dead-letter
 test per queue on testcontainers.
 
-## With pydantic
+## With Other Libraries
 
-**Before typing a subscriber's message as a pydantic model, read
-[with-pydantic.md](with-pydantic.md)** — the raw body to the handler, validated there in JSON mode.
+**Before publishing a FastStream message from a FastAPI app, read
+[fastapi-faststream.md](../python-integrations/fastapi-faststream.md)** — the event written to the
+outbox by the service, never published from the route.
+
+**Before typing a FastStream subscriber's message as a pydantic model, read
+[faststream-pydantic.md](../python-integrations/faststream-pydantic.md)** — the raw body to the
+handler, validated there in JSON mode.

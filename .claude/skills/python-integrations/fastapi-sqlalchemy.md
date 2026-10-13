@@ -1,7 +1,7 @@
-# FastAPI With SQLAlchemy
+# FastAPI and SQLAlchemy
 
-How SQLAlchemy is used is `python-sqlalchemy`; where a transaction begins and who commits it is
-`python-persistence`.
+The seam between `python-fastapi` and `python-sqlalchemy`, linked from both skills. Where a
+transaction begins and who commits it is `python-persistence`.
 
 ### The lifespan builds the engine and the session factory, and disposes the engine as it ends
 

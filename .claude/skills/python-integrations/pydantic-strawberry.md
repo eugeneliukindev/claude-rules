@@ -1,4 +1,6 @@
-# The pydantic Integration
+# pydantic and strawberry
+
+The seam between `python-pydantic` and `python-strawberry`, linked from both skills.
 
 ## Contents
 

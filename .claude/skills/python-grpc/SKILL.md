@@ -254,3 +254,9 @@ shutdown tests, and the whole test module with its fakes.
 
 **Before editing a `.proto` file, read [schema.md](schema.md)** — reserved numbers and names, a new
 package for a breaking change, and `buf breaking` in CI.
+
+## With Other Libraries
+
+**Before running a gRPC server beside a FastAPI app, read
+[fastapi-grpc.md](../python-integrations/fastapi-grpc.md)** — the server entered in the lifespan,
+under one worker.

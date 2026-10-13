@@ -13,7 +13,9 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
 - every `python-*` skill is named in `core.md` — a row in its map, or `/name` in its text;
 - every `SKILL.md` has a `name` equal to its directory, a `description` and `paths`;
 - a topic skill names a library skill only in a file's introduction, before its first heading
-  below the title.
+  below the title;
+- a library's API appears only in its own skill, or in the integration file of a pair it belongs
+  to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -74,9 +76,11 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
         "python-alembic": re.compile(r"\balembic\b"),
     }
 )
-# Two libraries meet only in the host's integration file, `with-<library>.md`; alembic is built on
+# Two libraries meet only in their pair's file, `python-integrations/<a>-<b>.md` with the names in
+# alphabetical order, linked from both skills; the directory is not a skill. alembic is built on
 # SQLAlchemy, so every alembic file speaks it.
-_INTEGRATION_FILE: Final = re.compile(r"^with-([a-z0-9]+)\.md$")
+_INTEGRATIONS_DIRECTORY: Final = "python-integrations"
+_INTEGRATION_FILE: Final = re.compile(r"^([a-z0-9]+)-([a-z0-9]+)\.md$")
 _BUILT_ON: Final = frozenset({("python-alembic", "python-sqlalchemy")})
 # A description says what the skill does and when to use it; the listing every session pays for
 # is capped at 1% of the context window, so a description is a trigger, not a table of contents.
@@ -199,7 +203,14 @@ def run(*, root: Path) -> int:
         for path in sorted(directory.rglob("*.md"))
         if not _is_hidden(path.relative_to(directory))
     )
-    skill_names = frozenset(directory.name for directory in skill_directories)
+    skill_names = frozenset(
+        directory.name
+        for directory in skill_directories
+        if directory.name != _INTEGRATIONS_DIRECTORY
+    )
+    integration_files = tuple(
+        document for document in skill_files if document.path.parent.name == _INTEGRATIONS_DIRECTORY
+    )
 
     findings = [
         *_budget_findings(rules, skill_files),
@@ -211,6 +222,11 @@ def run(*, root: Path) -> int:
         ),
         *_map_findings(rules_directory / "core.md", skill_names),
         *_layering_findings(rules_directory / "core.md", skill_files),
+        *(
+            finding
+            for document in integration_files
+            for finding in _integration_findings(document, skills_directory)
+        ),
         *(
             finding
             for document in (*rules, *skill_files)
@@ -431,9 +447,29 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
     library_skills = _library_skill_names(core_path.read_text(encoding="utf-8"))
     for document in skill_files:
         skill_name = document.path.parent.name
-        if skill_name in library_skills or skill_name in _META_SKILLS:
+        if skill_name in library_skills or skill_name in {*_META_SKILLS, _INTEGRATIONS_DIRECTORY}:
             continue
         yield from _library_names_past_introduction(document, library_skills)
+
+
+def _integration_findings(document: _Document, skills_directory: Path) -> Iterator[_Finding]:
+    name = _INTEGRATION_FILE.match(document.path.name)
+    if name is None or name.group(1) >= name.group(2):
+        yield _Finding(
+            path=document.path,
+            line=1,
+            message="an integration file is named <a>-<b>.md, the libraries in alphabetical order",
+        )
+        return
+    link = f"](../{_INTEGRATIONS_DIRECTORY}/{document.path.name})"
+    for library in name.groups():
+        router = skills_directory / f"{_SKILL_PREFIX}{library}" / "SKILL.md"
+        if not router.is_file() or link not in router.read_text(encoding="utf-8"):
+            yield _Finding(
+                path=document.path,
+                line=1,
+                message=f"{_SKILL_PREFIX}{library}/SKILL.md does not link this integration",
+            )
 
 
 def _example_findings(document: _Document) -> Iterator[_Finding]:
@@ -562,14 +598,17 @@ def _library_api_findings(document: _Document) -> Iterator[_Finding]:
     if owner in _META_SKILLS:
         return
     integration = _INTEGRATION_FILE.match(document.path.name)
-    guest = f"{_SKILL_PREFIX}{integration.group(1)}" if integration else None
+    if owner == _INTEGRATIONS_DIRECTORY and integration is not None:
+        speakers = frozenset(f"{_SKILL_PREFIX}{library}" for library in integration.groups())
+    else:
+        speakers = frozenset({owner})
     for block in _code_blocks(document.lines):
         if block.language != "python":
             continue
         for offset, line in enumerate(block.body, start=1):
             for library, api in _LIBRARY_API.items():
                 if (
-                    library not in {owner, guest}
+                    library not in speakers
                     and (owner, library) not in _BUILT_ON
                     and api.search(line)
                 ):
@@ -577,8 +616,8 @@ def _library_api_findings(document: _Document) -> Iterator[_Finding]:
                         path=document.path,
                         line=block.start_line + offset,
                         message=(
-                            f"{library}'s API outside its skill; show it in a"
-                            f" with-{library.removeprefix(_SKILL_PREFIX)}.md file, or use a contract"
+                            f"{library}'s API outside its skill; show it in the pair's file"
+                            f" under {_INTEGRATIONS_DIRECTORY}/, or use a contract"
                         ),
                     )
 

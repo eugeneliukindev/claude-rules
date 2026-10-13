@@ -221,7 +221,16 @@ read [writes.md](writes.md)** — `insert()` with a list, one `update()`, the di
 **Before writing a query as text, read [raw-sql.md](raw-sql.md)** — `text()` with bound
 parameters, and identifiers from an allowlist.
 
-## With asyncpg
+## With Other Libraries
 
-**Before building an engine on `postgresql+asyncpg`, read [with-asyncpg.md](with-asyncpg.md)** — the
-engine's pool instead of asyncpg's, and the statement timeout through `server_settings`.
+**Before building a SQLAlchemy engine on `postgresql+asyncpg`, read
+[asyncpg-sqlalchemy.md](../python-integrations/asyncpg-sqlalchemy.md)** — the engine's pool instead
+of asyncpg's, and the statement timeout through `server_settings`.
+
+**Before using SQLAlchemy in a FastAPI app, read
+[fastapi-sqlalchemy.md](../python-integrations/fastapi-sqlalchemy.md)** — the engine and a `partial`
+service factory in the lifespan, a session per request on `scope="function"`, the service commits.
+
+**Before building a pydantic model from a SQLAlchemy row, read
+[pydantic-sqlalchemy.md](../python-integrations/pydantic-sqlalchemy.md)** — no `from_attributes` on
+an ORM row; the model is built from the domain object.
