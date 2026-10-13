@@ -39,18 +39,6 @@ The principles and YAGNI, KISS and DRY are in `principles.md`.
 project picks; a rule that restates one drifts from it, and the disagreement is fixed here. Code
 laid out by hand against the formatter is undone on its next run, in someone else's diff.
 
-**Example:**
-```python
-# WRONG — aligned by hand: the formatter rewrites it, and the next diff carries the noise
-_RETRY_DELAYS_SECONDS: Final = (0.5,   1.0,   2.0,   4.0)
-_MAX_ATTEMPTS: Final         = 4
-
-
-# CORRECT — the formatter's layout, left as it writes it
-_RETRY_DELAYS_SECONDS: Final = (0.5, 1.0, 2.0, 4.0)
-_MAX_ATTEMPTS: Final = 4
-```
-
 ### A suppression carries its rule code and its reason on its line
 
 **Why:** a bare `# type: ignore` or `# noqa` hides every future error on that line too, and nobody
@@ -58,33 +46,11 @@ can tell whether it is still needed; the count only ratchets down.
 **Except:** directly above the line, when the reason will not fit — never wrapped away by the
 formatter.
 
-**Example:**
-```python
-# WRONG — what is ignored, and why?
-payload = json.loads(body)  # type: ignore
-
-
-# CORRECT — the code and the reason
-payload = legacy_decoder.decode(body)  # type: ignore[no-untyped-call]  # vendored, untyped until v4
-```
-
 ### A limit is named, not raised
 
 **Why:** one module with fifteen members must not buy every other module the right to fifteen; the
 limit stays and the file is named, with a checkable reason. When three files need the same escape,
 the rule is describing something real about the architecture.
-
-**Example:**
-```toml
-# WRONG — raised for the whole project because one module needed it
-[tool.ruff.lint.pylint]
-max-args = 12
-
-
-# CORRECT — the limit stays; the one file is named, with its reason
-[tool.ruff.lint.per-file-ignores]
-"src/billing/export/columns.py" = ["PLR0913"]  # one column per CSV field, fixed by the tax format
-```
 
 ## When Rules Conflict
 
@@ -102,19 +68,6 @@ reasoning — never worked around silently in code.
 
 **Why:** reformatting or renaming beyond the task buries the change in its diff. A violation noticed
 and left goes in the summary or the PR description, never copied into the new code.
-
-**Example:**
-```python
-# WRONG — the fix to one rounding bug arrives with a renamed module-wide helper and a reflow
-def total_due(inv: Inv) -> Decimal:
-    return sum((line.amount for line in inv.lines), start=Decimal(0)).quantize(_CENT)
-
-
-# CORRECT — the new function follows the rules; the old neighbours are listed in the PR instead
-def total_due(invoice: Invoice) -> Decimal:
-    subtotal = sum((line.amount for line in invoice.lines), start=Decimal(0))
-    return subtotal.quantize(_CENT, ROUND_HALF_EVEN)
-```
 
 ## Definition of Done
 

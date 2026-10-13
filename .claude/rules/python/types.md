@@ -40,18 +40,6 @@ class Repository[T: Entity]:
 **Why:** `Mapping[str, int]` in accepts every mapping and handles variance without `covariant=`;
 `dict[str, int]` out tells the caller what it can do with the result.
 
-**Example:**
-```python
-# WRONG — demands a list it only iterates, and promises only an iterable back
-def unfinished(tasks: list[Task]) -> Iterable[Task]:
-    return [task for task in tasks if not task.is_done]
-
-
-# CORRECT — any iterable in, a list out
-def unfinished(tasks: Iterable[Task]) -> list[Task]:
-    return [task for task in tasks if not task.is_done]
-```
-
 ### "Unknown" is spelled `object`; `Any` means "stop checking"
 
 **Why:** `object` forces narrowing before use; `Any` lets every typo through, and a function
@@ -157,16 +145,6 @@ def reject(invoice: Invoice) -> Never:
 **Why:** an immutable container cannot be changed by the caller who received it, and says so in its
 type.
 
-**Example:**
-```python
-# WRONG — a module-level list any importer can append to
-SUPPORTED_CURRENCIES = ["EUR", "USD"]
-
-
-# CORRECT — immutable, and typed as such
-SUPPORTED_CURRENCIES: Final = frozenset({"EUR", "USD"})
-```
-
 ### Arguments are never mutated, and internal state is never handed out
 
 **Why:** a response that appended to the header list it was given grew one shared list on every
@@ -201,23 +179,3 @@ class Playlist:
 
 **Why:** the linter catches a magic *number*; a repeated literal string it does not, and the two
 spellings drift.
-
-**Example:**
-```python
-# WRONG — the same status spelled at two call sites
-def is_open(invoice: Invoice) -> bool:
-    return invoice.status == "open"
-
-
-def reopen(invoice: Invoice) -> Invoice:
-    return replace(invoice, status="open")
-
-
-# CORRECT — one member, compared and assigned
-def is_open(invoice: Invoice) -> bool:
-    return invoice.status is InvoiceStatus.OPEN
-
-
-def reopen(invoice: Invoice) -> Invoice:
-    return replace(invoice, status=InvoiceStatus.OPEN)
-```

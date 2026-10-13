@@ -43,48 +43,11 @@ _MAX_DEVICES_PER_BATCH: Final = 500  # larger batches are rejected with a 413
 alternative that was tried and why it loses here, a limit recorded as "not supported for now";
 everything else fits in one line or in a better name.
 
-**Example:**
-```python
-# WRONG — a paragraph explaining what the function plainly does
-# This function takes the readings, groups them by meter, adds up the kilowatt-hours
-# for each meter and returns a dictionary from meter to total.
-def consumption_by_meter(readings: Iterable[MeterReading]) -> dict[MeterId, Decimal]:
-    totals: defaultdict[MeterId, Decimal] = defaultdict(Decimal)
-    for reading in readings:
-        totals[reading.meter_id] += reading.kilowatt_hours
-    return dict(totals)
-
-
-# CORRECT — the rejected alternative, which the code alone cannot show
-# Summed in Python rather than with SUM() in the query: the readings are Decimal here, and the
-# column is a float the database adds up with a drift the grid operator's statements do not have.
-def consumption_by_meter(readings: Iterable[MeterReading]) -> dict[MeterId, Decimal]:
-    totals: defaultdict[MeterId, Decimal] = defaultdict(Decimal)
-    for reading in readings:
-        totals[reading.meter_id] += reading.kilowatt_hours
-    return dict(totals)
-```
-
 ### Commented-out code, banners, stamps and change logs are deleted
 
 **Why:** version control keeps all of them better; in the file they are noise that ages, and a name
 explained in a comment is a name to fix instead. A published docstring's version note is not a
 change log.
-
-**Example:**
-```python
-# WRONG
-# ===================== HELPERS =====================
-# Added by the billing team, 2024-03-02
-# def old_rounding(amount): return round(amount, 2)
-def round_amount(x: Decimal) -> Decimal:  # x is the amount in euros
-    return x.quantize(_CENT)
-
-
-# CORRECT — nothing to delete, and the name says what the comment said
-def round_amount(amount_eur: Decimal) -> Decimal:
-    return amount_eur.quantize(_CENT)
-```
 
 ## Docstrings
 
@@ -94,20 +57,6 @@ def round_amount(amount_eur: Decimal) -> Decimal:
 value, the errors the function's own logic raises; everywhere else it is one line and often absent
 (one reference library documents 97% of its exported names and 17% of its private functions). It
 states the contract, not the algorithm.
-
-**Example:**
-```python
-# WRONG — the algorithm, in a private helper nobody renders
-def _shortest_route(stops: Sequence[Stop]) -> Route:
-    """Run Dijkstra over the adjacency map, keeping a heap of tentative distances."""
-    return _dijkstra(_adjacency(stops))
-
-
-# CORRECT — the contract, in one line
-def _shortest_route(stops: Sequence[Stop]) -> Route:
-    """Return the shortest route visiting every stop."""
-    return _dijkstra(_adjacency(stops))
-```
 
 ## Comments and Docstrings Are Local
 

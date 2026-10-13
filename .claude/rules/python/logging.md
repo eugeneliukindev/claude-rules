@@ -56,16 +56,6 @@ logger.info("payment captured", extra={"payment_id": payment.payment_id, "amount
 **Why:** `"payment captured"` reads and greps the same in every module; `"Captured the payment
 successfully!"` is the same event in a spelling nobody searches for.
 
-**Example:**
-```python
-# WRONG
-logger.info("Successfully captured the payment!", extra={"payment_id": payment.payment_id})
-
-
-# CORRECT
-logger.info("payment captured", extra={"payment_id": payment.payment_id})
-```
-
 ### Logging is configured once, at the entry point, and writes JSON
 
 **Why:** a library or an import that configures the root logger reconfigures every application that
@@ -92,18 +82,3 @@ def main() -> None:
 
 **Why:** a log line per event in a hot loop costs I/O on every iteration and is still not a number a
 dashboard can sum (`python-observability`).
-
-**Example:**
-```python
-# WRONG — one line per image, to count images
-for image in images:
-    logger.info("thumbnail generated", extra={"image_id": image.image_id})
-    thumbnailer.generate(image)
-
-
-# CORRECT — a counter, and one line for the run
-for image in images:
-    thumbnailer.generate(image)
-    generated_thumbnails.add(1)
-logger.info("thumbnails finished", extra={"image_count": len(images)})
-```

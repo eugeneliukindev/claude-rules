@@ -129,15 +129,6 @@ class TicketNumbering:
 every such name is reported, gets a prefix, and the tests then import `_private` names. The check is
 run after the move that made a name internal (`python-packaging`).
 
-**Example:**
-```bash
-# WRONG — the sources alone: names only the tests use are reported as unused
-python find_unprefixed_names.py src
-
-# CORRECT — the project root, so the tests count as callers
-python find_unprefixed_names.py .
-```
-
 ## Facade, Public Module, Internal Module
 
 ### A package's `__init__.py` re-exports only the main, general-purpose names its consumers use
@@ -182,45 +173,11 @@ __all__ = ["Invoice", "InvoiceService", "InvoiceStatus"]
 **Why:** `labels.print_label(...)` or `print_label(...)` says what is used; a three-level attribute
 chain hides it in the middle of an expression.
 
-**Example:**
-```python
-# WRONG — the chain hides which function is called
-import shipping.labels.printing
-
-
-def print_labels(parcels: Iterable[Parcel]) -> None:
-    for parcel in parcels:
-        shipping.labels.printing.print_label(parcel)
-
-
-# CORRECT — the module is the name at the call site
-from shipping.labels import printing
-
-
-def print_labels(parcels: Iterable[Parcel]) -> None:
-    for parcel in parcels:
-        printing.print_label(parcel)
-```
-
 ### A function-level import is allowed for three reasons, written on its line
 
 **Why:** breaking a genuine circular import, loading a heavy or optional implementation on demand,
 and a facade exporting implementations whose libraries are separate extras; generic "lazy loading"
 is not a reason — restructure instead.
-
-**Example:**
-```python
-# WRONG — hidden inside the function with no reason given
-def render_chart(series: Sequence[Sample]) -> bytes:
-    from analytics.charts import plot_series
-    return plot_series(series)
-
-
-# CORRECT — the reason the linter asked for, on the line
-def render_chart(series: Sequence[Sample]) -> bytes:
-    from analytics.charts import plot_series  # noqa: PLC0415 — matplotlib is the `charts` extra
-    return plot_series(series)
-```
 
 ### An annotation that would cycle or pull a heavy dependency goes under `TYPE_CHECKING`
 
@@ -252,37 +209,7 @@ def attach_pdf(invoice: Invoice, *, renderer: PdfRenderer) -> None:
 **Why:** a package imported only because another dependency pulls it in disappears when that one
 drops it; `try: import x` turns a missing dependency into a code path nobody tested.
 
-**Example:**
-```python
-# WRONG — the fast parser if it happens to be installed
-try:
-    from lxml import etree
-except ImportError:
-    from xml.etree import ElementTree as etree
-
-
-# CORRECT — lxml is declared in pyproject.toml, with a lower bound, and imported plainly
-from lxml import etree
-```
-
 ### Anything acquired is released by a context manager
 
 **Why:** a file, a lock, a session or a client opened without one stays open when the block raises;
 who closes what, and failing cleanup, are in `python-wiring`.
-
-**Example:**
-```python
-# WRONG — an exception in json.loads leaves the file open
-def load_rates(path: Path) -> dict[str, str]:
-    source = path.open(encoding="utf-8")
-    rates: dict[str, str] = json.loads(source.read())
-    source.close()
-    return rates
-
-
-# CORRECT — closed whatever happens inside
-def load_rates(path: Path) -> dict[str, str]:
-    with path.open(encoding="utf-8") as source:
-        rates: dict[str, str] = json.load(source)
-    return rates
-```

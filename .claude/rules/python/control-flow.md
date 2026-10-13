@@ -153,41 +153,7 @@ def build_exporter(export_format: ExportFormat) -> Exporter:
 **Why:** the judgement is how much the reader can hold, not how much fits on a line; a nested
 comprehension with a condition is three steps written as one.
 
-**Example:**
-```python
-# WRONG — flatten, filter and convert in one expression
-weights = [item.weight_grams * count for box in boxes if box.is_sealed for item, count in box.items]
-
-
-# CORRECT — the steps are visible
-weights: list[int] = []
-for box in boxes:
-    if not box.is_sealed:
-        continue
-    weights.extend(item.weight_grams * count for item, count in box.items)
-```
-
 ### A lazy sequence longer than one expression is a generator function
 
 **Why:** anything reading a stream, a file, a cursor or a paginated API yields as it reads, and a
 named generator says what it yields; a list built first holds everything in memory at once.
-
-**Example:**
-```python
-# WRONG — every page is fetched and held before the first invoice is used
-def all_invoices(*, client: BillingClient) -> list[Invoice]:
-    invoices: list[Invoice] = []
-    page = client.first_page()
-    while page is not None:
-        invoices.extend(page.invoices)
-        page = client.next_page(page)
-    return invoices
-
-
-# CORRECT — one page at a time, as the caller iterates
-def all_invoices(*, client: BillingClient) -> Iterator[Invoice]:
-    page = client.first_page()
-    while page is not None:
-        yield from page.invoices
-        page = client.next_page(page)
-```

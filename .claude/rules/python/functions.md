@@ -12,26 +12,6 @@ paths:
 **Why:** if describing it needs "and", the caller who wants one half gets both; split it. One actor
 per module is a different rule (`classes.md`).
 
-**Example:**
-```python
-# WRONG — validates and publishes: a caller who only wants the check cannot have it
-def validate_and_publish(article: Article, *, articles: ArticleRepository) -> None:
-    if not article.headline.strip():
-        raise MissingHeadlineError(article.article_id)
-    articles.publish(article)
-
-
-# CORRECT — two functions, composed by the caller
-def validate_article(article: Article) -> None:
-    if not article.headline.strip():
-        raise MissingHeadlineError(article.article_id)
-
-
-def publish_article(article: Article, *, articles: ArticleRepository) -> None:
-    validate_article(article)
-    articles.publish(article)
-```
-
 ### Values that travel together become one frozen dataclass
 
 **Why:** the same four parameters on five functions are a concept without a name, and the next
@@ -65,25 +45,6 @@ def free_rooms(stay: Stay, *, rooms: RoomRepository) -> list[Room]:
 **Why:** a parameter is for a value callers actually vary; a retry, an encoding or a reshaping that
 every caller passes or does the same way belongs in the body, written once. A setting of a
 factory or of a class the root builds is defaulted in its signature instead (below).
-
-**Example:**
-```python
-# WRONG — every caller passes the same encoding and strips the same header row
-def read_statement(path: Path, *, encoding: str) -> list[list[str]]:
-    with path.open(encoding=encoding, newline="") as source:
-        return list(csv.reader(source))
-
-
-rows = read_statement(path, encoding="utf-8")[1:]
-
-
-# CORRECT — the encoding and the header are the function's business
-def read_statement(path: Path) -> list[list[str]]:
-    with path.open(encoding="utf-8", newline="") as source:
-        reader = csv.reader(source)
-        next(reader, None)
-        return list(reader)
-```
 
 
 ## Parameters
@@ -198,20 +159,6 @@ class UploadInbox:
 **Except:** a named closed union — `type PaymentOutcome = Captured | Declined`, matched
 exhaustively; `None` for a lookup where absence is normal.
 
-**Example:**
-```python
-# WRONG — one email or a list of them, depending on how many there were
-def billing_contacts(customer: Customer) -> str | list[str]:
-    if len(customer.billing_emails) == 1:
-        return customer.billing_emails[0]
-    return list(customer.billing_emails)
-
-
-# CORRECT — always the same shape
-def billing_contacts(customer: Customer) -> list[str]:
-    return list(customer.billing_emails)
-```
-
 ### Compute or do, not both
 
 **Why:** a query has no side effects, so it can be called twice or skipped; a command returns `None`
@@ -235,20 +182,6 @@ def open_session(user_id: UserId, *, sessions: SessionStore) -> SessionId:
 
 **Why:** a collection passed in to be filled is an output disguised as an input; the caller cannot
 tell from the call that it changes.
-
-**Example:**
-```python
-# WRONG — the caller's list is the output
-def collect_overdue(loans: Iterable[Loan], into: list[Loan], *, today: date) -> None:
-    for loan in loans:
-        if loan.due_on < today:
-            into.append(loan)
-
-
-# CORRECT — a new list, returned
-def overdue(loans: Iterable[Loan], *, today: date) -> list[Loan]:
-    return [loan for loan in loans if loan.due_on < today]
-```
 
 ## Extraction
 

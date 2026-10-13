@@ -115,25 +115,6 @@ class TicketNotTransferableError(TicketingError):
 **Why:** `BillingError(Exception)` lets a caller catch "anything from billing" with one clause; a
 package whose errors inherit `Exception` directly leaves it to list them all, and miss the next.
 
-**Example:**
-```python
-# WRONG — unrelated exceptions: a caller must name every one
-class InvoiceNotFoundError(Exception): ...
-
-
-class PaymentDeclinedError(Exception): ...
-
-
-# CORRECT — one root, and every exception of the package under it
-class BillingError(Exception): ...
-
-
-class InvoiceNotFoundError(BillingError): ...
-
-
-class PaymentDeclinedError(BillingError): ...
-```
-
 ### A leaf class is earned by a caller who catches it, and inherits the stdlib type it expects
 
 **Why:** until a caller catches it alone, the nearest category with the identifying values is
@@ -184,23 +165,6 @@ class ProductIndex(Mapping[Sku, Product]):
 
 **Why:** checking a file exists and then opening it races with whoever deletes it; catching a
 `KeyError` for the common case is slower and hides the expected path. Never both for one operation.
-
-**Example:**
-```python
-# WRONG — the file can vanish between the check and the open
-def read_template(path: Path) -> str | None:
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
-
-
-# CORRECT — one attempt, the rare failure handled
-def read_template(path: Path) -> str | None:
-    try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
-```
 
 ### An error is caught where it can be handled, and logged once there
 

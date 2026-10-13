@@ -110,50 +110,12 @@ mistake that produces a plausible result — in every kind of name: `timeout_sec
 **Except:** a `timedelta` carries its unit in the type; a name that repeats a standard's —
 `timeout` in float seconds as the stdlib uses it, a cookie's `max_age` — needs none.
 
-**Example:**
-```python
-# WRONG — seconds or milliseconds? bytes or megabytes?
-_UPLOAD_LIMIT: Final = 20
-
-
-def upload(document: Document, *, storage: ObjectStorage, timeout: float) -> str:
-    if len(document.content) > _UPLOAD_LIMIT * 1024 * 1024:
-        raise DocumentTooLargeError(document.document_id)
-    return storage.put(document.document_id, document.content, timeout=timeout)
-
-
-# CORRECT — the unit is in every name
-_MAX_UPLOAD_BYTES: Final = 20 * 1024 * 1024
-
-
-def upload(document: Document, *, storage: ObjectStorage, timeout_seconds: float) -> str:
-    if len(document.content) > _MAX_UPLOAD_BYTES:
-        raise DocumentTooLargeError(document.document_id)
-    return storage.put(document.document_id, document.content, timeout=timeout_seconds)
-```
-
 ### A parameter names its role, not its type
 
 **Why:** callers pass parameters by keyword, so a parameter must read in isolation — `recipient`,
 not `string`; `predicate`, not `func`; `on_complete` for a callback; never the function's name
 again. A reserved word takes a trailing underscore, never a misspelling (`sqlalchemy` ships `is_`,
 `in_`); `*args` and `**kwargs` are renamed when they carry meaning: `*paths`, `**headers`.
-
-**Example:**
-```python
-# WRONG — types for names, and a misspelt keyword
-def notify(string: str, func: Callable[[Receipt], None], klass: type[Notifier]) -> None:
-    klass().send(string)
-    func(Receipt(recipient=string))
-
-
-# CORRECT — each parameter says what it is for
-def notify(
-    recipient: str, *, on_sent: Callable[[Receipt], None], notifier_type: type[Notifier]
-) -> None:
-    notifier_type().send(recipient)
-    on_sent(Receipt(recipient=recipient))
-```
 
 
 ## Functions and Methods
@@ -202,18 +164,6 @@ def match_payment(payment: Payment, *, statement: BankStatement) -> StatementLin
 **Why:** `is_`, `has_`, `can_`, `should_`, `in_` read as questions; a negated name makes callers
 write `not is_invalid`, and readers stumble.
 
-**Example:**
-```python
-# WRONG — negated, and not a question
-def is_not_expired(certificate: Certificate, *, today: date) -> bool:
-    return certificate.valid_until >= today
-
-
-# CORRECT
-def is_expired(certificate: Certificate, *, today: date) -> bool:
-    return certificate.valid_until < today
-```
-
 ### The prefix tells the cost and the side effect; the return type tells the failure
 
 **Why:** `get_` is a cheap local lookup, `find_` a search that may find nothing, `fetch_` and
@@ -244,23 +194,6 @@ def record_report_access(report_id: ReportId, *, audit: AuditLog) -> None:
 
 **Why:** a callback the framework calls — `before_request`, `on_startup` — is found by its event;
 an override renamed to something "better" is no longer an override.
-
-**Example:**
-```python
-# WRONG — named for what it does, so nobody sees when it runs
-@final
-class RequestTimer(Middleware):
-    def start_clock(self, request: Request) -> None:
-        request.state.started = time.monotonic()
-
-
-# CORRECT — the event, and the framework's own method name
-@final
-class RequestTimer(Middleware):
-    @override
-    def before_request(self, request: Request) -> None:
-        request.state.started = time.monotonic()
-```
 
 ### The shortest name that stays unambiguous, completed by its signature
 
@@ -344,54 +277,12 @@ class DocumentStatus(StrEnum):
 noun names the concept, the qualifier the one axis that varies — and `Cache` → `LruCache`,
 `ValueError` → `InvalidCurrencyError` say what the subclass adds.
 
-**Example:**
-```python
-# WRONG — three names for one family, none showing the shared concept
-class Exporter(ABC):
-    @abstractmethod
-    def export(self, contacts: Sequence[Contact]) -> bytes: ...
-
-
-@final
-class CsvWriter(Exporter):
-    @override
-    def export(self, contacts: Sequence[Contact]) -> bytes:
-        return render_csv(contacts)
-
-
-# CORRECT — one noun, the qualifier is the format
-@final
-class CsvExporter(Exporter):
-    @override
-    def export(self, contacts: Sequence[Contact]) -> bytes:
-        return render_csv(contacts)
-```
-
 ### An exception names the failure, and only a library prefixes it
 
 **Why:** `sqlalchemy`'s `NoSuchColumnError`, `CircularDependencyError` say what went wrong precisely
 enough to act on; `BillingServiceError` says where. `PydanticUserError` earns its prefix in someone
 else's traceback; in an application every exception in the traceback is yours, and the prefix is
 noise — the package's root exception is the one name that carries it, in both (`errors.md`).
-
-**Example:**
-```python
-# WRONG — the location and the prefix, not the failure
-class BillingServiceError(Exception): ...
-
-
-class BillingServiceInvoiceError(BillingServiceError): ...
-
-
-# CORRECT — the root carries the package; the leaf names what went wrong
-class BillingError(Exception): ...
-
-
-class InvoiceAlreadyPaidError(BillingError):
-    def __init__(self, number: str) -> None:
-        super().__init__(f"Invoice {number} is already paid")
-        self.number = number
-```
 
 ### A method drops the class name; a property is a noun that does no I/O
 
