@@ -116,20 +116,6 @@ Measured on a quorum queue with `x-delivery-limit` and a dead-letter exchange:
 below, and the dead-letter path depends on it. A cancelled handler — at shutdown — is neither acked
 nor rejected, and comes back.
 
-**Example:**
-```python
-# WRONG — acked on receipt: a worker killed mid-hold loses the booking
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.ACK_FIRST)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
-
-
-# CORRECT — acked when the handler returns; an error rejects it to the dead-letter exchange
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
-```
-
 ### The queue carries its delivery limit and its dead-letter exchange
 
 **Why:** without `x-dead-letter-exchange`, `REJECT_ON_ERROR` drops the message; the dead-letter
@@ -193,24 +179,6 @@ FastStream has no handler timeout of its own — the handler's `asyncio.timeout`
 at all (`helpers/channel_manager.py` sets it only when the count is given): RabbitMQ pushes the
 queue into the first worker, and every delivery's ack deadline starts running at once.
 
-**Example:**
-```python
-# WRONG — no prefetch: the whole queue lands in this worker while the others idle
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
-
-
-# CORRECT — at most _PREFETCH_COUNT deliveries held at once; the rest wait for a free worker
-@router.subscriber(
-    _BOOKINGS_QUEUE,
-    ack_policy=AckPolicy.REJECT_ON_ERROR,
-    channel=Channel(prefetch_count=_PREFETCH_COUNT),
-)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
-```
-
 ### `graceful_timeout` is named, and fits inside the orchestrator's grace period
 
 **Why:** `FastStream.run()` handles `SIGTERM` and `SIGINT`, and `graceful_timeout` bounds the wait
@@ -219,20 +187,6 @@ all** — measured: `stop()` returned at once and the running handler never fini
 running when the drain ends is cancelled and abandoned unacknowledged, and the redelivery counts
 toward `x-delivery-limit`: a handler that cannot finish inside the drain is dead-lettered after that
 many deploys (measured).
-
-**Example:**
-```python
-# WRONG — None skips the drain: every deploy abandons every handler in flight
-def build_broker(settings: WorkerSettings) -> RabbitBroker:
-    return RabbitBroker(settings.amqp_url, graceful_timeout=None)
-
-
-# CORRECT — named, and inside the 30-second grace period
-def build_broker(
-    settings: WorkerSettings, *, graceful_timeout_seconds: float = _GRACEFUL_TIMEOUT_SECONDS
-) -> RabbitBroker:
-    return RabbitBroker(settings.amqp_url, graceful_timeout=graceful_timeout_seconds)
-```
 
 ## The CLI and the App's Lifespan
 
