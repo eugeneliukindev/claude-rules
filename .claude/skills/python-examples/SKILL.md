@@ -44,18 +44,6 @@ module. Inline snippets run under `pytest-examples`, which compares what each bl
 namespace: the module's constants are there, and what it needs from elsewhere — a fixed clock, a
 fake — it builds itself.
 
-**Example:**
-```toml
-# WRONG — the >>> examples are never collected, and their outputs drift unseen
-[tool.pytest]
-testpaths = ["tests"]
-
-# CORRECT — every docstring example runs with the suite
-[tool.pytest]
-testpaths = ["tests", "src"]
-addopts = ["--doctest-modules"]
-```
-
 ### Example data is plausible and reserved: never filler, never real
 
 **Why:** `foo` and `test123` say nothing about what the field holds, and `bar.com` or `1.2.3.4` are
@@ -98,31 +86,7 @@ print(receipt.reminder_id, receipt.sent_at, sorted(receipt.channels))
 reader did not come for, and still leaves out the failures it did not think of. One example per
 error the caller must handle shows what to catch and what to do.
 
-**Example:**
-```python
-# WRONG — the main example is mostly error handling, and swallows what it does not name
-try:
-    receipt = client.send(notification)
-    print(receipt.status)
-except Exception as error:
-    print(f"failed: {error}")
-
-
-# CORRECT — the happy path alone; the rejected recipient is the next example
-receipt = client.send(notification)
-print(receipt.status)
-```
-
 ### A deprecated path leaves the examples in the release that deprecates it
 
 **Why:** examples are versioned with the API; an example still showing the old call keeps teaching
 it, and every copy of it emits a `DeprecationWarning` that fails a suite running warnings as errors.
-
-**Example:**
-```python
-# WRONG — deprecated in 4.0 and still the documented way
-receipt = client.send_email(recipient="ann@example.com", subject="Your parcel shipped")
-
-# CORRECT — the example moved in the same release as the deprecation
-receipt = client.send(Notification(recipient="ann@example.com", subject="Your parcel shipped"))
-```
