@@ -7,7 +7,8 @@ converts both ways, and it is registered per connection — so in the pool's `in
 every connection the pool opens, replacements included; registered once at startup, the other
 connections still return `str`. The types live in `pg_catalog`, and the default `schema="public"`
 fails with `unknown type: public.jsonb`. The default codec format is text, so the encoder returns
-`str` — `orjson.dumps` needs `.decode()` here. `setup=` runs on every acquire and is not for codecs.
+`str` — an encoder that produces `bytes` is decoded here. `setup=` runs on every acquire and is not
+for codecs.
 
 **Example:**
 ```python
