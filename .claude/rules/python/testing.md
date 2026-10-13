@@ -29,8 +29,8 @@ are is not.
 **Example:**
 ```python
 # WRONG — a unit test that needs a running database: the fast suite is no longer fast
-def test_renew_subscription_extends_the_period(engine: Engine) -> None:
-    subscriptions = PostgresSubscriptionRepository(engine)
+def test_renew_subscription_extends_the_period(pool: DatabasePool) -> None:
+    subscriptions = PostgresSubscriptionRepository(pool)
     subscriptions.add(_ACTIVE)
 
     renewed = renew_subscription(_ACTIVE.subscription_id, subscriptions=subscriptions)
@@ -48,8 +48,8 @@ def test_renew_subscription_extends_the_period() -> None:
 
 
 @pytest.mark.integration
-def test_postgres_repository_returns_the_subscription_it_stored(engine: Engine) -> None:
-    subscriptions = PostgresSubscriptionRepository(engine)
+def test_postgres_repository_returns_the_subscription_it_stored(pool: DatabasePool) -> None:
+    subscriptions = PostgresSubscriptionRepository(pool)
     subscriptions.add(_ACTIVE)
 
     stored = subscriptions.get(_ACTIVE.subscription_id)
@@ -64,23 +64,23 @@ dialect are what this level exists to exercise.
 
 **Example:**
 ```python
-# WRONG — the "integration" test of a repository mocks the session it integrates with
-async def test_member_repository_finds_saved_member(mocker: MockerFixture) -> None:
-    session = mocker.create_autospec(AsyncSession, instance=True)
-    repository = PostgresMemberRepository(session=session)
+# WRONG — the "integration" test of a repository mocks the connection it integrates with
+def test_member_repository_finds_saved_member(mocker: MockerFixture) -> None:
+    connection = mocker.create_autospec(sqlite3.Connection, instance=True)
+    repository = SqliteMemberRepository(connection=connection)
 
-    await repository.add(Member(card_number="C-1042", name="Ann Lee"))
+    repository.add(Member(card_number="C-1042", name="Ann Lee"))
 
-    session.add.assert_called_once()
+    connection.execute.assert_called_once()
 
 
-# CORRECT — the session comes from a database container fixture; the row is read back
-async def test_member_repository_finds_saved_member(session: AsyncSession) -> None:
-    repository = PostgresMemberRepository(session=session)
+# CORRECT — a real database from a fixture, migrated; the row is read back
+def test_member_repository_finds_saved_member(connection: sqlite3.Connection) -> None:
+    repository = SqliteMemberRepository(connection=connection)
 
-    await repository.add(Member(card_number="C-1042", name="Ann Lee"))
+    repository.add(Member(card_number="C-1042", name="Ann Lee"))
 
-    assert await repository.find("C-1042") == Member(card_number="C-1042", name="Ann Lee")
+    assert repository.find("C-1042") == Member(card_number="C-1042", name="Ann Lee")
 ```
 
 ## Fakes, Not Mocks
