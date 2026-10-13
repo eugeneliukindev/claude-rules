@@ -154,7 +154,7 @@ The wire format is the application's own — `encode_parcel_event` and `decode_p
 versioned, raising `UndecodableEventError` for a payload they refuse — so the channel carries bytes
 and knows no schema. `RedisParcelEventChannel` and `_decode_events` are the last `CORRECT`s above.
 The composition root builds the client once and both implementations on it, runs the relay in its
-task group and cancels it at shutdown — in a FastAPI service that root is the lifespan:
+task group and cancels it at shutdown:
 
 ```python
 @asynccontextmanager
