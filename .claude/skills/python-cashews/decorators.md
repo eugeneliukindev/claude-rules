@@ -9,7 +9,6 @@
 - No `jwt` filter in a key
 - `protected=True` has no shield
 - `early`, `soft` and `hit` need pickle
-- The middlewares that let a client clear the cache
 
 `@cache(...)` caches a function's result with no adapter and no service code — and with no contract,
 no fake, and a single-flight a cancelled caller breaks. It fits a read whose result is already a
@@ -127,9 +126,3 @@ async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
 async def fetch_feed_payload(user_id: UserId, *, feeds: FeedReader) -> bytes:
     return _feed_to_payload(await feeds.latest_for(user_id))
 ```
-
-### A public app never installs the middlewares that let a request clear the cache
-
-**Why:** `CacheRequestControlMiddleware` and `CacheDeleteMiddleware` let any client skip or clear
-the cache with a request header — `Cache-Control: no-cache`, `Clear-Site-Data: "cache"` — and each
-such request goes to the source; a client that sends them on every request turns the cache off.
