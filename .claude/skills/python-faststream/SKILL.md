@@ -89,7 +89,7 @@ payload (`python-workers`).
 # WRONG — a new id on each delivery: every redelivery holds the room again
 @router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
 async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    event = BookingConfirmedV1.model_validate_json(message.body).to_domain()
+    event = parse_booking_confirmed(message.body)
     await inventory.hold(event.booking_id, idempotency_key=message.message_id)
 
 
