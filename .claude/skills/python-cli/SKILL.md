@@ -75,24 +75,6 @@ def list_stale(days: int = _DEFAULT_STALE_DAYS) -> None:
 **Why:** results on stdout can be piped; progress on stdout is read by the next command as data —
 `list-stale | xargs` treats "searching…" as an id. Logging writes to stderr.
 
-**Example:**
-```python
-# WRONG — progress shares stdout with the product
-def run(*, backups: BackupRepository, older_than: date) -> int:
-    print(f"searching backups older than {older_than}")
-    for backup_id in backups.find_stale_ids(older_than=older_than):
-        print(backup_id)
-    return EXIT_SUCCESS
-
-
-# CORRECT — progress is a log record on stderr; stdout carries only the ids
-def run(*, backups: BackupRepository, older_than: date) -> int:
-    logger.info("searching stale backups", extra={"older_than": older_than.isoformat()})
-    for backup_id in backups.find_stale_ids(older_than=older_than):
-        print(backup_id)
-    return EXIT_SUCCESS
-```
-
 ### A boolean option is a pair of flags, never a positional `type=bool`
 
 **Why:** `type=bool` converts the string, and the string `"false"` is non-empty, so it is `True`.
