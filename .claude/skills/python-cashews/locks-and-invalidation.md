@@ -26,7 +26,7 @@ async def build_nightly_report(*, reports: ReportBuilder) -> None:
 ### `@cache.invalidate` decorates the method whose return means committed
 
 **Why:** it deletes after the decorated function returns (*measured*), so on a repository method
-inside the unit of work it deletes before the commit, and a concurrent miss re-caches the old row.
+inside a transaction it deletes before the commit, and a concurrent miss re-caches the old row.
 A template with `*` scans the keyspace on every call. Tags keep a redis set per tag, written beside
 every tagged value; `client_side=True` keeps a bounded in-process copy — 10,000 entries — that
 redis invalidates by broadcast and clears when the connection breaks, the one in-process cache a
@@ -37,22 +37,23 @@ write reaches in every worker.
 # WRONG — the repository's method returns inside the transaction, so the delete comes first
 @final
 class ProfileRepository:
-    def __init__(self, *, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, *, connection: DatabaseConnection) -> None:
+        self._connection = connection
 
     @profile_cache.invalidate("profile:v2:{user_id}")
     async def set_display_name(self, user_id: UserId, display_name: str) -> None:
-        await self._session.execute(_rename_statement(user_id, display_name))
+        await self._connection.execute(_RENAME_PROFILE, user_id, display_name)
 
 
-# CORRECT — the service method closes the unit of work, so its return means committed
+# CORRECT — the service method closes the transaction, so its return means committed
 @final
 class ProfileEditing:
-    def __init__(self, *, unit_of_work: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work = unit_of_work
+    def __init__(self, *, database: Database, profiles: ProfileRepository) -> None:
+        self._database = database
+        self._profiles = profiles
 
     @profile_cache.invalidate("profile:v2:{user_id}")
     async def rename(self, user_id: UserId, display_name: str) -> None:
-        async with self._unit_of_work() as unit:
-            await unit.profiles.set_display_name(user_id, display_name)
+        async with self._database.transaction():
+            await self._profiles.set_display_name(user_id, display_name)
 ```
