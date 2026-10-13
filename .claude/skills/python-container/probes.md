@@ -11,24 +11,23 @@ delay on liveness.
 **Example:**
 ```python
 # WRONG — liveness asks the database: while it is down, every replica is restarted, over and over
-@health_router.get("/livez", status_code=status.HTTP_204_NO_CONTENT)
-async def report_liveness(database: DatabaseDep) -> None:
+async def liveness(database: Database) -> HTTPStatus:
     await database.ping()
+    return HTTPStatus.NO_CONTENT
 
 
 # CORRECT — liveness asks only whether the process answers; the database decides readiness
-@health_router.get("/livez", status_code=status.HTTP_204_NO_CONTENT)
-async def report_liveness() -> None:
-    """Answer while the event loop serves requests."""
+async def liveness() -> HTTPStatus:
+    return HTTPStatus.NO_CONTENT
 
 
-@health_router.get("/readyz", status_code=status.HTTP_204_NO_CONTENT)
-async def report_readiness(database: DatabaseDep) -> None:
+async def readiness(database: Database) -> HTTPStatus:
     try:
         async with asyncio.timeout(_READINESS_DEADLINE_SECONDS):
             await database.ping()
-    except (DatabaseUnavailableError, TimeoutError) as error:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE) from error
+    except (DatabaseUnavailableError, TimeoutError):
+        return HTTPStatus.SERVICE_UNAVAILABLE
+    return HTTPStatus.NO_CONTENT
 ```
 
 ### `HEALTHCHECK`, where Docker or compose runs it, calls liveness with the image's own interpreter
