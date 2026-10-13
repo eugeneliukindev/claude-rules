@@ -106,15 +106,19 @@ The environment's name is metadata only: a resource attribute on traces and metr
 **Example:**
 ```python
 # WRONG — the sandbox is chosen by the environment's name, untested until production
-def build_payment_gateway(settings: Settings) -> PaymentGateway:
+def main() -> None:
+    settings = Settings()
     if settings.environment == "production":
-        return CardGateway(base_url="https://api.payments.example.com")
-    return CardGateway(base_url="https://sandbox.payments.example.com")
+        gateway = CardGateway(base_url="https://api.payments.example.com")
+    else:
+        gateway = CardGateway(base_url="https://sandbox.payments.example.com")
+    run_checkout(gateway=gateway)
 
 
 # CORRECT — the difference is a setting of its own; every environment runs the same code
-def build_payment_gateway(settings: Settings) -> PaymentGateway:
-    return CardGateway(base_url=settings.payment_gateway_url)
+def main() -> None:
+    settings = Settings()
+    run_checkout(gateway=CardGateway(base_url=settings.payment_gateway_url))
 ```
 
 ## YAGNI, KISS, DRY

@@ -96,6 +96,42 @@ def rank(readings: Sequence[SensorReading], *, descending: bool = False) -> list
     return sorted(readings, key=lambda reading: reading.celsius, reverse=descending)
 ```
 
+### A function or a class takes plain values or a config dataclass, never the settings object
+
+**Why:** middleware that kept the settings object it was given changed behaviour when someone edited
+that object after startup; fields copied at construction cannot. The signature of a function taking
+`settings: Settings` stops being a dependency list, and a test has to build the whole tree for one
+call — an untyped `**kwargs` has the same defect. The settings object is what the environment
+filled at start: the entry point reads it and unpacks it, into plain values or, for a group that
+travels together, a frozen config dataclass (`python-wiring`).
+
+**Example:**
+```python
+# WRONG — the signature hides what is read, and a test builds every settings group for one call
+@final
+class RateFetcher:
+    def __init__(self, *, client: HttpClient, settings: Settings) -> None:
+        self._client = client
+        self._settings = settings
+
+    def fetch(self) -> RateTable:
+        return self._client.get_rates(
+            self._settings.rates_url, timeout_seconds=self._settings.rates_timeout_seconds
+        )
+
+
+# CORRECT — the signature is the dependency list; the root unpacks the settings
+@final
+class RateFetcher:
+    def __init__(self, *, client: HttpClient, rates_url: str, timeout_seconds: float) -> None:
+        self._client = client
+        self._rates_url = rates_url
+        self._timeout_seconds = timeout_seconds
+
+    def fetch(self) -> RateTable:
+        return self._client.get_rates(self._rates_url, timeout_seconds=self._timeout_seconds)
+```
+
 ### A function uses only its parameters and module constants
 
 **Why:** global mutable state, an imported `settings`, a clock or randomness read inside are inputs
@@ -259,21 +295,21 @@ naming it adds a line and no meaning.
 ```python
 # WRONG — one channel named, its sibling built inside the constructor call, no blocks
 def build_sensor_pipeline(
-    settings: SensorSettings, *, station_name: str = _STATION_NAME
+    *, site: str, serial_port: str, station_name: str = _STATION_NAME
 ) -> SensorPipeline:
-    station = StationIdentity(name=station_name, site=settings.site)
-    readings = open_reading_stream(station, port=settings.serial_port)
-    return SensorPipeline(readings, open_alarm_channel(station, port=settings.serial_port))
+    station = StationIdentity(name=station_name, site=site)
+    readings = open_reading_stream(station, port=serial_port)
+    return SensorPipeline(readings, open_alarm_channel(station, port=serial_port))
 
 
 # CORRECT — what is shared, what is built from it, what is assembled: one block each
 def build_sensor_pipeline(
-    settings: SensorSettings, *, station_name: str = _STATION_NAME
+    *, site: str, serial_port: str, station_name: str = _STATION_NAME
 ) -> SensorPipeline:
-    station = StationIdentity(name=station_name, site=settings.site)
+    station = StationIdentity(name=station_name, site=site)
 
-    readings = open_reading_stream(station, port=settings.serial_port)
-    alarms = open_alarm_channel(station, port=settings.serial_port)
+    readings = open_reading_stream(station, port=serial_port)
+    alarms = open_alarm_channel(station, port=serial_port)
 
     return SensorPipeline(readings, alarms)
 ```
