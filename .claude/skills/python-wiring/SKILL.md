@@ -351,8 +351,9 @@ constant lives beside the one module that owns its concept, never in a grab-bag.
 ## Settings and Startup
 
 **Before adding or reading a settings field, an environment variable, a feature flag or a secret,
-read [settings.md](settings.md)** — one typed settings object built at the root, fields passed
-instead of the root, tests that never build it, validation at startup, secrets without defaults.
+read [settings.md](settings.md)** — typed settings built at the root, the server's apart from the
+application's, fields passed instead of the root, tests that never build them, validation at startup,
+secrets without defaults.
 
 ## Parameter Objects
 

@@ -5,14 +5,15 @@ The composition root and resource lifetime are in `SKILL.md`; the settings model
 
 ## Contents
 
-- Configuration is one typed settings object, built once at the root and unpacked there
+- Configuration is typed settings, built once at the root and unpacked there
+- The server's settings are a class apart from the application's
 - Tests never build `Settings`; they pass fields
 - Configuration is validated at startup, before serving
 - A secret never appears in code, in a default or in a log
 
 ## The Settings Object
 
-### Configuration is one typed settings object, built once at the root and unpacked there
+### Configuration is typed settings, built once at the root and unpacked there
 
 **Why:** anything that varies by environment read from `os.environ` across the code is a dependency
 nobody declared; a module-level settings instance — or a cached `get_settings()` behind `@lru_cache`
@@ -46,6 +47,42 @@ def main() -> None:
             timeout_seconds=settings.rates_timeout_seconds,
         )
         publish_rates(rates)
+```
+
+### The server's settings are a class apart from the application's
+
+**Why:** the host, the port and the drain configure the process that serves; the database URL and
+the limits configure what it serves. One class holding both makes every entry point supply all of
+it — a worker running the same use cases cannot start without a port it never binds — and lets the
+application's fields grow server knobs. Each entry point builds the classes of the parts it runs.
+
+**Example:**
+```python
+# WRONG — one class: the worker needs HOST and PORT set before it starts
+def serve_main() -> None:
+    settings = Settings()
+    serve(build_app(database_url=settings.database_url), host=settings.host, port=settings.port)
+
+
+def worker_main() -> None:
+    settings = Settings()
+    run_worker(database_url=settings.database_url)
+
+
+# CORRECT — each entry point builds what it runs, and the worker knows nothing of the server
+def serve_main() -> None:
+    server_settings = ServerSettings()
+    app_settings = AppSettings()
+    serve(
+        build_app(database_url=app_settings.database_url),
+        host=server_settings.host,
+        port=server_settings.port,
+    )
+
+
+def worker_main() -> None:
+    app_settings = AppSettings()
+    run_worker(database_url=app_settings.database_url)
 ```
 
 ### Tests never build `Settings`; they pass fields
