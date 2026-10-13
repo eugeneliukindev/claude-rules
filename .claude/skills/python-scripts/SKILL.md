@@ -26,15 +26,6 @@ than its author is expected to run it; `main()` no longer fits on a screen — a
 all. The promotion is a move, not a rewrite: the functions go into a package, and the contracts,
 fakes and tests arrive with the second implementation or the first test, as they would anywhere.
 
-**Example:**
-```python
-# WRONG — the service imports from a script, which is now a module nobody maintains as one
-from scripts.import_tracks import parse_duration
-
-# CORRECT — promoted: the function moved into the package, and the script imports it from there
-from playlists.durations import parse_duration
-```
-
 ### A script calls its one implementation directly: no contract, no fake, no composition root
 
 **Why:** an ABC with a single implementation in a file nobody imports is ceremony, and so are a
@@ -82,25 +73,6 @@ def main() -> None:
 **Why:** `main()` builds what it needs — the pool, the client — and uses it inside a `with`;
 statements at module level run on import, so the file cannot be imported by a test or promoted
 without running.
-
-**Example:**
-```python
-# WRONG — statements at module level: importing the file, from a test or a package, runs it
-with Path(sys.argv[1]).open(encoding="utf-8", newline="") as source:
-    count_by_status = Counter(row["status"] for row in csv.DictReader(source))
-print(count_by_status)
-
-
-# CORRECT — main() plus functions; importing the file runs nothing
-def main() -> None:
-    with Path(sys.argv[1]).open(encoding="utf-8", newline="") as source:
-        count_by_status = Counter(row["status"] for row in csv.DictReader(source))
-    print(count_by_status)
-
-
-if __name__ == "__main__":
-    main()
-```
 
 ### The standard library comes first, and any other package is declared in the script's own header
 
