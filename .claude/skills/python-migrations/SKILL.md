@@ -24,16 +24,6 @@ step that runs them from the release's image is `python-container`; the backfill
 running that loses the column's data. One migration holds one logical change, with an imperative,
 specific message, never `update` or `fix`.
 
-**Example:**
-```sql
--- WRONG — what the generator wrote for a rename: the column and every value in it are dropped
-ALTER TABLE accounts DROP COLUMN name;
-ALTER TABLE accounts ADD COLUMN display_name TEXT;
-
--- CORRECT — edited to the intent: the data stays
-ALTER TABLE accounts RENAME COLUMN name TO display_name;
-```
-
 ### Every migration has a working downgrade, and a destructive step is a revision of its own
 
 **Why:** a downgrade nobody ran fails on the night it is needed; the whole chain is exercised
@@ -93,15 +83,6 @@ ALTER TABLE accounts DROP COLUMN name;
 **Why:** two replicas that each upgrade on start race on the version table, and a slow migration
 holds every replica's startup behind it. The deploy runs one migration step before the new version
 starts — or the runner takes an advisory lock first.
-
-**Example:**
-```bash
-# WRONG — every replica migrates as it starts, and they race
-exec sh -c "python -m ledger.migrate && exec uvicorn ledger.main:app"
-
-# CORRECT — the start command only serves; the deploy runs one migration job first
-exec uvicorn ledger.main:app --host 0.0.0.0 --port 8000
-```
 
 ## Locks
 
