@@ -22,19 +22,6 @@ Parallelism is measured before it is assumed: pool startup and pickling are real
 **Why:** a pool per call starts and tears down its workers every time and breaks every concurrency
 limit; one pool shared by the process is sized once and closed on shutdown (`python-wiring`).
 
-**Example:**
-```python
-# WRONG — worker processes are started and torn down for every report
-async def render_report(report_id: ReportId) -> bytes:
-    with ProcessPoolExecutor() as pool:
-        return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
-
-
-# CORRECT — one pool, sized and built by the composition root, passed in
-async def render_report(report_id: ReportId, *, pool: Executor) -> bytes:
-    return await asyncio.get_running_loop().run_in_executor(pool, _render, report_id)
-```
-
 ### A process pool receives small picklable arguments and runs a module-level function
 
 **Why:** every argument and result is pickled across the process boundary, so a loaded object costs
@@ -63,17 +50,3 @@ async def summarize(path: Path, *, pool: Executor) -> Summary:
 **Why:** forking a process that already has threads or an event loop is undefined behaviour in
 practice. Since 3.14 the Linux default is `forkserver` rather than `fork`, so code that silently
 relied on inherited globals breaks on upgrade; naming the method makes that dependence visible.
-
-**Example:**
-```python
-# WRONG — the platform and the Python version pick the start method
-def build_render_pool(*, workers: int = _RENDER_WORKERS) -> ProcessPoolExecutor:
-    return ProcessPoolExecutor(max_workers=workers)
-
-
-# CORRECT — named once, so the workers start the same way on every platform and version
-def build_render_pool(*, workers: int = _RENDER_WORKERS) -> ProcessPoolExecutor:
-    return ProcessPoolExecutor(
-        max_workers=workers, mp_context=multiprocessing.get_context("spawn")
-    )
-```

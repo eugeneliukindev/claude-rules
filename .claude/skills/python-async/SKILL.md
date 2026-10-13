@@ -23,19 +23,6 @@ scope — one scope bounds every await in its block, where two `wait_for` calls 
 the whole budget. In an async generator the scope wraps the `await` and closes before the `yield`
 (`python-streaming`).
 
-**Example:**
-```python
-# WRONG — a peer that stops sending leaves this await, and its task, waiting forever
-async def read_frame(reader: asyncio.StreamReader) -> bytes:
-    return await reader.readuntil(_FRAME_SEPARATOR)
-
-
-# CORRECT — at the deadline the scope cancels the read and raises TimeoutError
-async def read_frame(reader: asyncio.StreamReader) -> bytes:
-    async with asyncio.timeout(_FRAME_TIMEOUT_SECONDS):
-        return await reader.readuntil(_FRAME_SEPARATOR)
-```
-
 ### A deadline on blocking work lives in the blocking client, not around `to_thread`
 
 **Why:** a thread cannot be cancelled. `asyncio.timeout` around `to_thread` stops the waiting; the

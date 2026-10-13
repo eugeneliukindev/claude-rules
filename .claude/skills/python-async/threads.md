@@ -131,31 +131,3 @@ class PriceCache:
 `contextvars` is the per-task store. A thread-local fits a resource that must not cross threads, a
 connection a non-thread-safe driver hands out. Whether a class may be shared between threads is a
 property its docstring states, never an assumption its callers make.
-
-**Example:**
-```python
-# WRONG — a thread-local for the request id: every task on the loop thread shares it
-_request_state = threading.local()
-
-
-async def handle(request: Request, *, handler: Handler) -> Response:
-    _request_state.request_id = request.headers.get("x-request-id", "")
-    return await handler(request)
-
-
-# CORRECT — one connection per worker thread, for a driver whose connections must not be shared
-@final
-class ThreadConnections:
-    """Thread-safe: each thread gets and reuses its own connection."""
-
-    def __init__(self, *, connect: Callable[[], Connection]) -> None:
-        self._connect = connect
-        self._local = threading.local()
-
-    def connection(self) -> Connection:
-        existing: Connection | None = getattr(self._local, "connection", None)
-        if existing is None:
-            existing = self._connect()
-            self._local.connection = existing
-        return existing
-```
