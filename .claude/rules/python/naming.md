@@ -508,7 +508,7 @@ def archive_statements(merged: Path, runs: Path) -> Path:
 
 
 def parse_for_nightly_job(payload: bytes) -> Customer:
-    return AcmeCrmCustomerSchema.model_validate_json(payload).to_domain()
+    return AcmeCrmCustomerSchema.from_json(payload).to_domain()
 
 
 # CORRECT — the signature states the roles; each name says what it describes or does
@@ -517,7 +517,7 @@ def archive_statements(source: Path, *, into: Path) -> Path:
 
 
 def parse_customer(payload: bytes) -> Customer:
-    return CustomerSchema.model_validate_json(payload).to_domain()
+    return CustomerSchema.from_json(payload).to_domain()
 ```
 
 ## Naming Self-Check
