@@ -7,10 +7,9 @@
 - An explicit key template, always
 - `condition=NOT_NONE`, and `ttl` never `None`
 - No `jwt` filter in a key
-- `protected=True`, the default, has no shield
+- `protected=True`, the default, has no shield; `early`, `soft` and `hit` need pickle
 - `failover` names its exceptions
 - `circuit_breaker` sets `min_calls`
-- `early`, `soft` and `hit` need pickle
 
 `@cache(...)` caches a function's result with no adapter and no service code — and with no contract,
 no fake, and a single-flight a cancelled caller breaks. It fits a read whose result is already a

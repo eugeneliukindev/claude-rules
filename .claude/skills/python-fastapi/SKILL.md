@@ -242,8 +242,9 @@ server entered in the lifespan, under one worker.
 [with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
 domain and named by the return annotation.
 
-**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
-cache entered in the lifespan, and no middleware that lets a client clear it.
+**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the cache
+entered in the lifespan, no middleware that lets a client clear it, decorators on the service and
+not the route, and 429 and 503 for its rate limit and circuit breaker.
 
 **Before publishing a message from a FastAPI app, read [with-faststream.md](with-faststream.md)** —
 the event written to the outbox by the service, never published from the route.
