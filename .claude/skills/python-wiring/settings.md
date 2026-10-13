@@ -7,6 +7,7 @@ The composition root and resource lifetime are in `SKILL.md`; the settings model
 
 - Configuration is typed settings, built once at the root and unpacked there
 - The server's settings are a class apart from the application's
+- Behaviour never branches on the deployment environment's name
 - Tests never build `Settings`; they pass fields
 - Configuration is validated at startup, before serving
 - A secret never appears in code, in a default or in a log
@@ -84,6 +85,33 @@ def worker_main() -> None:
     app_settings = AppSettings()
     run_worker(database_url=app_settings.database_url)
 ```
+
+### Behaviour never branches on the deployment environment's name; each difference is a setting
+
+**Why:** `if environment == "production"` is code that runs for the first time in the environment it
+guards, and every new environment — a staging copy, a customer's install — must be added to every
+such branch. Each difference becomes a setting of its own — a URL, a flag, a limit — that the entry
+point reads with the rest and hands in; nothing below the entry point reads the process environment.
+The environment's name is metadata only: a resource attribute on traces and metrics, a log field.
+
+**Example:**
+```python
+# WRONG — the sandbox is chosen by the environment's name, untested until production
+def main() -> None:
+    settings = Settings()
+    if settings.environment == "production":
+        gateway = CardGateway(base_url="https://api.payments.example.com")
+    else:
+        gateway = CardGateway(base_url="https://sandbox.payments.example.com")
+    run_checkout(gateway=gateway)
+
+
+# CORRECT — the difference is a setting of its own; every environment runs the same code
+def main() -> None:
+    settings = Settings()
+    run_checkout(gateway=CardGateway(base_url=settings.payment_gateway_url))
+```
+
 
 ### Tests never build `Settings`; they pass fields
 
