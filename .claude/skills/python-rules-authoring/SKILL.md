@@ -17,17 +17,21 @@ misread; a rule breaking one of the conventions below is a defect **in this docu
 rather than worked around in code. The incidents behind the conventions are in
 [history.md](history.md).
 
-### Every rule is a heading, a `**Why:**` and an `**Example:**`, in that order
+### Every rule is a heading and a `**Why:**`, and an `**Example:**` only where it earns its place
 
 **Why:** a fixed hierarchy lets the reader find the part they need without reading the rest, the way
 a linter documents a check. The heading is the rule, one sentence, `###` under the topic's `##`. The
 `**Why:**` is what breaks, and when — Anthropic's guidance asks for the motivation because the model
 generalises from it, and a measured incident goes here in a clause. The `**Example:**` is the pair,
 `# WRONG` and `# CORRECT`; a carve-out is one more `# CORRECT`, or one `**Except:**` sentence before
-the example when it needs words. A rule about a fact with no code to show — a version, a default —
-has no example, and a list that *is* the rule — the module order, the Definition of Done — stays a
-list. Prose beyond that is cut: an explanation the example already shows, a restatement, the
-history of the rule.
+the example when it needs words. An example earns its place when the model gets the code wrong
+without it — a library's trap, a measured fact — when the shape of the code is not readable from the
+heading — an actor split, a contract suite, guards first — or when its effect was measured. A rule
+whose heading already says what the code looks like — `Final` on a constant, the unit in a name —
+has none: every example is one more place another rule can contradict, and each is checked against
+all of them. Undecided, an always-loaded rule keeps its example and a skill's rule drops it. A list
+that *is* the rule — the module order, the Definition of Done — stays a list. Prose beyond that is
+cut: an explanation the example already shows, a restatement, the history of the rule.
 
 **Example:**
 ``````markdown
@@ -64,15 +68,6 @@ cannot tell whether the other kinds were excluded deliberately or never consider
 encapsulation rule said "class" for months, and the cost was twenty-eight public names nobody
 imports. Name every kind it covers, and let the examples illustrate, never define.
 
-**Example:**
-```markdown
-<!-- WRONG — functions and constants nobody imports stay public -->
-### A class used only inside its module is prefixed `_`
-
-<!-- CORRECT — every kind of top-level name -->
-### A class, function, constant or type alias used only inside its module is prefixed `_`
-```
-
 ### Every prohibition carries its carve-out in the same place
 
 **Why:** "never name a vendor" and "implementations are named for what makes them concrete" are both
@@ -80,32 +75,11 @@ true, and a reader who meets the first without the second renames `SlackNotifier
 three sections away, or in another file, does not exist; two skills that state a rule and its
 exception apart are two contradictory rules.
 
-**Example:**
-```markdown
-<!-- WRONG — the exception lives in another section -->
-### A name never mentions a vendor
-
-<!-- CORRECT — the exception beside the rule -->
-### A name never mentions a vendor
-
-**Except:** an implementation is named for what makes it concrete — `SlackNotifier` implements
-`Notifier`.
-```
-
 ### The `**Why:**` says what breaks and when, with a real incident where one exists
 
 **Why:** "names are local" is an opinion; "the model was replaced twice and the name outlived both"
 is a cost with a date on it. The failure mode lets a reader settle an edge case alone. An incident
 is never invented to fill the slot: an invented one teaches a failure nobody has seen.
-
-**Example:**
-```markdown
-<!-- WRONG — a preference, which loses the first argument with someone in a hurry -->
-**Why:** names should describe the role, not the implementation.
-
-<!-- CORRECT — what broke -->
-**Why:** the model behind `GptSummarizer` was replaced twice, and the name outlived both.
-```
 
 ### An example is complete code, and the pair differs only in what the rule is about
 
@@ -137,15 +111,6 @@ dependencies hold in every `CORRECT`. An API claim from memory is how a skill ca
 serialises `Decimal`: the block is pasted into a scratch file with its names declared and run
 against the library at the version the skill names before it is committed.
 
-**Example:**
-```python
-# WRONG — breaks the constants rule while illustrating a different one
-TIMEOUT = 30
-
-# CORRECT — the constant as every other rule says to write it
-_REQUEST_TIMEOUT_SECONDS: Final = 30.0
-```
-
 ### Examples vary their domain, and neither half names a project
 
 **Why:** the model copies the surface too: Anthropic's guidance asks for diverse examples "so Claude
@@ -156,32 +121,12 @@ other, and no domain more than about a sixth of all blocks. These files are read
 repository, so no entity, vendor or identifier of the project at hand appears — the shape of the
 incident carries the lesson, its names carry none of it.
 
-**Example:**
-```markdown
-<!-- WRONG — the project's own names, meaningless anywhere else -->
-**Why:** `acme-render` refused to write `QuarterlyDeck.pptx` and reported only exit code 3.
-
-<!-- CORRECT — the shape of the incident -->
-**Why:** a native library refused to write its output file and reported only an exit code.
-```
-
 ### A rule leads with the positive, states its reason, and saves capitals for nothing
 
 **Why:** naming the thing to avoid makes it more available, not less, so the positive leads and the
 `# WRONG` carries the negative; a bare `NEVER` is kept for a rule whose right answer is not obvious
 from the positive alone. Capitals make current models over-apply a rule to cases it was never meant
 for, and a file where every second line says `MUST` has no emphasis left; the reason does the work.
-
-**Example:**
-```markdown
-<!-- WRONG — a prohibition in capitals, with no reason to generalise from -->
-### You MUST NEVER use `datetime.now()` without a timezone
-
-<!-- CORRECT — the positive, and why -->
-### Time is created aware, in UTC
-
-**Why:** a naive `datetime` compares wrong against an aware one and shifts by the server's offset.
-```
 
 ### A new rule says whether it holds in a one-off script
 
@@ -198,16 +143,6 @@ the budgets and the `SKILL.md` ceilings, that every `python` block parses, that 
 description, and the layering; exit code 1 means a finding, printed as `path:line: message`. What it
 cannot check — that a `CORRECT` passes `mypy --strict` against its library — stays a step of its
 own.
-
-**Example:**
-```bash
-# WRONG — committed on the strength of a read-through
-git commit --message "docs(skills): add the retry budget rule"
-
-# CORRECT — checked first; point it at ~/.claude, or at .claude in a clone of the rules
-python <this skill's directory>/scripts/check_rules.py ~/.claude
-git commit --message "docs(skills): add the retry budget rule"
-```
 
 ## Where a Rule Lives
 
