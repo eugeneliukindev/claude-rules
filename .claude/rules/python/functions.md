@@ -311,15 +311,19 @@ naming it adds a line and no meaning.
 **Example:**
 ```python
 # WRONG — one channel named, its sibling built inside the constructor call, no blocks
-def build_sensor_pipeline(settings: SensorSettings) -> SensorPipeline:
-    station = StationIdentity(name=_STATION_NAME, site=settings.site)
+def build_sensor_pipeline(
+    settings: SensorSettings, *, station_name: str = _STATION_NAME
+) -> SensorPipeline:
+    station = StationIdentity(name=station_name, site=settings.site)
     readings = open_reading_stream(station, port=settings.serial_port)
     return SensorPipeline(readings, open_alarm_channel(station, port=settings.serial_port))
 
 
 # CORRECT — what is shared, what is built from it, what is assembled: one block each
-def build_sensor_pipeline(settings: SensorSettings) -> SensorPipeline:
-    station = StationIdentity(name=_STATION_NAME, site=settings.site)
+def build_sensor_pipeline(
+    settings: SensorSettings, *, station_name: str = _STATION_NAME
+) -> SensorPipeline:
+    station = StationIdentity(name=station_name, site=settings.site)
 
     readings = open_reading_stream(station, port=settings.serial_port)
     alarms = open_alarm_channel(station, port=settings.serial_port)
