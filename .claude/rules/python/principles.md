@@ -155,9 +155,8 @@ constant often cures it.
 
 **Example:**
 ```python
-# WRONG — one limit, written twice: change one and the schema and the check disagree
-class InvoiceSchema(BaseModel):
-    lines: list[LineSchema] = Field(max_length=100)
+# WRONG — one limit, written twice: change one and the published schema and the check disagree
+INVOICE_SCHEMA: Final = {"type": "object", "properties": {"lines": {"maxItems": 100}}}
 
 
 def check_invoice(invoice: Invoice) -> None:
@@ -167,10 +166,7 @@ def check_invoice(invoice: Invoice) -> None:
 
 # CORRECT — one fact, one constant, read by both
 MAX_INVOICE_LINES: Final = 100
-
-
-class InvoiceSchema(BaseModel):
-    lines: list[LineSchema] = Field(max_length=MAX_INVOICE_LINES)
+INVOICE_SCHEMA: Final = {"type": "object", "properties": {"lines": {"maxItems": MAX_INVOICE_LINES}}}
 
 
 def check_invoice(invoice: Invoice) -> None:
