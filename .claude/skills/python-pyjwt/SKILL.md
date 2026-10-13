@@ -148,8 +148,8 @@ def decode_access_token(
 `kid` no sooner than `cooldown_duration` (30 s) after its last fetch, so invented `kid`s cannot
 flood the issuer; all of it lives on the instance — measured, three clients built per call fetched
 three times, one shared client none. Its timeout defaults to 30 s. The fetch is blocking `urllib`,
-so `verify` blocks: in FastAPI it runs from a plain `def` dependency, elsewhere through
-`asyncio.to_thread`. Keys come from the configured URL, never a `jku` or `x5u` header.
+so `verify` blocks: an async caller runs it through `asyncio.to_thread` or a framework's
+thread pool. Keys come from the configured URL, never a `jku` or `x5u` header.
 
 **Example:**
 ```python
