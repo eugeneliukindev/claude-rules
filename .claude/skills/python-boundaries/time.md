@@ -46,15 +46,16 @@ metrics.
 **Example:**
 ```python
 # WRONG — accepts an instant in no zone
-class CheckInRequest(BaseModel):
-    guest_id: UUID
-    arrived_at: datetime
+def parse_arrival(raw: str) -> datetime:
+    return datetime.fromisoformat(raw)
 
 
-# CORRECT — pydantic rejects a value without an offset
-class CheckInRequest(BaseModel):
-    guest_id: UUID
-    arrived_at: AwareDatetime
+# CORRECT — a value without an offset is refused where it enters
+def parse_arrival(raw: str) -> datetime:
+    arrived_at = datetime.fromisoformat(raw)
+    if arrived_at.tzinfo is None:
+        raise NaiveDatetimeError(raw)
+    return arrived_at.astimezone(UTC)
 ```
 
 ### Elapsed time is added in UTC; a calendar day is a `date`

@@ -12,8 +12,8 @@ paths:
 
 # Boundaries
 
-The library mechanics behind these rules: a retry policy's numbers are `python-tenacity`, a gRPC
-channel's retries `python-grpc`.
+The library mechanics behind these rules: a validating model in pydantic is `python-pydantic`, a
+retry policy's numbers are `python-tenacity`, a gRPC channel's retries `python-grpc`.
 
 ## Boundary Models and Domain Objects
 
@@ -57,22 +57,22 @@ fails in production; named fields fail the check on the line that maps them.
 
 **Example:**
 ```python
-# WRONG — model_dump() feeds Booking whatever keys the request happens to have
-class BookingRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
+# WRONG — asdict() feeds Booking whatever keys the request happens to have
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BookingRequest:
     room_id: UUID
     check_in: date
     check_out: date
 
     def to_domain(self) -> Booking:
-        return Booking(**self.model_dump())
+        return Booking(**asdict(self))
 
 
 # CORRECT — every field named once, so a rename on either side is a type error here
-class BookingRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BookingRequest:
     room_id: UUID
     check_in: date
     check_out: date
@@ -93,7 +93,9 @@ moves to a function in the same boundary module, and the schema stays a shape.
 **Example:**
 ```python
 # WRONG — the response model owns who may see the author's email
-class ArticleResponse(BaseModel):
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArticleResponse:
     title: str
     body: str
     author_email: str | None
@@ -109,7 +111,9 @@ class ArticleResponse(BaseModel):
 
 
 # CORRECT — the shape stays a shape; the view's rule is a function beside it
-class ArticleResponse(BaseModel):
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArticleResponse:
     title: str
     body: str
     author_email: str | None
@@ -186,10 +190,10 @@ class SmtpMailer:
 **Why:** a connect or read timeout, a rate limit, a server error, a broker disconnect pass with
 time; a business rejection, a validation error or an auth failure does not, and retrying a conflict
 is a loop, not resilience. The adapter translates upstream errors into a transient and a permanent
-type, and the retry policy keys on the type — bounded, exponential and jittered, with the numbers named in the
-adapter. A pool that let the event loop's own timeout escape untranslated broke every
-caller that caught the library's documented timeout error. A cache read is not retried even when
-the failure is transient: the source is its fallback (`python-caching`).
+type, and the retry policy keys on the type — bounded, exponential and jittered, with the numbers
+named in the adapter. A pool that let the event loop's own timeout escape untranslated broke every
+caller that caught the library's documented timeout error. A cache read is not retried even when the
+failure is transient: the source is its fallback (`python-caching`).
 
 **Example:**
 ```python
@@ -246,18 +250,13 @@ changes on redelivery; how a consumer records it is in `python-workers`.
 **Example:**
 ```python
 # WRONG — a redelivered purchase awards the points a second time
-def award_points(message: PurchaseCompleted, *, unit_of_work: UnitOfWork) -> None:
-    with unit_of_work:
-        unit_of_work.loyalty.award(message.member_id, message.points)
+def award_points(message: PurchaseCompleted, *, ledger: LoyaltyLedger) -> None:
+    ledger.award(message.member_id, message.points)
 
 
-# CORRECT — the event id is recorded in the same transaction, and a repeat is skipped
-def award_points(message: PurchaseCompleted, *, unit_of_work: UnitOfWork) -> None:
-    with unit_of_work:
-        if unit_of_work.processed_events.contains(message.event_id):
-            return
-        unit_of_work.loyalty.award(message.member_id, message.points)
-        unit_of_work.processed_events.add(message.event_id)
+# CORRECT — the ledger stores the event id with the award in one write, and refuses a repeat
+def award_points(message: PurchaseCompleted, *, ledger: LoyaltyLedger) -> None:
+    ledger.award_once(message.event_id, member_id=message.member_id, points=message.points)
 ```
 
 ### An operation promises a state, so a repeat of it succeeds
@@ -292,11 +291,11 @@ def cancel_subscription(subscription_id: SubscriptionId, *, subscriptions: Subsc
 ### Retries happen at one level, the adapter, and the outermost boundary owns the deadline
 
 **Why:** budgets nest multiplicatively — four attempts inside a caller that also makes four is
-sixteen, and a five-second budget becomes eighty. A service sees one call that succeeded or raised
-a final error; a gRPC channel's `retryPolicy` is that one level for its calls. The
-one retry above the adapter is a deadlock or serialization failure, which retries the whole unit of
-work (`python-persistence`). When a dependency keeps failing, the adapter stops calling it and
-raises an unavailability error, so callers degrade deliberately instead of queueing timeouts.
+sixteen, and a five-second budget becomes eighty. A service sees one call that succeeded or raised a
+final error; a gRPC channel's `retryPolicy` is that one level for its calls. The one retry above the
+adapter is a deadlock or serialization failure, which retries the whole transaction
+(`python-persistence`). When a dependency keeps failing, the adapter stops calling it and raises an
+unavailability error, so callers degrade deliberately instead of queueing timeouts.
 
 **Example:**
 ```python
