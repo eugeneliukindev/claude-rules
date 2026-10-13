@@ -4,7 +4,8 @@ description: >-
   Starts and maintains a uv Python project: init, the src layout, requires-python, the lock,
   dependency bounds and groups, py.typed, a starting pyproject.toml with mypy, ruff and pytest.
   Use when creating a project or package, editing pyproject.toml, choosing a Python floor, or
-  adding, upgrading or auditing a dependency or dev tool.
+  adding, upgrading or auditing a dependency or dev tool. Not for a package's public surface
+  (python-packaging).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

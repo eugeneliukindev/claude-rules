@@ -3,7 +3,8 @@ name: python-scripts
 description: >-
   Says which rules relax for one-off scripts, notebooks and data fixes and which never do; PEP 723
   metadata, dry-run by default, the point a script stops being one. Use when writing a standalone
-  script, a notebook, a backfill script or a data fix, or a file with a '# /// script' block.
+  script, a notebook, a backfill script or a data fix, or a file with a '# /// script' block. Not
+  for a command others run (python-cli).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

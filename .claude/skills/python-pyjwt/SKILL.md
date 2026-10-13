@@ -2,9 +2,9 @@
 name: python-pyjwt
 description: >-
   PyJWT mechanics behind the token verifier: pinned algorithms, required claims, audience and
-  issuer, PyJWKClient caching and timeouts, its errors, the blocking fetch off the loop, a
-  round-trip test. Use when code imports jwt, calls jwt.decode or jwt.encode, or builds a
-  PyJWKClient.
+  issuer, PyJWKClient caching and timeouts, its errors, the blocking fetch off the loop, a round-
+  trip test. Use when code imports jwt, calls jwt.decode or jwt.encode, or builds a PyJWKClient.
+  Not for 401 against 403 (python-auth).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

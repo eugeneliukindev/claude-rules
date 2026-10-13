@@ -1,10 +1,10 @@
 ---
 name: python-sync
 description: >-
-  Writes threaded and multiprocess Python: threads or processes for the workload, shared executors,
-  every future read, bounded queues, threads that stop. Use when code imports threading,
-  concurrent.futures, multiprocessing or queue, starts a thread or a pool, or handles a signal
-  without an event loop.
+  Writes threaded and multiprocess Python: threads or processes for the workload, shared
+  executors, every future read, bounded queues, threads that stop. Use when code imports
+  threading, concurrent.futures, multiprocessing or queue, starts a thread or a pool, or handles a
+  signal without an event loop. Not for asyncio (python-async).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

@@ -2,8 +2,9 @@
 name: python-async
 description: >-
   Writes asyncio code that never blocks the loop, bounds every await and fan-out, and cleans up on
-  cancellation. Use when writing async def, awaiting I/O, using create_task, gather, a semaphore, a
-  queue or anyio, or handing work from a coroutine to a thread or a process pool.
+  cancellation. Use when writing async def, awaiting I/O, using create_task, gather, a semaphore,
+  a queue or anyio, or handing work from a coroutine to a thread or a process pool. Not for
+  threads or pools without a loop (python-sync).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

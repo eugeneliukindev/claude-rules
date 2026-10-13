@@ -4,7 +4,7 @@ description: >-
   Designs queue consumers and background jobs whatever the broker: idempotent handlers, acking
   after commit, dead letters, one retry layer, versioned payloads, nested deadlines, shutdown,
   ordering. Use when writing or reviewing a consumer, a task or a background job, or deciding how
-  a message is acked, retried or dead-lettered.
+  a message is acked, retried or dead-lettered. Not for FastStream's API (python-faststream).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

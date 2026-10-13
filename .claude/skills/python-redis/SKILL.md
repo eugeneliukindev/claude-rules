@@ -3,7 +3,8 @@ name: python-redis
 description: >-
   redis-py mechanics behind the cache and channel contracts: one client with chosen timeouts and
   retry, pool limits, px against ex, RedisCache, locks, pub/sub gaps, tests. Use when code imports
-  redis or redis.asyncio, builds a Redis client, or calls set, lock or pubsub on it.
+  redis or redis.asyncio, builds a Redis client, or calls set, lock or pubsub on it. Not for cache
+  design (python-caching).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

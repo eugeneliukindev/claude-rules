@@ -4,7 +4,7 @@ description: >-
   cashews mechanics behind the application's cache contract: setup in the composition root, safe
   defaults, the adapter, decorator traps, locks, invalidation, tests. Use when code imports
   cashews, calls cache.setup, or decorates a function with @cache, @cache.locked or
-  @cache.invalidate.
+  @cache.invalidate. Not for cache design (python-caching).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

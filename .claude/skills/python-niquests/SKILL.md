@@ -3,7 +3,8 @@ name: python-niquests
 description: >-
   niquests mechanics for outbound HTTP, which carry over to httpx: one session from the root, a
   timeout on every request, status and transport errors translated, redirects, TLS. Use when code
-  imports niquests or httpx, builds a session, or makes an outbound HTTP request.
+  imports niquests or httpx, builds a session, or makes an outbound HTTP request. Not for when to
+  retry (python-boundaries).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

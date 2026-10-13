@@ -4,7 +4,7 @@ description: >-
   Handles input from outside the process: secrets and tokens, password hashing, parameterized SQL,
   subprocess arguments, safe parsers, path traversal, archives, SSRF, size limits, failing closed.
   Use when code handles a request body, a filename, a URL, an upload, an archive, a subprocess
-  argument, a credential or any untrusted payload.
+  argument, a credential or any untrusted payload. Not for tokens and permissions (python-auth).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

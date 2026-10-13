@@ -3,7 +3,8 @@ name: python-caching
 description: >-
   Designs a cache in front of a database or an API, whatever the library. Use when code reads or
   writes a cache, picks a TTL or a cache key, invalidates after a write, serves a hot key read by
-  many requests at once, or builds a TTLCache.
+  many requests at once, or builds a TTLCache. Not for cashews or redis calls (python-cashews,
+  python-redis).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

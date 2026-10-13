@@ -4,7 +4,7 @@ description: >-
   Designs authentication and authorization whatever the token library: a bearer token verified
   into a principal, 401 against 403, object-level checks, session cookies, token lifetime, service
   credentials. Use when code reads an Authorization header or a session cookie, checks a role,
-  scope or permission, or decides who may see a resource.
+  scope or permission, or decides who may see a resource. Not for PyJWT calls (python-pyjwt).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

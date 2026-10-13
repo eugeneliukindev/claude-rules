@@ -4,7 +4,8 @@ description: >-
   Designs long-lived responses whatever serves them: release on disconnect, bounded queues,
   deadlines, the SSE and WebSocket protocols, fan-out across workers, downloads. Use when code
   yields events to a client, returns a StreamingResponse or EventSourceResponse, accepts a
-  WebSocket, streams a file or an export, or syncs connections between processes.
+  WebSocket, streams a file or an export, or syncs connections between processes. Not for asyncio
+  in general (python-async).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

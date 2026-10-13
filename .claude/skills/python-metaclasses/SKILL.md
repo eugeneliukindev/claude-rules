@@ -4,7 +4,8 @@ description: >-
   Designs class-creation hooks: the rung to take — class decorator, __init_subclass__,
   __set_name__, metaclass — their order, subclass validation, registries, conflicts, typing. Use
   when writing a metaclass, __init_subclass__, a descriptor, a subclass or plugin registry, a
-  declarative base, or a class statement with keyword arguments.
+  declarative base, or a class statement with keyword arguments. Not for an ABC or Protocol
+  (python-contracts).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

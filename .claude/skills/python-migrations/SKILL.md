@@ -3,7 +3,7 @@ name: python-migrations
 description: >-
   Plans schema migrations whatever the tool: one change per migration, working downgrades,
   backfills kept apart, expand-migrate-contract, locks. Use when planning or reviewing a schema
-  change, a column change or a backfill.
+  change, a column change or a backfill. Not for alembic's commands (python-alembic).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

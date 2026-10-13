@@ -4,7 +4,7 @@ description: >-
   Designs contracts past the defaults: Protocol against ABC, runtime checks, the shapes a contract
   method takes, where implementations and fakes live. Use when writing an abstract base class, a
   Protocol, a base class or mixin, a second implementation or a test fake, or deciding what a
-  consumer depends on.
+  consumer depends on. Not for a metaclass or __init_subclass__ (python-metaclasses).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

@@ -3,7 +3,7 @@ name: python-tenacity
 description: >-
   tenacity mechanics for retry policies: retry keyed on a translated exception, a stop with a time
   budget, proportional jitter, logging, testing a policy. Use when code imports tenacity or
-  applies @retry.
+  applies @retry. Not for when to retry (python-boundaries).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

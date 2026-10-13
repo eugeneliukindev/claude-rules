@@ -4,7 +4,8 @@ description: >-
   Designs what crosses a process boundary: validation at the edge, timeouts, retries and
   idempotency, serialization, files other processes read, time, money and identifiers. Use when
   code calls HTTP, a queue, a cache, a database or a file, writes a payload for another process,
-  or handles datetimes, Decimal amounts or UUIDs.
+  or handles datetimes, Decimal amounts or UUIDs. Not for niquests or httpx calls (python-
+  niquests).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

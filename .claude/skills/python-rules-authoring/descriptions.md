@@ -28,7 +28,8 @@ description: >-
 wins — on a public benchmark, wrong selection grew with the size of the library and caused most of
 the loss. Two skills whose descriptions both match the same work load the same text twice. A topic
 says it designs something "whatever the library"; a library skill starts with the library's name and
-says it holds the mechanics behind the topic's contract.
+says it holds the mechanics behind the topic's contract. Where a neighbour still matches the same
+words, a closing `Not for … (python-x).` names it for the near miss.
 
 **Example:**
 ```yaml
@@ -39,5 +40,6 @@ description: >-
 # CORRECT — the library first, and the mechanics behind the topic's contract
 description: >-
   redis-py mechanics behind the cache and lock contracts: clients, pools, Lua, pub/sub. Use when
-  code imports redis or redis.asyncio, or configures a Redis connection.
+  code imports redis or redis.asyncio, or configures a Redis connection. Not for cache design
+  (python-caching).
 ```

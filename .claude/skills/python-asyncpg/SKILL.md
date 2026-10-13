@@ -4,6 +4,7 @@ description: >-
   asyncpg mechanics for PostgreSQL without an ORM: the pool, transactions, Records to domain
   objects, parameters and batching, errors, JSONB codecs, PgBouncer, timeouts. Use when code
   imports asyncpg, creates a pool or connection, or runs raw SQL on PostgreSQL from async code.
+  Not for asyncpg under SQLAlchemy (python-sqlalchemy).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

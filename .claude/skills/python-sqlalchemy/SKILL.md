@@ -2,8 +2,9 @@
 name: python-sqlalchemy
 description: >-
   SQLAlchemy 2.0 mechanics: select() and the session, Mapped models, relationship loading, the
-  engine and sessionmaker, bulk inserts, upserts, version_id_col, text() with bound parameters. Use
-  when code imports sqlalchemy.
+  engine and sessionmaker, bulk inserts, upserts, version_id_col, text() with bound parameters.
+  Use when code imports sqlalchemy. Not for where a transaction begins (python-persistence) or a
+  schema change (python-alembic).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

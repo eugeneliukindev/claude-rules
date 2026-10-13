@@ -4,6 +4,7 @@ description: >-
   alembic mechanics for revisions: what autogenerate misses, the naming convention, inline table
   definitions, CONCURRENTLY, drift checks, the chain run up and down. Use when code imports
   alembic, a file is added under migrations/versions, or alembic revision --autogenerate is run.
+  Not for planning the change (python-migrations).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"

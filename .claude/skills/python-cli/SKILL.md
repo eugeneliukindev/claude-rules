@@ -3,7 +3,8 @@ name: python-cli
 description: >-
   Designs a command-line interface with argparse, click or typer: arguments, exit codes, stdout
   against stderr, dry-run, configuration precedence, interrupts, tests. Use when writing an entry
-  point that takes arguments, a command or subcommand, a __main__ block, or a sys.exit call.
+  point that takes arguments, a command or subcommand, a __main__ block, or a sys.exit call. Not
+  for a one-off script (python-scripts).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
