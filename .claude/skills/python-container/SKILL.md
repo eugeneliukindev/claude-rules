@@ -116,17 +116,6 @@ update bot. The uv image is a build input like the interpreter. A digest nobody 
 vulnerabilities it was built with, so a bot rewrites it and the image is rebuilt on its pull
 requests even when the code has not changed.
 
-**Example:**
-```dockerfile
-# WRONG — two moving tags: the same commit builds a different image next week
-FROM python:3.12-slim
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
-
-# CORRECT — the version for the reader, the digest for the build
-FROM python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
-COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /bin/
-```
-
 ## Starting and Stopping
 
 ### `CMD` uses the exec form, so the server is PID 1 and receives `SIGTERM`
@@ -135,15 +124,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789
 seconds and sends `SIGKILL`, the lifespan never closes, and the shutdown `python-async` designs
 never runs — with a single command, a `migrate && serve` chain, or a wrapper script that does not
 `exec`. A wrapper is allowed when its last line is `exec "$@"`.
-
-**Example:**
-```dockerfile
-# WRONG — /bin/sh is PID 1: the stop takes ten seconds and ends in SIGKILL, exit code 137
-CMD uvicorn --factory tracker.api:create_app --host 0.0.0.0 --port 8000
-
-# CORRECT — the server is PID 1, receives SIGTERM, closes the lifespan and exits 0
-CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
-```
 
 ### A process you write handles `SIGTERM` itself, because PID 1 ignores what it does not handle
 
@@ -193,16 +173,6 @@ CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--p
 editable, over the `--no-editable` build — needs uv in the image and a writable cache, and on a
 read-only root fails with "Failed to initialize cache". The build already resolved everything, and
 `PATH` puts the environment's scripts first.
-
-**Example:**
-```dockerfile
-# WRONG — resolves and installs at start, ships uv, and fails on a read-only root
-CMD ["uv", "run", "uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", \
-     "--port", "8000"]
-
-# CORRECT — the build resolved; the environment's bin directory is first on PATH
-CMD ["uvicorn", "--factory", "tracker.api:create_app", "--host", "0.0.0.0", "--port", "8000"]
-```
 
 ## Hardening
 
