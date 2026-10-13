@@ -141,13 +141,6 @@ runtime-evaluated-decorators = [
 ]
 ```
 
-### The response is an explicit model built from the domain object
-
-**Why:** a route annotated `-> Task` makes the domain type the response model, and every field it
-has is published — one added attribute is one leaked field (`python-boundaries`). An explicit
-`response_model=` over a returned domain object drops extras, but maps by attribute name, out of
-sight; `from_domain` states the mapping.
-
 ### Domain errors map to statuses in one handler, and only a classified error gets a 4xx
 
 **Why:** a service that raises `HTTPException` has learned about the transport, and a CLI or a
@@ -243,3 +236,10 @@ server entered in the lifespan, under one worker.
 **Before mounting a strawberry GraphQL app in FastAPI, read
 [with-strawberry.md](with-strawberry.md)** — the context getter as an authenticating dependency, on
 `HTTPConnection`.
+
+**Before declaring a request or response model, or answering a validation error, read
+[with-pydantic.md](with-pydantic.md)** — `input` dropped from the 422, the response built from the
+domain and named by the return annotation.
+
+**Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
+cache entered in the lifespan, and no middleware that lets a client clear it.
