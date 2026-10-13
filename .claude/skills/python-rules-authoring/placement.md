@@ -44,20 +44,6 @@ nothing noticed. The always-loaded files — `core.md`, `naming.md`, `types.md` 
 together on the first read, `testing.md` on its own test-file globs; splitting them by topic changes
 the organisation, not the cost, so one splits only to give a rule its own address.
 
-**Example:**
-```markdown
-<!-- WRONG — no front matter: loaded at launch in every session, Go repositories included -->
-# Mutability
-
-<!-- CORRECT — loaded when a Python file is read -->
----
-paths:
-  - "**/*.py"
----
-
-# Mutability
-```
-
 ### `new-files.md` is the one file with no front matter, and the exception is measured
 
 **Why:** a path-scoped rule loads when a matching file is *read*; a task that writes `x.py` into an
@@ -98,35 +84,12 @@ comments moved into skills, the measured layout lost almost every run and none o
 opened. What moves to a skill is what a concrete signal in the task points at — a library,
 `async def`, a migration, an untrusted input.
 
-**Example:**
-```markdown
-<!-- WRONG — a universal rule left as a line, its example one skill away -->
-### A module answers to one actor (examples: `python-modules`)
-
-<!-- CORRECT — the rule with its example where every edit sees it; the async rules in a skill -->
-### A module answers to one actor
-
-**Why:** ...
-
-**Example:**
-...
-```
-
 ### Tool configuration belongs to the repository; the rules hold what survives the choice of tool
 
 **Why:** which linters a project runs and how its hooks are wired changes from repository to
 repository, and its owner owns those files. What belongs here is the discipline around suppressions
 and limits and, where a checker can hold a rule, the name of the check. The exception is
 `python-project`, which writes the defaults for an empty directory where nobody has chosen yet.
-
-**Example:**
-```markdown
-<!-- WRONG — one project's tool choice, stated as a rule for every repository -->
-### ruff runs with `select = ["E", "F", "I"]` and line length 88
-
-<!-- CORRECT — what holds whatever the tool -->
-### A suppression names its rule code and its reason on its line
-```
 
 ### An addition displaces something, and a ceiling is raised only by an argument on record
 
@@ -136,15 +99,6 @@ stopped earning its tokens, or the section that belongs in a skill, and cuts tha
 can be cut, it becomes a skill. The budget counts the set, not the file. Raising a ceiling is
 allowed once per good argument, written into `history.md` with the arithmetic — a ceiling adjusted
 to fit the current size is not a ceiling.
-
-**Example:**
-```python
-# WRONG — the ceiling moved to fit the skill that outgrew it
-_SKILL_MAX_TOKENS: Final = 6_200
-
-# CORRECT — the ceiling stays, and the skill gains a reference file
-_SKILL_MAX_TOKENS: Final = 5_000
-```
 
 ### A skill grows by a reference file per branch, never by a second skill for the same trigger
 

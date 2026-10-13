@@ -8,15 +8,6 @@ Anthropic's guidance says skills cannot reference each other — so a skill that
 homed elsewhere states it as one imperative line and points home for the reason, the examples and
 the carve-outs. One line is the ceiling.
 
-**Example:**
-```markdown
-<!-- WRONG — a bare reference: a task that never opens the other skill never gets the rule -->
-Cache failures are covered in `python-caching`.
-
-<!-- CORRECT — the rule in one line, and where its reason lives -->
-A cache failure is a counted miss, never an error (why and how: `python-caching`).
-```
-
 ### A topic skill is library-agnostic, and a library's mechanics and examples live in its own skill
 
 **Why:** the topic holds the design and the protocol's facts, with examples against the
@@ -47,17 +38,6 @@ async def cached_profile(cache: Cache, user_id: UserId) -> Profile | None:
 reasons and their examples hold for any library. A library skill points back to the topic for the
 reason as often as it needs. `scripts/check_rules.py` reports a topic file that names a library
 skill after its first heading below the title.
-
-**Example:**
-```markdown
-<!-- WRONG — a library skill named inside a rule's reason -->
-**Why:** a lock without a TTL outlives a crashed holder; `python-redis` sets it with `SET NX PX`.
-
-<!-- CORRECT — the route in the introduction, before the first heading -->
-# Caching
-
-The redis implementation is `python-redis`, the decorator layer `python-cashews`.
-```
 
 ### An example uses its own library and the application's contracts, never another library's API
 
