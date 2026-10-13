@@ -21,21 +21,21 @@ file.
 **Example:**
 ```python
 # WRONG — on a 3.12 floor, a module-level TypeVar for one function
-ModelT = TypeVar("ModelT", bound=BaseModel)
+ModelT = TypeVar("ModelT", bound=WireModel)
 
 
 def parse_all(model_type: type[ModelT], payloads: Iterable[bytes]) -> list[ModelT]:
-    return [model_type.model_validate_json(payload) for payload in payloads]
+    return [model_type.from_json(payload) for payload in payloads]
 
 
 # CORRECT — the parameter is declared in the signature that uses it
-def parse_all[T: BaseModel](model_type: type[T], payloads: Iterable[bytes]) -> list[T]:
-    return [model_type.model_validate_json(payload) for payload in payloads]
+def parse_all[T: WireModel](model_type: type[T], payloads: Iterable[bytes]) -> list[T]:
+    return [model_type.from_json(payload) for payload in payloads]
 ```
 
 ### A PEP 695 parameter is one capital letter; a `TypeVar` is private and suffixed
 
-**Why:** the bound carries the meaning (`[T: BaseModel]`), so the letter need not — `T`, `K` and
+**Why:** the bound carries the meaning (`[T: WireModel]`), so the letter need not — `T`, `K` and
 `V`, `P` and `R` for `ParamSpec` and return; only a generic with three or more parameters spells
 them out. A `TypeVar` is a module-level name, so it is private and takes the PEP 484 suffix: `_T`,
 `_KT`, `_VT`, `_P`, `_R`. Where several share a module, the role goes in front of the suffix —
@@ -44,19 +44,19 @@ them out. A `TypeVar` is a module-level name, so it is private and takes the PEP
 **Example:**
 ```python
 # WRONG — below 3.12: a public name, no suffix, and a role the bound already states
-ModelType = TypeVar("ModelType", bound=BaseModel)
+ModelType = TypeVar("ModelType", bound=WireModel)
 
 
 def parse_all(model_type: type[ModelType], payloads: Iterable[bytes]) -> list[ModelType]:
-    return [model_type.model_validate_json(payload) for payload in payloads]
+    return [model_type.from_json(payload) for payload in payloads]
 
 
 # CORRECT — private and suffixed, sorted beside its variance twins
-_ModelT = TypeVar("_ModelT", bound=BaseModel)
+_ModelT = TypeVar("_ModelT", bound=WireModel)
 
 
 def parse_all(model_type: type[_ModelT], payloads: Iterable[bytes]) -> list[_ModelT]:
-    return [model_type.model_validate_json(payload) for payload in payloads]
+    return [model_type.from_json(payload) for payload in payloads]
 ```
 
 ### A type parameter the body relies on is bounded, and a parameter takes a read-only collection

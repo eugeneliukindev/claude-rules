@@ -212,30 +212,35 @@ def parse_product(raw: ProductPayload) -> Product:
 ### A constraint the type cannot express is an `Annotated` alias, named once
 
 **Why:** `Literal` narrows which values; `Annotated` attaches rules the static type has no room for
-— bounds, a pattern, a dependency marker — read at runtime by whatever validates the boundary. The
+— bounds, a pattern, a dependency marker — read at runtime by whatever validates the boundary;
+`annotated_types` spells the bounds every validator reads. The
 same bounds in five models are five places to get one wrong. A bound restated in a service body
 means the boundary leaked: domain code receives values that are already valid.
 
 **Example:**
 ```python
 # WRONG — one limit, written into every query model
-class ArticleQuery(BaseModel):
-    page_size: int = Field(default=50, ge=1, le=200)
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArticleQuery:
+    page_size: Annotated[int, Interval(ge=1, le=200)] = 50
 
 
-class CommentQuery(BaseModel):
-    page_size: int = Field(default=50, ge=1, le=200)
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CommentQuery:
+    page_size: Annotated[int, Interval(ge=1, le=200)] = 50
 
 
 # CORRECT — the constrained type is named once and travels with its name
-type PageSize = Annotated[int, Field(ge=1, le=200)]
+type PageSize = Annotated[int, Interval(ge=1, le=200)]
 
 
-class ArticleQuery(BaseModel):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArticleQuery:
     page_size: PageSize = 50
 
 
-class CommentQuery(BaseModel):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CommentQuery:
     page_size: PageSize = 50
 ```
 
