@@ -140,7 +140,10 @@ protects data, money or a credential joins the second.
 **Why:** a budget counted by eye was broken by six lines before anyone noticed. The script checks
 the budgets and the `SKILL.md` ceilings, that every `python` block parses, that every skill and
 `.md` file a document names exists, that `core.md` names every skill, every front matter and
-description, and the layering; exit code 1 means a finding, printed as `path:line: message`. What it
+description, the layering, a library's API outside its skill, and that every `CORRECT` keeps the
+mechanical rules — `Final`, the dataclass flags, the modern typing spelling, no naive `now()`, no
+mutable default, no bare `except`, no setting read inside a factory or a root-built class; exit code
+1 means a finding, printed as `path:line: message`. What it
 cannot check — that a `CORRECT` passes `mypy --strict` against its library — stays a step of its
 own.
 

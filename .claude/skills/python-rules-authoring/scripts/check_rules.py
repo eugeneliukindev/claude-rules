@@ -93,6 +93,19 @@ _LIBRARY_INTEGRATIONS: Final = frozenset(
 # is capped at 1% of the context window, so a description is a trigger, not a table of contents.
 _DESCRIPTION_MAX_CHARACTERS: Final = 400
 _DESCRIPTION_TRIGGER: Final = "Use when"
+# What a CORRECT half shows is what the model copies, so it keeps the mechanical rules of every
+# other rule: a constant is Final, a dataclass is frozen, slotted and keyword-only, and so on.
+_EXAMPLE_MARKER: Final = re.compile(r"^# (WRONG|CORRECT)\b")
+_CONSTANT_NAME: Final = re.compile(r"^_?[A-Z][A-Z0-9_]*[A-Z0-9]$")
+_SETTING_NAME: Final = re.compile(
+    r"(SECONDS|TTL|_MAX_|^_?MAX_|LIMIT|SIZE|BYTES|WINDOW|INTERVAL|ATTEMPTS|DEADLINE|TIMEOUT"
+    r"|LIFETIME|MARGIN|CAPACITY|WORKERS|_PATH|PREFIX)"
+)
+_FACTORY_NAME: Final = re.compile(r"^(build_|create_|make_|managed_|open_)")
+_TEST_DOUBLE_PREFIXES: Final = ("InMemory", "Fake", "Recording", "Stub", "Broken")
+_LEGACY_TYPING: Final = frozenset({"Optional", "Union", "List", "Dict", "Tuple", "Set", "Type"})
+_NAIVE_NOW: Final = frozenset({"datetime.now", "datetime.utcnow", "date.today"})
+_DATACLASS_FLAGS: Final = ("frozen=True", "slots=True", "kw_only=True")
 # A reference file's table of contents is part of its introduction.
 _CONTENTS_HEADING: Final = "## Contents"
 # The map's table rows are "| skill | when |"; the cell after the first pipe names the skills.
@@ -212,6 +225,11 @@ def run(*, root: Path) -> int:
             finding
             for document in (*rules, *skill_files)
             for finding in _library_api_findings(document)
+        ),
+        *(
+            finding
+            for document in (*rules, *skill_files)
+            for finding in _example_findings(document)
         ),
         *(
             finding
@@ -426,6 +444,112 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
         if skill_name in library_skills or skill_name in _META_SKILLS:
             continue
         yield from _library_names_past_introduction(document, library_skills)
+
+
+def _example_findings(document: _Document) -> Iterator[_Finding]:
+    if document.path.parent.name in _META_SKILLS:
+        return
+    for block in _code_blocks(document.lines):
+        if block.language != "python":
+            continue
+        source = _correct_half(block.body)
+        try:
+            tree = ast.parse(textwrap.dedent(source))
+        except SyntaxError:
+            continue
+        for line, message in _example_violations(tree):
+            yield _Finding(
+                path=document.path, line=block.start_line + line, message=f"CORRECT: {message}"
+            )
+
+
+def _correct_half(body: Sequence[str]) -> str:
+    # WRONG lines become blank so the line numbers still point into the file.
+    kept: list[str] = []
+    is_wrong = False
+    for line in body:
+        marker = _EXAMPLE_MARKER.match(line)
+        if marker is not None:
+            is_wrong = marker.group(1) == "WRONG"
+            kept.append("")
+            continue
+        kept.append("" if is_wrong else line)
+    return "\n".join(kept)
+
+
+def _example_violations(tree: ast.Module) -> Iterator[tuple[int, str]]:
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and _CONSTANT_NAME.match(node.targets[0].id)
+        ):
+            yield node.lineno, f"constant {node.targets[0].id} is not Final"
+    for any_node in ast.walk(tree):
+        yield from _node_violations(any_node)
+    yield from _setting_violations(tree)
+
+
+def _node_violations(node: ast.AST) -> Iterator[tuple[int, str]]:
+    if isinstance(node, ast.ClassDef):
+        for decorator in node.decorator_list:
+            spelled = ast.unparse(decorator)
+            if spelled.split("(")[0].removeprefix("dataclasses.") == "dataclass":
+                missing = [flag for flag in _DATACLASS_FLAGS if flag not in spelled]
+                if missing:
+                    yield node.lineno, f"{node.name} lacks {', '.join(missing)}"
+    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
+        if any(isinstance(default, (ast.List, ast.Dict, ast.Set)) for default in defaults):
+            yield node.lineno, f"{node.name} has a mutable default"
+    elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+        if node.value.id in _LEGACY_TYPING:
+            yield node.lineno, f"{node.value.id}[...] instead of the modern spelling"
+    elif isinstance(node, ast.Call) and not node.args and not node.keywords:
+        if ast.unparse(node.func) in _NAIVE_NOW:
+            yield node.lineno, f"{ast.unparse(node.func)}() without a timezone"
+    elif isinstance(node, ast.ExceptHandler) and node.type is None:
+        yield node.lineno, "a bare except"
+
+
+def _setting_violations(tree: ast.Module) -> Iterator[tuple[int, str]]:
+    # A setting read inside a factory, or inside a class the root builds, belongs in its signature.
+    scopes: list[ast.FunctionDef | ast.AsyncFunctionDef] = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _FACTORY_NAME.match(node.name)
+    ]
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ClassDef)
+            and not node.name.startswith(_TEST_DOUBLE_PREFIXES)
+            and not any("strawberry" in ast.unparse(decorator) for decorator in node.decorator_list)
+        ):
+            scopes.extend(
+                member
+                for member in node.body
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+    for scope in scopes:
+        defaults = {
+            name.id
+            for default in (*scope.args.defaults, *scope.args.kw_defaults)
+            if default is not None
+            for name in ast.walk(default)
+            if isinstance(name, ast.Name)
+        }
+        for statement in scope.body:
+            for name in ast.walk(statement):
+                if (
+                    isinstance(name, ast.Name)
+                    and isinstance(name.ctx, ast.Load)
+                    and name.id not in defaults
+                    and _CONSTANT_NAME.match(name.id)
+                    and _SETTING_NAME.search(name.id)
+                ):
+                    yield name.lineno, f"{scope.name} reads the setting {name.id}"
 
 
 def _library_api_findings(document: _Document) -> Iterator[_Finding]:
