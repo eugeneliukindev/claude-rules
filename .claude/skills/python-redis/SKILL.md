@@ -13,9 +13,8 @@ paths:
 
 Checked against redis-py 8.1 (`redis.asyncio`) and redis 8; everything marked *measured* was run
 against a real server. What a cache must do whatever holds it is `python-caching`; the channel
-contract, the relay and its fake are `python-streaming`. This file is how redis-py carries them
-out, and where its defaults disagree. Retries in general are `python-boundaries`; who builds and
-closes the client is `python-wiring`.
+contract, the relay and its fake are `python-streaming`. Retries in general are `python-boundaries`;
+who builds and closes the client is `python-wiring`.
 
 ## The Client
 

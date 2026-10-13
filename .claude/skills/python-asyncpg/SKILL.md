@@ -11,14 +11,13 @@ paths:
 
 # asyncpg
 
-Checked against asyncpg 0.32, asyncpg-stubs 0.32 and PostgreSQL 17. One use case is one
-transaction, a repository returns domain objects, and an N+1 is an error (`python-persistence`);
-every value is a bound parameter (`python-security`); every await has a deadline (`python-async`).
-This file is how asyncpg carries them out. asyncpg fits async code that talks only to PostgreSQL
-and writes its own SQL; psycopg 3 fits sync code, or one API for both. Under SQLAlchemy the engine
-owns the pool whatever driver sits below, and `python-sqlalchemy` applies instead. A one-off script
-opens one `asyncpg.connect(..., command_timeout=...)` and closes it in `finally`
-(`python-scripts`).
+Checked against asyncpg 0.32, asyncpg-stubs 0.32 and PostgreSQL 17. One use case is one transaction,
+a repository returns domain objects, and an N+1 is an error (`python-persistence`); every value is a
+bound parameter (`python-security`); every await has a deadline (`python-async`). asyncpg fits async
+code that talks only to PostgreSQL and writes its own SQL; psycopg 3 fits sync code, or one API for
+both. Under SQLAlchemy the engine owns the pool whatever driver sits below, and `python-sqlalchemy`
+applies instead. A one-off script opens one `asyncpg.connect(..., command_timeout=...)` and closes
+it in `finally` (`python-scripts`).
 
 ## Typing
 

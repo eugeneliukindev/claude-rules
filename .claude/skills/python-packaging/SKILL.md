@@ -12,8 +12,7 @@ paths:
 
 # Packaging and Public Surface
 
-The underscore rule for names inside a module is in `modules.md`; this file is about the surface a
-package promises and where each module sits on it.
+The underscore rule for names inside a module is in `modules.md`.
 
 | Level | How it is marked | Who may import it | What it guarantees |
 |---|---|---|---|

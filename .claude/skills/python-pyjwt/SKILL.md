@@ -12,10 +12,10 @@ paths:
 
 # PyJWT
 
-Checked against PyJWT 2.15.1 with `cryptography`, which RS256 needs — the `pyjwt[crypto]` extra.
-The contract this implements, the `Principal` it returns, its two errors and how the edge answers
-them are `python-auth`; this file is the implementation and the library's own traps.
-`authentication/pyjwt.py` is the only module that imports `jwt` (`python-contracts`).
+Checked against PyJWT 2.15.1 with `cryptography`, which RS256 needs — the `pyjwt[crypto]` extra. The
+contract this implements, the `Principal` it returns, its two errors and how the edge answers them
+are `python-auth`. `authentication/pyjwt.py` is the only module that imports `jwt`
+(`python-contracts`).
 
 ## The Verifier
 

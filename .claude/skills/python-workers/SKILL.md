@@ -15,10 +15,10 @@ paths:
 Consumer design, whatever the broker. The examples are plain functions over the application's own
 contracts; the broker library is only what calls them — FastStream on RabbitMQ is
 `python-faststream`, and Celery 5.6, taskiq 0.13, aiokafka 0.14 and arq 0.28 are mapped in
-[libraries.md](libraries.md). The rules a consumer shares with every adapter — idempotent
-consumers, one retry level, versioned payloads — are in `python-boundaries`; this file is what a
-worker adds. The adapter's retry policy is `python-tenacity`, and the wire model's
-strict, versioned JSON parsing in pydantic is `python-pydantic`.
+[libraries.md](libraries.md). The rules a consumer shares with every adapter — idempotent consumers,
+one retry level, versioned payloads — are in `python-boundaries`. The adapter's retry policy is
+`python-tenacity`, and the wire model's strict, versioned JSON parsing in pydantic is
+`python-pydantic`.
 
 ## The Handler
 

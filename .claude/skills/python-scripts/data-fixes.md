@@ -9,7 +9,7 @@
 - The complete script
 
 The batching, bounding and idempotence of a backfill against a live database are in
-`python-migrations`; this file is what a script adds.
+`python-migrations`.
 
 ### Dry run is the default, and writing takes `--apply`
 

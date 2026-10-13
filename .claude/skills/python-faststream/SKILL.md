@@ -14,9 +14,9 @@ paths:
 
 Checked against FastStream 0.7 on RabbitMQ 4.3. The consumer's design — the handler as a plain
 function, idempotency, when to acknowledge, dead-lettering, one retry layer, deadlines, shutdown —
-is in `python-workers`; this file is how FastStream and RabbitMQ carry it out. Every number marked
-measured came from a handler that always raises, on a real broker. `RabbitBroker` lives behind the
-`faststream[rabbit]` extra (`aio-pika`), the CLI behind `faststream[cli]`.
+is in `python-workers`. Every number marked measured came from a handler that always raises, on a
+real broker. `RabbitBroker` lives behind the `faststream[rabbit]` extra (`aio-pika`), the CLI behind
+`faststream[cli]`.
 
 ## The Subscriber
 

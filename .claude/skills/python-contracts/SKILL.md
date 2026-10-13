@@ -14,8 +14,8 @@ paths:
 
 When a class is worth writing at all, and the defaults for a contract — an ABC that implementations
 inherit, sized to its consumer, composition for reuse — are in `classes.md`; `@override` on every
-implementation is in `types.md`. This is what comes after: when a `Protocol` fits instead, what a
-contract's methods look like, and where implementations and fakes live.
+implementation is in `types.md`. What comes after: when a `Protocol` fits instead, what a contract's
+methods look like, and where implementations and fakes live.
 
 ## Declaring a Contract
 

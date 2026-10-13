@@ -12,12 +12,11 @@ paths:
 
 # cashews
 
-Checked against cashews 7.6 with redis-py 8.1, against redis 8; everything marked *measured* was
-run against a real server. What a cache must do whatever the library — the `Cache` contract, keys,
-TTLs, the wire format, stampedes, invalidation after commit — is `python-caching`; this file is how
-cashews carries it out, and which of its defaults break it. The redis-py client underneath is
-`python-redis`. `import cashews` and write `cashews.Cache`: the application's contract is also
-named `Cache`, and the prefix keeps the two apart in the one file that sees both.
+Checked against cashews 7.6 with redis-py 8.1, against redis 8; everything marked *measured* was run
+against a real server. What a cache must do whatever the library — the `Cache` contract, keys, TTLs,
+the wire format, stampedes, invalidation after commit — is `python-caching`. The redis-py client
+underneath is `python-redis`. `import cashews` and write `cashews.Cache`: the application's contract
+is also named `Cache`, and the prefix keeps the two apart in the one file that sees both.
 
 ## Setup
 

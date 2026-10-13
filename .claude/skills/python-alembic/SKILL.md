@@ -12,11 +12,10 @@ paths:
 
 # alembic
 
-
 Checked against alembic 1.17. What a migration may contain and how it is deployed — one change per
 revision, a working downgrade, no backfill in a schema revision, expand before contract, one
 migration step per deploy — is `python-migrations`; the models it diffs against are
-`python-sqlalchemy`. This file is how alembic spells it.
+`python-sqlalchemy`.
 
 ### The `MetaData` has a naming convention, so every constraint has a name
 

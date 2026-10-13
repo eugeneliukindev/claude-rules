@@ -13,9 +13,8 @@ paths:
 
 Checked against tenacity 9.2. What is retried — only a transient failure, at one level, within a
 total deadline — is `python-boundaries`; inside a worker, a backoff that fits the handler's deadline
-is tenacity's and a longer wait the broker's (`python-workers`); a gRPC call whose channel retries
-through `retryPolicy` gets no tenacity around it (`python-grpc`). This file is how the policy is
-written once that is decided.
+is tenacity's and a longer wait the broker's (`python-workers`); a client with a retry policy of
+its own gets no tenacity around it.
 
 ### A policy names `retry=` by exception type, `stop=` with a total budget, and `reraise=True`
 

@@ -7,7 +7,7 @@
 - Signing keys rotate through the key set
 - Credential endpoints are rate-limited in the shared cache
 
-Prefer an identity provider; this file is for a service that issues its own tokens.
+Prefer an identity provider.
 
 ### An access token lives minutes, and carries `iss`, `aud`, `sub`, `iat`, `exp`, `jti` and `kid`
 

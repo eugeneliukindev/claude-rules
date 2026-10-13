@@ -14,10 +14,9 @@
 - uvicorn's flags for long-lived connections
 - Tests: `websocket_connect`, and an SSE stream that ends
 
-Checked against FastAPI 0.143, Starlette 1.7, sse-starlette 3.5 and uvicorn 0.54. What a stream
-must do — release on disconnect, a bounded queue, a send deadline, a lifetime, the WebSocket and SSE
-protocols, fan-out — is `python-streaming`; this file is how FastAPI, Starlette and uvicorn carry it
-out.
+Checked against FastAPI 0.143, Starlette 1.7, sse-starlette 3.5 and uvicorn 0.54. What a stream must
+do — release on disconnect, a bounded queue, a send deadline, a lifetime, the WebSocket and SSE
+protocols, fan-out — is `python-streaming`.
 
 ### Events go out through an `EventSourceResponse`, never a bare `StreamingResponse`
 

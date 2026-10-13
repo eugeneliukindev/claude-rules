@@ -7,7 +7,7 @@
 - Routes tested through the app with the fake verifier
 
 What a verifier must do — the contract, the two errors, 401 against 403 against 503, a fixed body —
-is `python-auth`; this file is how a FastAPI app carries it out.
+is `python-auth`.
 
 ### `require_principal` is a plain `def` mapping the verifier's errors to a fixed 401 and a 503
 

@@ -13,8 +13,7 @@ paths:
 
 Checked against SQLAlchemy 2.1; the 2.0-style API below is unchanged in 2.1. One use case is one
 transaction, opened by the service and never committed by a repository, and a repository returns
-frozen domain objects, never ORM rows (`python-persistence`); revisions are `python-alembic`. This
-file is how to spell those rules here.
+frozen domain objects, never ORM rows (`python-persistence`); revisions are `python-alembic`.
 
 ## Queries
 

@@ -15,7 +15,7 @@ paths:
 Assumes v2.11 or later; checked against 2.14. Where a validating model belongs — at the process
 boundary only, mapped into a frozen domain object through `to_domain()` and `from_domain()` — is
 `python-boundaries`; a model reused as a GraphQL input is `python-strawberry`; FastStream's message
-body is `python-faststream`. This file is how pydantic spells those rules.
+body is `python-faststream`.
 
 ## The API and the Checker
 

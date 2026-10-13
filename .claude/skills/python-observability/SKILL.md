@@ -12,9 +12,8 @@ paths:
 
 # Observability
 
-How to write a log line — levels, messages, `extra=`, no secrets — is `logging.md`; this file is the
-rest: what is a log at all, and what is a metric or a trace instead. gRPC's metrics come from
-`grpcio-observability`, not the OpenTelemetry instrumentation (`python-grpc`).
+How to write a log line — levels, messages, `extra=`, no secrets — is `logging.md`; below is what is
+a log at all, and what is a metric or a trace instead.
 
 ## One Question, One Signal
 
