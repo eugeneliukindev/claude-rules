@@ -103,9 +103,7 @@ class Course(Base):
 
 **Why:** `pool_pre_ping=True` replaces a connection dropped by a database restart at checkout
 instead of failing the request; SQLAlchemy has no portable statement timeout, so it goes through
-the driver's `connect_args`. With `postgresql+asyncpg` the engine owns asyncpg's pool and these
-rules apply, not `python-asyncpg`'s; asyncpg takes no `options`, so the timeout is
-`connect_args={"server_settings": {"statement_timeout": "5000"}}`.
+the driver's `connect_args`.
 
 **Example:**
 ```python
@@ -222,3 +220,8 @@ read [writes.md](writes.md)** — `insert()` with a list, one `update()`, the di
 
 **Before writing a query as text, read [raw-sql.md](raw-sql.md)** — `text()` with bound
 parameters, and identifiers from an allowlist.
+
+## With asyncpg
+
+**Before building an engine on `postgresql+asyncpg`, read [with-asyncpg.md](with-asyncpg.md)** — the
+engine's pool instead of asyncpg's, and the statement timeout through `server_settings`.
