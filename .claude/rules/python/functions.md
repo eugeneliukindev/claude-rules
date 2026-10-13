@@ -182,7 +182,7 @@ value a reader would mistake for a lookup, and never behind a `get_` (`naming.md
 **Example:**
 ```python
 # WRONG — a getter that opens a session when none exists
-def get_session(user_id: UserId, *, sessions: SessionStore) -> Session:
+def get_session(user_id: UserId, *, sessions: SessionStore) -> LoginSession:
     session = sessions.find(user_id)
     return session if session is not None else sessions.open(user_id)
 
