@@ -137,7 +137,7 @@ async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> N
 
 ### Each failure is retried by exactly one layer
 
-**Why:** the broker redelivers and the adapter's `tenacity` policy retries; together they multiply
+**Why:** the broker redelivers and the adapter's retry policy retries; together they multiply
 — three attempts in the adapter under a delivery limit of five is fifteen calls to a dependency
 that is already struggling (`python-boundaries`). A redelivery comes at once, with no backoff, so a
 retry with backoff that fits inside the handler's deadline lives in the adapter,
