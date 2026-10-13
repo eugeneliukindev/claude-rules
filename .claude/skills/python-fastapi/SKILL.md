@@ -243,3 +243,6 @@ domain and named by the return annotation, and the zero-argument factory uvicorn
 
 **Before caching with cashews in a FastAPI app, read [with-cashews.md](with-cashews.md)** — the
 cache entered in the lifespan, and no middleware that lets a client clear it.
+
+**Before publishing a message from a FastAPI app, read [with-faststream.md](with-faststream.md)** —
+the event written to the outbox by the service, never published from the route.
