@@ -413,21 +413,3 @@ def archive_statements(source: Path, *, into: Path) -> Path:
 def parse_customer(payload: bytes) -> Customer:
     return CustomerSchema.from_json(payload).to_domain()
 ```
-
-## Naming Self-Check
-
-Before finishing any piece of code, verify every new identifier:
-
-- [ ] Could a new teammate say what it is without opening its definition?
-- [ ] Is it a bare filler word, or a catch-all verb (`process`, `handle`, `do`)?
-- [ ] For functions: a precise verb, exactly one action, honest about side effects and cost?
-- [ ] For predicates: positive, and phrased as a question?
-- [ ] For quantities: is the unit in the name? For collections: plural, named after its elements?
-- [ ] For classes and types: a noun, and does any suffix name a real role? Is every contract named
-      for its capability, and does every `Base` hand down real implementation?
-- [ ] Does it match the shape of its family, or is it the outlier that should be renamed?
-- [ ] Is the same concept called by the same word everywhere else?
-- [ ] Does the body stay at the abstraction level the name promises, with every concrete rule in
-      exactly one concretely named unit?
-- [ ] Does it survive the relocation test (Names Are Local, above) — no history, place, caller or
-      neighbour?

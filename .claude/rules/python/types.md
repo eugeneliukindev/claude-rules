@@ -15,26 +15,6 @@ The decisions behind these are in the `python-types` skill; these apply everywhe
 generics on a 3.12+ floor say in one place what `Optional` and `TypeVar` + `Generic` spread over
 three.
 
-**Example:**
-```python
-# WRONG — the old spelling: a TypeVar declared apart from the class that uses it
-T = TypeVar("T", bound=Entity)
-
-
-class Repository(Generic[T]):
-    def find(self, key: str) -> Optional[T]:
-        return self._items.get(key)
-
-
-# CORRECT — the parameter is declared where it is used
-class Repository[T: Entity]:
-    def __init__(self) -> None:
-        self._item_by_key: dict[str, T] = {}
-
-    def find(self, key: str) -> T | None:
-        return self._item_by_key.get(key)
-```
-
 ### Parameters take `collections.abc` types; returns are concrete
 
 **Why:** `Mapping[str, int]` in accepts every mapping and handles variance without `covariant=`;
