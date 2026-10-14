@@ -220,16 +220,27 @@ class SqlEnrollmentRepository(EnrollmentRepository):
 runs, read [relationships.md](relationships.md)** — `lazy="raise"`, `selectinload` against
 `joinedload`, `contains_eager`, a statement-counting fixture.
 
+- Every relationship is declared `lazy="raise"`
+- A collection loads with `selectinload`, a many-to-one with `joinedload`
+- A relationship the query already joined is populated with `contains_eager`
+- Statements are counted with a `before_cursor_execute` listener, per use case
+
 ## Writes
 
 **Before writing many rows, changing rows by a condition, upserting, or adding a version column,
 read [writes.md](writes.md)** — `insert()` with a list, one `update()`, the dialect's
 `on_conflict_do_update`, `version_id_col` and `StaleDataError`.
 
+- Many rows are one `insert()` with a list, and a set-based change is one `update()`
+- An upsert is the dialect's `insert(...).on_conflict_do_update(...)`
+- Optimistic locking is `version_id_col` on an assigned column
+
 ## Raw SQL
 
 **Before writing a query as text, read [raw-sql.md](raw-sql.md)** — `text()` with bound
 parameters, and a list as an expanding `bindparam`.
+
+- A value in `text()` is a `:name` bound parameter, and a list is an expanding `bindparam`
 
 ## With Other Libraries
 
