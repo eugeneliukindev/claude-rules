@@ -58,17 +58,21 @@ async def fetch_statements(
     return list(await asyncio.gather(*(api.statement(customer_id) for customer_id in customer_ids)))
 
 
-# CORRECT — at most _MAX_IN_FLIGHT requests, under one deadline
+# CORRECT — at most max_in_flight requests, under one deadline
 async def fetch_statements(
-    customer_ids: Sequence[CustomerId], *, api: StatementApi
+    customer_ids: Sequence[CustomerId],
+    *,
+    api: StatementApi,
+    max_in_flight: int = _MAX_IN_FLIGHT,
+    deadline_seconds: float = _STATEMENTS_DEADLINE_SECONDS,
 ) -> list[Statement]:
-    limit = asyncio.Semaphore(_MAX_IN_FLIGHT)
+    limit = asyncio.Semaphore(max_in_flight)
 
     async def fetch(customer_id: CustomerId) -> Statement:
         async with limit:
             return await api.statement(customer_id)
 
-    async with asyncio.timeout(_STATEMENTS_DEADLINE_SECONDS), asyncio.TaskGroup() as group:
+    async with asyncio.timeout(deadline_seconds), asyncio.TaskGroup() as group:
         tasks = [group.create_task(fetch(customer_id)) for customer_id in customer_ids]
     return [task.result() for task in tasks]
 ```
@@ -169,7 +173,7 @@ MAX_INVOICE_LINES: Final = 100
 INVOICE_SCHEMA: Final = {"type": "object", "properties": {"lines": {"maxItems": MAX_INVOICE_LINES}}}
 
 
-def check_invoice(invoice: Invoice) -> None:
-    if len(invoice.lines) > MAX_INVOICE_LINES:
+def check_invoice(invoice: Invoice, *, max_lines: int = MAX_INVOICE_LINES) -> None:
+    if len(invoice.lines) > max_lines:
         raise InvoiceTooLongError(invoice.number)
 ```
