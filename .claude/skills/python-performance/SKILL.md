@@ -2,9 +2,9 @@
 name: python-performance
 description: >-
   Speeds Python up by measurement: profile first, fix the algorithm, pick the container by its
-  operation, stream instead of materializing, cache with bounds, pin a budget with a test. Use
-  when code is slow or must be optimized, profiled or benchmarked, a list serves as a queue, many
-  numbers sit in memory, or functools.cache is considered.
+  operation, stream instead of materializing, cache with bounds, pin a budget with a test. Use when
+  code is slow, takes minutes on large input or must be optimized, profiled or benchmarked, a list
+  serves as a queue, many numbers sit in memory, or functools.cache is considered.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
