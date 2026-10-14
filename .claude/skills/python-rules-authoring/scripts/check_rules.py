@@ -17,7 +17,8 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
 - a library's API appears only in its own skill, or in the integration file of a pair it belongs
   to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link;
 - a function, class or constant defined in one skill's examples is defined in no other skill's,
-  and in none of the rules'; an integration file may share names with the pair it joins.
+  and in none of the rules'; an integration file may share names with the pair it joins;
+- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -307,6 +308,7 @@ def run(*, root: Path) -> int:
         *_map_findings(rules_directory / "core.md", skill_names),
         *_layering_findings(rules_directory / "core.md", skill_files),
         *_shared_definition_findings((*rules, *skill_files)),
+        *_router_findings(skill_files),
         *(
             finding
             for document in integration_files
@@ -534,6 +536,29 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
         if skill_name in {*_META_SKILLS, _INTEGRATIONS_DIRECTORY}:
             continue
         yield from _skill_names_past_introduction(document)
+
+
+def _router_findings(skill_files: Sequence[_Document]) -> Iterator[_Finding]:
+    # A reference file is read only sometimes; its rule headings stay in the SKILL.md that loads.
+    routers = {
+        document.path.parent: "\n".join(document.lines)
+        for document in skill_files
+        if document.path.name == "SKILL.md"
+    }
+    for document in skill_files:
+        router = routers.get(document.path.parent)
+        if document.path.name == "SKILL.md" or router is None:
+            continue
+        code_lines = _code_line_numbers(document.lines)
+        for line_number, line in enumerate(document.lines, start=1):
+            if line.startswith("### ") and line_number not in code_lines:
+                heading = line.removeprefix("### ")
+                if heading not in router:
+                    yield _Finding(
+                        path=document.path,
+                        line=line_number,
+                        message="heading missing from SKILL.md; list it under the link",
+                    )
 
 
 def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Finding]:
