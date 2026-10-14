@@ -1,10 +1,10 @@
 ---
 name: python-layers
 description: >-
-  Enforces layer boundaries with import-linter: layers, independence and forbidden contracts, and
-  a violation fixed by moving code. Use when adding an import-linter contract, deciding which
-  layer code belongs to, untangling a circular import, or when a domain module imports a
-  framework, a driver or a sibling implementation.
+  Enforces layer boundaries with import-linter: layers, independence and forbidden contracts, and a
+  violation fixed by moving code. Use when adding an import-linter contract, deciding which layer
+  code belongs to, untangling a circular import or an ImportError from a partially initialized
+  module, or when a domain module imports a framework, a driver or a sibling implementation.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
