@@ -252,3 +252,5 @@ with the right URL, a transaction per test rolled back.
 **Before building a SQLAlchemy engine on `postgresql+asyncpg`, read
 [asyncpg-sqlalchemy.md](../python-integrations/asyncpg-sqlalchemy.md)** — the engine's pool instead
 of asyncpg's, and the statement timeout through `server_settings`.
+
+- On `postgresql+asyncpg`, the engine owns the pool, and the statement timeout is a server setting
