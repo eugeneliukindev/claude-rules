@@ -113,7 +113,13 @@ def test_simulate_rolls_draws_once_per_die() -> None:
 instances, read [memory.md](memory.md)** — `array` for numbers, `memoryview` for slices, `__slots__`
 on every base of a hierarchy.
 
+- Many numbers of one type are an `array`, not a list
+- A large byte buffer is sliced through a `memoryview`, released with `with`
+- A class with fixed attributes has `__slots__`, and so does every base above it
+
 ## Memoization
 
 **Before reaching for `functools.cache` or `lru_cache`, read [memoization.md](memoization.md)** —
 pure functions of hashable arguments, a stated bound, never on a method.
+
+- Only a pure module-level function of hashable arguments is memoized, with a stated bound
