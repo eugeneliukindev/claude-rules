@@ -90,3 +90,8 @@ starts — or the runner takes an advisory lock first.
 type or an enum value — read [locks.md](locks.md)** — `lock_timeout` on every statement,
 `CONCURRENTLY`, `NOT VALID` then `VALIDATE`, volatile defaults, a type changed through a new column,
 enum values used a revision later.
+
+- Every DDL statement runs under `SET lock_timeout`
+- An index on a live table is built `CONCURRENTLY`, outside a transaction
+- A constraint on existing rows is added `NOT VALID`, then validated
+- A volatile default, a type change and a new enum value each take an extra step
