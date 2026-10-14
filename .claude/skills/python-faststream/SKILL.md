@@ -185,6 +185,10 @@ dead-lettered message back with `get_one`.
 [fastapi-faststream.md](../python-integrations/fastapi-faststream.md)** — the event written to the
 outbox by the service, never published from the route.
 
+- A route never publishes to the broker; the service writes an outbox row in its transaction
+
 **Before typing a FastStream subscriber's message as a pydantic model, read
 [faststream-pydantic.md](../python-integrations/faststream-pydantic.md)** — the raw body to the
 handler, validated there in JSON mode.
+
+- The subscriber takes the raw message, and the handler validates its body as JSON
