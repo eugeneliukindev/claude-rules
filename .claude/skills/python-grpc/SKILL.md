@@ -185,6 +185,15 @@ dev dependencies, read [proto.md](proto.md)** — mypy-protobuf rather than `--p
 that exist only in the stubs, the generated tree's top-level name, the runtime floors, reserved
 numbers, a new package for a breaking change, `buf breaking` in CI.
 
+- The types come from mypy-protobuf, not from `--pyi_out`
+- Below Python 3.14, a module whose signatures name a stub-only type postpones its annotations
+- The generated tree's top-level name is one no hand-written package has
+- `grpcio` and `protobuf` are declared at least at the generator's versions
+- Generated files are never edited, and CI proves they match the schema
+- A removed field is reserved by number and by name, and a number is never reused
+- A breaking change is a new package, served beside the old one until the last client moves
+- `buf breaking` and `buf lint` run in CI against the main branch
+
 ## The Server
 
 **Before writing the code that builds, starts or stops a `grpc.aio` server, a server interceptor,
@@ -194,6 +203,23 @@ off, limits, TLS, the interceptor module with `AbortError` and the fixed text fo
 unmapped, which code means what, `google.rpc.Status` details, a stream closed at `yield`, health
 pushed rather than computed, the methods authentication leaves open.
 
+- The root enters the server through one context manager that starts it and stops it with a grace
+- `stop` gets a grace: new calls are refused at once, the calls in flight get that long
+- `grpc.so_reuseport` is turned off
+- The message limit is one named constant on the server and the client's channel, and the calls in flight are bounded
+- The port is TLS, unless a mesh sidecar terminates TLS inside the pod
+- One interceptor maps errors to status codes; the servicer never aborts itself
+- An unmapped error is logged once with its traceback and answered with a fixed text
+- `AbortError` is re-raised before the boundary's `except Exception`
+- The code says what the client can do about it
+- Field-level detail a client acts on travels as a `google.rpc.Status`
+- A server-streaming handler releases what it holds in `finally` or `async with`
+- Health is pushed: a task sets each service's status, and nothing is computed per check
+- Kubernetes probes the health service natively, on a numeric port at the pod's address
+- Reflection is behind a setting that is off wherever policy says so
+- Traces come from the instrumentation; metrics from a plugin the entry point registers
+- Cross-cutting work is a server interceptor, and authentication leaves health and reflection open
+
 ## The Client
 
 **Before writing a client adapter, building a channel or consuming a stream, read
@@ -201,11 +227,25 @@ pushed rather than computed, the methods authentication leaves open.
 at the adapter, retries in the service config, keepalive, TLS names, per-call credentials, a
 stream's lifetime and cancelling a call left early.
 
+- One channel per target, built by the root and closed with it, shared by every stub
+- Every call carries `timeout=`
+- Status codes are translated at the adapter, with the cause kept
+- Retries live in the service config, for the idempotent methods, on `UNAVAILABLE`
+- Keepalive pings no more often than the server allows
+- TLS verifies the target's name, and nothing overrides it
+- Per-call credentials ride a secure channel
+- A stream's `timeout=` covers its whole life, so a watch has a maximum lifetime and reopens
+- A client that leaves a stream early cancels the call
+
 ## Testing
 
 **Before testing a servicer or a client adapter, read [in-process-tests.md](in-process-tests.md)**
 — the servicer called directly, one in-process server for everything else, a Unix socket for the
 shutdown tests, the fake that records a lookup started.
+
+- A servicer method is called directly, with grpc's context autospecced
+- The mapping, the translation and the deadlines are tested through one in-process server
+- A shutdown test opens the channel first, on a Unix socket, so it outlives the server
 
 ## With Other Libraries
 
