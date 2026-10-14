@@ -38,8 +38,8 @@ they come to mean different things, those are two rules with two names.
 **Example:**
 ```python
 # WRONG — one module, two actors: a pay fix finance asks for ships with HR's hours report
-def _regular_hours(timesheet: Timesheet) -> Decimal:
-    return min(timesheet.hours_worked, REGULAR_WEEK_HOURS)
+def _regular_hours(timesheet: Timesheet, *, week_hours: Decimal = REGULAR_WEEK_HOURS) -> Decimal:
+    return min(timesheet.hours_worked, week_hours)
 
 
 def calculate_pay(timesheet: Timesheet) -> Decimal:  # finance
@@ -58,19 +58,18 @@ class Timesheet:
     hours_worked: Decimal
     hourly_rate: Decimal
 
-    @property
-    def regular_hours(self) -> Decimal:
-        return min(self.hours_worked, REGULAR_WEEK_HOURS)
+    def regular_hours(self, *, week_hours: Decimal = REGULAR_WEEK_HOURS) -> Decimal:
+        return min(self.hours_worked, week_hours)
 
 
 # CORRECT — payroll.py, finance's module
 def calculate_pay(timesheet: Timesheet) -> Decimal:
-    return timesheet.regular_hours * timesheet.hourly_rate
+    return timesheet.regular_hours() * timesheet.hourly_rate
 
 
 # CORRECT — hours_report.py, HR's module
 def report_hours(timesheet: Timesheet, *, working_days: int) -> HoursReport:
-    regular = timesheet.regular_hours
+    regular = timesheet.regular_hours()
     return HoursReport(regular=regular, total=timesheet.hours_worked, working_days=working_days)
 ```
 
