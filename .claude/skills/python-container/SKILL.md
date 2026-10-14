@@ -165,15 +165,22 @@ read-only root fails with "Failed to initialize cache". The build already resolv
 [hardening.md](hardening.md)** — a numeric `USER`, a read-only root, `PYTHONUNBUFFERED`,
 `PYTHONDONTWRITEBYTECODE` in the runtime only.
 
+- The image runs as a numeric user that cannot write its own files, on a read-only root
+- The runtime sets `PYTHONUNBUFFERED=1` and `PYTHONDONTWRITEBYTECODE=1`; the builder neither
+
 ## Processes and Workers
 
 **Before adding a second process to a container or setting the worker count, read
 [processes.md](processes.md)** — one process per container, the count chosen beside the CPU limit.
 
+- One process per container, and the worker count is a number chosen beside the CPU limit
+
 ## Migrations
 
 **Before deciding where the schema migration runs, read [migrations.md](migrations.md)** — a deploy
 step from the same image, never at start.
+
+- The migration runs once per deploy as a one-shot container of the release's image and tag
 
 ## Configuration and Secrets
 
@@ -181,13 +188,21 @@ step from the same image, never at start.
 [secrets.md](secrets.md)** — one image for every environment, a secret mount instead of a build
 argument, an allowlist context.
 
+- One image serves every environment; a build-time secret is a secret mount
+- `.dockerignore` lists what enters the context, not what stays out
+
 ## Probes
 
 **Before writing a liveness or readiness endpoint, a `HEALTHCHECK` or a probe, read
 [probes.md](probes.md)** — liveness asks only whether the process answers, readiness asks about
 dependencies under a deadline.
 
+- Liveness asks only whether the process answers; readiness asks about its dependencies
+- `HEALTHCHECK`, where Docker or compose runs it, calls liveness with the image's own interpreter
+
 ## Scanning
 
 **Before setting up the image's CI, read [scanning.md](scanning.md)** — an image scan that fails the
 build, scheduled rebuilds, the uv image's provenance.
+
+- The built image is scanned in CI, rebuilt on a schedule, and its uv image's provenance checked
