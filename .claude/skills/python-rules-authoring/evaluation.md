@@ -18,3 +18,13 @@ no request that outranks the rule — "make sure it is well documented" override
 comments, by design. The cases live in `evals/python/` at the repository root, and
 `evals/run.py --arm both` runs them in both arms with what they check: the skills invoked, the
 reference files read, the code written.
+
+### A rule leaves a skill's body only after its case passes without it there
+
+**Why:** the model follows what is in its context — the always-loaded rules and the body of the skill
+it invoked — and copies the example it sees. Deduplicated into a pointer to `principles.md`, the
+semaphore left `python-async`'s body and the bounded fan-out went from passing to one run in three;
+with the server's settings shown as one class in `python-fastapi`, the split in `python-wiring`'s
+reference file stopped arriving. A move, a merge or a cut runs the rule's case before and after, a
+few times each, against the commit the change starts from; a rule that loses there keeps a line and
+its `CORRECT` in the body it left.

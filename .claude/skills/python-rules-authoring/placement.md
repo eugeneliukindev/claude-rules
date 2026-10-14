@@ -109,8 +109,9 @@ context window, dropping the least-invoked first. A second skill is for a second
 that one task needs together stay one skill. The body is the router — it keeps what every task
 under the trigger needs, and each branch, a kind of work only some tasks reach, is one reference
 file however few rules it holds. At the place the branch belongs, a section names the code that
-reaches it, because the wording of a pointer decides whether it fires, and what the file holds; the
-body carries no second list of the files, and a body at 300 lines moves a branch out before it
+reaches it, because the wording of a pointer decides whether it fires, and lists every rule
+heading of the file — the model opens a reference in a minority of runs, and a heading is an
+instruction that arrives without the read; a body at 300 lines moves a branch out before it
 takes another rule. References go one level deep: a file reached through another is read in
 fragments, and the rule at line 200 does not arrive. A reference file past a hundred lines opens
 with its own table of contents.

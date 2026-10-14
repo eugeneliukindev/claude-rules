@@ -168,6 +168,15 @@ stays a step of its own.
 read [placement.md](placement.md)** — what loads when, `paths` on every skill, the always-loaded
 budget and the `SKILL.md` ceilings, a reference file per branch, and what holds a rule up.
 
+- What applies to every edit is a rule file with `paths: "**/*.py"`, one topic per file
+- `new-files.md` is the one file with no front matter, and the exception is measured
+- Every skill carries `paths`, so a session lists only the skills of its language
+- The always-loaded set holds what is universal and behaviour-changing, with its examples
+- Tool configuration belongs to the repository; the rules hold what survives the choice of tool
+- An addition displaces something, and a ceiling is raised only by an argument on record
+- A skill grows by a reference file per branch, never by a second skill for the same trigger
+- A rule no tool checks either becomes a check or is deleted, once it is broken in bulk
+
 ## One Rule, One Home
 
 **Before writing a rule another file already touches, naming another skill, or writing a library
@@ -175,13 +184,26 @@ skill's example, read [layering.md](layering.md)** — one home per rule, a neig
 the introduction, topic skills library-agnostic, a library skill's own adapter and the library's
 own context manager.
 
+- A rule is written in exactly one file, and a skill never restates a rule file
+- A skill names a neighbour only in its introduction, once, as a route
+- A topic skill is library-agnostic, and a library skill shows its own adapter
+- A library's lifetime is the library's own context manager
+- An example uses its own library and its own contracts, never another library's API
+
 ## Descriptions
 
 **Before writing or changing a skill's `description`, read [descriptions.md](descriptions.md)** —
 what it does and `Use when` with the signals a task contains, told apart from its neighbours.
 
+- A description is what the skill does, then `Use when` and the signals a task contains
+- Neighbouring descriptions are told apart in their own words
+
 ## Evaluation
 
-**Before adding a rule or deciding whether one earns its place, read
+**Before adding, moving or cutting a rule, or deciding whether one earns its place, read
 [evaluation.md](evaluation.md)** — what the model would not do unprompted, and the with-and-without
 test.
+
+- A rule earns its place by something the model would not do unprompted
+- A rule is tested with a realistic task that never mentions it, without the rule first
+- A rule leaves a skill's body only after its case passes without it there
