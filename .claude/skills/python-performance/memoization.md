@@ -9,15 +9,25 @@ invalidation rule in the design.
 
 **Example:**
 ```python
-# WRONG — the cache keeps every parser it has seen alive, and never stops growing
-class AddressParser:
+# WRONG — the cache keeps every table it has seen alive, and never stops growing
+@final
+class OddsTable:
+    def __init__(self, *, faces: int) -> None:
+        self._faces = faces
+
     @cache
-    def normalize_postcode(self, raw_postcode: str) -> Postcode:
-        return Postcode(raw_postcode.replace(" ", "").upper())
+    def ways_to_roll(self, total: int, *, dice: int) -> int:
+        if dice == 0:
+            return 1 if total == 0 else 0
+        face_values = range(1, self._faces + 1)
+        return sum(self.ways_to_roll(total - face, dice=dice - 1) for face in face_values)
 
 
 # CORRECT — a pure module-level function of hashable arguments, with a stated bound
-@lru_cache(maxsize=_POSTCODE_CACHE_SIZE)
-def normalize_postcode(raw_postcode: str) -> Postcode:
-    return Postcode(raw_postcode.replace(" ", "").upper())
+@lru_cache(maxsize=_WAYS_CACHE_SIZE)
+def ways_to_roll(total: int, *, dice: int, faces: int) -> int:
+    if dice == 0:
+        return 1 if total == 0 else 0
+    face_values = range(1, faces + 1)
+    return sum(ways_to_roll(total - face, dice=dice - 1, faces=faces) for face in face_values)
 ```

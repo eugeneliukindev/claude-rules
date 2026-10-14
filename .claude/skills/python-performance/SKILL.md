@@ -12,9 +12,9 @@ paths:
 
 # Performance
 
-Algorithmic sanity — the container chosen by its operation, `slots=True` from the always-loaded
-rules — needs no measurement; everything else here does. Cache design and cachetools are
-`python-caching`, redis `python-redis`; the statement-counting fixture is `python-sqlalchemy`.
+Algorithmic sanity — the container chosen by its operation, `slots=True` from `types.md` — needs no
+measurement; everything else here does. Cache design and cachetools are `python-caching`; the
+statement-counting fixture is `python-sqlalchemy`.
 
 ## Measure First
 
@@ -44,18 +44,18 @@ for immutability; this table is the cost side, and needs no profile.
 
 **Example:**
 ```python
-# WRONG — a scan of every threshold for every member
-def loyalty_tier(points: int) -> Tier:
-    tier_index = 0
-    for threshold_points in _TIER_THRESHOLDS_POINTS:
-        if points >= threshold_points:
-            tier_index += 1
-    return _TIERS[tier_index]
+# WRONG — a scan of every threshold for every roll
+def grade_roll(total: int) -> RollGrade:
+    grade_index = 0
+    for threshold_total in _GRADE_THRESHOLD_TOTALS:
+        if total >= threshold_total:
+            grade_index += 1
+    return _GRADES[grade_index]
 
 
-# CORRECT — sorted thresholds, one fewer than the tiers: bisect counts those passed in log n
-def loyalty_tier(points: int) -> Tier:
-    return _TIERS[bisect.bisect_right(_TIER_THRESHOLDS_POINTS, points)]
+# CORRECT — sorted thresholds, one fewer than the grades: bisect counts those passed in log n
+def grade_roll(total: int) -> RollGrade:
+    return _GRADES[bisect.bisect_right(_GRADE_THRESHOLD_TOTALS, total)]
 ```
 
 ### `deque(maxlen=n)` is a window that drops its oldest, never a queue of work
@@ -65,44 +65,46 @@ losing the oldest is the point, silent data loss for pending work.
 
 **Example:**
 ```python
-# WRONG — a work queue with maxlen: the 1,001st pending import silently drops the oldest
+# WRONG — a work queue with maxlen: the 1,001st pending simulation silently drops the oldest
 @final
-class ImportBacklog:
+class SimulationBacklog:
     def __init__(self, *, capacity: int = _BACKLOG_CAPACITY) -> None:
-        self._pending_import_ids: deque[ImportId] = deque(maxlen=capacity)
+        self._pending_simulations: deque[SimulationRequest] = deque(maxlen=capacity)
 
 
-# CORRECT — a window of recent latencies, where dropping the oldest is the stated policy
+# CORRECT — a window of recent totals, where dropping the oldest is the stated policy
 @final
-class LatencyWindow:
+class RecentTotals:
     def __init__(self, *, size: int = _WINDOW_SIZE) -> None:
-        self._recent_latencies_ns: deque[int] = deque(maxlen=size)
+        self._recent_totals: deque[int] = deque(maxlen=size)
 ```
 
 ## Budgets
 
 ### A performance-sensitive path is tested with a budget in a unit that does not vary
 
-**Why:** a regression then fails a check instead of arriving as an incident. The unit is statements
-per request, calls to the expensive operation, allocations — never wall time, which is noise on a
+**Why:** a regression then fails a check instead of arriving as an incident. The unit is calls to
+the expensive operation, statements per request, allocations — never wall time, which is noise on a
 shared runner and blind to a regression smaller than the noise.
 
 **Example:**
 ```python
-# WRONG — flaky on a shared runner, and a page that doubles its queries still passes
-def test_article_page_stays_in_budget(articles: ArticleListing) -> None:
+# WRONG — flaky on a shared runner, and a simulation that draws twice per die still passes
+def test_simulate_rolls_stays_in_budget() -> None:
     started_seconds = time.perf_counter()
 
-    articles.first_page()
+    simulate_rolls(_POOL_OF_THREE_DICE, rolls=_BUDGET_ROLLS, source=random.Random(_SEED))
 
-    assert time.perf_counter() - started_seconds < _ARTICLE_PAGE_BUDGET_SECONDS
+    assert time.perf_counter() - started_seconds < _SIMULATION_BUDGET_SECONDS
 
 
-# CORRECT — the same budget in statements, counted by a fixture
-def test_article_page_stays_in_budget(articles: ArticleListing, statements: list[str]) -> None:
-    articles.first_page()
+# CORRECT — the budget in draws from the random source, counted by a fake that wraps it
+def test_simulate_rolls_draws_once_per_die() -> None:
+    source = CountingRandom(seed=_SEED)
 
-    assert len(statements) <= _ARTICLE_PAGE_STATEMENTS
+    simulate_rolls(_POOL_OF_THREE_DICE, rolls=_BUDGET_ROLLS, source=source)
+
+    assert source.draws == _BUDGET_ROLLS * len(_POOL_OF_THREE_DICE)
 ```
 
 ## Memory

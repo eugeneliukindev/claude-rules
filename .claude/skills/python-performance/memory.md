@@ -16,16 +16,20 @@ exists, the buffer under it cannot be resized or freed, so it is released with `
 **Example:**
 ```python
 # WRONG — every chunk is a fresh 64 KiB copy
-def write_in_chunks(payload: bytes, sink: BinaryIO) -> None:
-    for offset in range(0, len(payload), _CHUNK_SIZE_BYTES):
-        sink.write(payload[offset : offset + _CHUNK_SIZE_BYTES])
+def write_packed_rolls(
+    packed_rolls: bytes, sink: BinaryIO, *, chunk_size_bytes: int = _CHUNK_SIZE_BYTES
+) -> None:
+    for offset in range(0, len(packed_rolls), chunk_size_bytes):
+        sink.write(packed_rolls[offset : offset + chunk_size_bytes])
 
 
-# CORRECT — the slices point into payload, and the view is released on the way out
-def write_in_chunks(payload: bytes, sink: BinaryIO) -> None:
-    with memoryview(payload) as view:
-        for offset in range(0, len(view), _CHUNK_SIZE_BYTES):
-            sink.write(view[offset : offset + _CHUNK_SIZE_BYTES])
+# CORRECT — the slices point into packed_rolls, and the view is released on the way out
+def write_packed_rolls(
+    packed_rolls: bytes, sink: BinaryIO, *, chunk_size_bytes: int = _CHUNK_SIZE_BYTES
+) -> None:
+    with memoryview(packed_rolls) as view:
+        for offset in range(0, len(view), chunk_size_bytes):
+            sink.write(view[offset : offset + chunk_size_bytes])
 ```
 
 ### A class with fixed attributes has `__slots__`, and so does every base above it
@@ -38,38 +42,38 @@ that requires `__dict__`, and `cached_property`.
 
 **Example:**
 ```python
-# WRONG — the mixin has no __slots__, so every SensorReading carries a __dict__ anyway
-class TimestampedMixin:
-    def age_seconds(self, *, now_ns: int) -> float:
-        return (now_ns - self.recorded_at_ns) / 1e9
+# WRONG — the mixin has no __slots__, so every Die carries a __dict__ anyway
+class FacesMixin:
+    faces: int
 
-    recorded_at_ns: int
+    def highest_total(self, *, dice: int) -> int:
+        return self.faces * dice
 
 
 @final
-class SensorReading(TimestampedMixin):
-    __slots__ = ("recorded_at_ns", "value")
+class Die(FacesMixin):
+    __slots__ = ("faces", "label")
 
-    def __init__(self, *, recorded_at_ns: int, value: float) -> None:
-        self.recorded_at_ns = recorded_at_ns
-        self.value = value
+    def __init__(self, *, faces: int, label: str) -> None:
+        self.faces = faces
+        self.label = label
 
 
 # CORRECT — the mixin declares empty slots, and the instance has no __dict__
-class TimestampedMixin:
+class FacesMixin:
     __slots__ = ()
 
-    recorded_at_ns: int
+    faces: int
 
-    def age_seconds(self, *, now_ns: int) -> float:
-        return (now_ns - self.recorded_at_ns) / 1e9
+    def highest_total(self, *, dice: int) -> int:
+        return self.faces * dice
 
 
 @final
-class SensorReading(TimestampedMixin):
-    __slots__ = ("recorded_at_ns", "value")
+class Die(FacesMixin):
+    __slots__ = ("faces", "label")
 
-    def __init__(self, *, recorded_at_ns: int, value: float) -> None:
-        self.recorded_at_ns = recorded_at_ns
-        self.value = value
+    def __init__(self, *, faces: int, label: str) -> None:
+        self.faces = faces
+        self.label = label
 ```
