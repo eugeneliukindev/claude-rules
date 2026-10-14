@@ -23,15 +23,15 @@ the one value that proves the point printed.
 
 **Example:**
 ```python
-# WRONG — starts mid-story: the reader has to guess where client and Notification come from
-receipt = client.send(Notification(recipient="ann@example.com", subject="Your parcel shipped"))
+# WRONG — starts mid-story: the reader has to guess where relay and Transmission come from
+receipt = relay.send(Transmission(recipient="ann@example.com", text="QRV AT 1900"))
 print(receipt.status)
 
 # CORRECT — every import and every object the snippet uses is built inside it
-from notifications import Notification, NotificationClient
+from morse import MorseRelay, Transmission
 
-with NotificationClient(base_url="https://api.example.com", timeout_seconds=10.0) as client:
-    receipt = client.send(Notification(recipient="ann@example.com", subject="Your parcel shipped"))
+with MorseRelay(base_url="https://relay.example.com", timeout_seconds=10.0) as relay:
+    receipt = relay.send(Transmission(recipient="ann@example.com", text="QRV AT 1900"))
 print(receipt.status)
 ```
 
@@ -53,10 +53,10 @@ anyone. A real key, token, hostname or customer name never appears, not even red
 **Example:**
 ```python
 # WRONG — filler that means nothing, and neither bar.com nor 1.2.3.4 is reserved for examples
-user = User(name="foo", email="test123@bar.com", ip_address="1.2.3.4")
+station = Station(operator="foo", email="test123@bar.com", relay_address="1.2.3.4")
 
 # CORRECT — plausible values from the reserved ranges: example.com and RFC 5737's 192.0.2.0/24
-user = User(name="Ann Lee", email="ann@example.com", ip_address="192.0.2.10")
+station = Station(operator="Ann Lee", email="ann@example.com", relay_address="192.0.2.10")
 ```
 
 ### The output is deterministic: time, ids and order are pinned
@@ -68,16 +68,16 @@ time.
 **Example:**
 ```python
 # WRONG — a new id and time on every run, and a set of strings reorders between processes
-receipt = send_reminder(invoice, sent_at=datetime.now(UTC), reminder_id=uuid4())
-print(receipt.reminder_id, receipt.sent_at, receipt.channels)
+log_entry = key_message("CQ CQ DE", keyed_at=datetime.now(UTC), entry_id=uuid4())
+print(log_entry.entry_id, log_entry.keyed_at, log_entry.prosigns)
 
 # CORRECT — the clock and the id are literals, and the set is sorted before printing
-receipt = send_reminder(
-    invoice,
-    sent_at=datetime(2026, 1, 15, 9, 30, tzinfo=UTC),
-    reminder_id=UUID("8f14e45f-ceea-467f-a0b7-0c7a1c3e5a10"),
+log_entry = key_message(
+    "CQ CQ DE",
+    keyed_at=datetime(2026, 1, 15, 9, 30, tzinfo=UTC),
+    entry_id=UUID("8f14e45f-ceea-467f-a0b7-0c7a1c3e5a10"),
 )
-print(receipt.reminder_id, receipt.sent_at, sorted(receipt.channels))
+print(log_entry.entry_id, log_entry.keyed_at, sorted(log_entry.prosigns))
 ```
 
 ### The happy path is one example, and each failure a caller must handle is another
