@@ -86,6 +86,40 @@ second pair beside the actor rule left it, for 90 rules and 20,500 tokens; the n
 plus headroom. Little of it was a tool's to decide — `core.md` already kept style out — so a deeper
 cut means fewer examples, the layout measured above that lost 38 to 42 of 42 runs.
 
+**The `SKILL.md` line ceiling came down from 500 to 300 once.** A body line in these skills averages
+about 10.5 tokens, so 500 lines were about 5,250 tokens — past the 5,000 Claude Code re-attaches
+after compaction, which a long skill lost its end to — and 300 lines are about 3,150, below it with
+room for code lines longer than the average. Three skills were longer at the time; each moved a
+branch into a reference file.
+
+## Skills Taught Each Other
+
+**`managed_*` was one skill's convention that every library skill copied.** `python-wiring` named a
+resource's context manager for its lifetime — `managed_pool` — and the library skills each wrapped
+their library the same way: `managed_redis`, `managed_cashews`, `managed_grpc_server`,
+`managed_carrier_session`. The model learned the prefix and wrote wrappers around libraries whose
+own `with` already did the job. The checker's factory pattern lost the prefix, a lifetime is now
+recognised by its `@contextmanager` decorator, and a library skill enters the library's own context
+manager (`layering.md`).
+
+**An audit of every skill against the rules found 273 findings at the start**: 136 references to a
+neighbour skill outside an introduction, about 130 names shared between skills or between a skill
+and the rules, three `SKILL.md` past 300 lines, and two settings read inside a factory. Behind the
+shared names were domains leaking across skills — the broker and the consumer skills both on room
+inventory, the cache, cashews and redis skills all on profiles — and behind the references, rules
+homed twice: a rule file and a skill stating the same idempotency rule, the same constructor rule,
+the same `Any` rule. Every skill was rewritten in a domain of its own, the duplicates kept one home,
+and the checker learned the shared-name and the introduction-only checks; the comparison point for
+the evals is the commit before the rewrite, `10cdec7`.
+
+**A setting became a defaulted keyword parameter in every function, by the user's decision.** The
+rule had covered only a factory and a class the root builds, and inside an ordinary function a
+constant stayed; the examples then disagreed with one another about the same timeout. A default
+costs the caller nothing, a test passes its own value, and it is the same injection the
+constructor rule asks for, so the rule was widened to every function and method, with the root,
+tests, fixtures, framework-parsed signatures, decorator arguments, format and protocol values and
+one-off scripts excepted. Forty examples broke it on the day; the checker reports each.
+
 ## Examples
 
 **An audit found a dozen examples teaching the opposite of the rule above them** — a `WRONG` that

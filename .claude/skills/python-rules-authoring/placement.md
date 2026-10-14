@@ -29,12 +29,13 @@ falls as the number of instructions grows, and an example is tokens but not an i
 | **tokens loaded on every `.py`**, estimated at four characters each | **22,000** |
 | rules loaded on a test file — the set above plus `testing.md` | 120 |
 | tokens loaded on a test file | 28,000 |
-| lines in any one `SKILL.md`, after the front matter | 500 |
+| lines in any one `SKILL.md`, after the front matter | 300 |
 | tokens in any one `SKILL.md`, after the front matter | 5,000 |
 
-The 500 lines are what Anthropic's authoring guidance and the Agent Skills specification ask for;
-5,000 tokens is the specification's figure and the part of an invoked skill Claude Code re-attaches
-after compaction — past it, the end of the skill is gone for the rest of the session.
+Anthropic's authoring guidance and the Agent Skills specification ask for under 500 lines; 300
+lines are about 3,150 tokens, so the body stays below the specification's 5,000 tokens, which Claude
+Code re-attaches after compaction — past those, the end of the skill is gone for the rest of the
+session (`history.md`).
 
 ### What applies to every edit is a rule file with `paths: "**/*.py"`, one topic per file
 
@@ -109,9 +110,10 @@ that one task needs together stay one skill. The body is the router — it keeps
 under the trigger needs, and each branch, a kind of work only some tasks reach, is one reference
 file however few rules it holds. At the place the branch belongs, a section names the code that
 reaches it, because the wording of a pointer decides whether it fires, and what the file holds; the
-body carries no second list of the files. References go one level deep: a file reached through
-another is read in fragments, and the rule at line 200 does not arrive. A reference file past a
-hundred lines opens with its own table of contents.
+body carries no second list of the files, and a body at 300 lines moves a branch out before it
+takes another rule. References go one level deep: a file reached through another is read in
+fragments, and the rule at line 200 does not arrive. A reference file past a hundred lines opens
+with its own table of contents.
 
 **Example:**
 ````markdown

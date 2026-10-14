@@ -48,16 +48,16 @@ cut: an explanation the example already shows, a restatement, the history of the
 ```python
 # WRONG — the repository is built inside: no test can hand in a fake
 @final
-class DocumentArchive:
+class IceCoreArchive:
     def __init__(self, *, engine: AsyncEngine) -> None:
-        self._documents = PostgresDocumentRepository(engine)
+        self._cores = PostgresCoreSampleRepository(engine)
 
 
 # CORRECT — it arrives from the composition root
 @final
-class DocumentArchive:
-    def __init__(self, *, documents: DocumentRepository) -> None:
-        self._documents = documents
+class IceCoreArchive:
+    def __init__(self, *, cores: CoreSampleRepository) -> None:
+        self._cores = cores
 ```
 ``````
 
@@ -94,20 +94,21 @@ in every file.
 ```python
 # WRONG — a fragment, and a WRONG that differs from its CORRECT in three ways at once
 def __init__(self):
-    self.repo = PostgresDocumentRepository(ENGINE)
+    self.repo = PostgresCoreSampleRepository(ENGINE)
 
 # CORRECT — the whole class, the way the rule's own pair shows it
 @final
-class DocumentArchive:
-    def __init__(self, *, documents: DocumentRepository) -> None:
-        self._documents = documents
+class IceCoreArchive:
+    def __init__(self, *, cores: CoreSampleRepository) -> None:
+        self._cores = cores
 ```
 
 ### A `CORRECT` obeys every other rule here, parses, and passes `mypy --strict`
 
 **Why:** where a rule and an example disagree, the model has two instructions and picks one
 arbitrarily — `kw_only`, `@override`, `Final`, the `_` prefix, units in names and injected
-dependencies hold in every `CORRECT`. An API claim from memory is how a skill came to say `orjson`
+dependencies hold in every `CORRECT`, and so does a setting defaulted in the signature of whatever
+reads it (`functions.md`). An API claim from memory is how a skill came to say `orjson`
 serialises `Decimal`: the block is pasted into a scratch file with its names declared and run
 against the library at the version the skill names before it is committed.
 
@@ -120,6 +121,17 @@ files' Python blocks built on orders. One domain holds within a skill whose exam
 other, and no domain more than about a sixth of all blocks. These files are read in every
 repository, so no entity, vendor or identifier of the project at hand appears — the shape of the
 incident carries the lesson, its names carry none of it.
+
+### An example's names belong to one skill, and none to a rule file
+
+**Why:** a class shown in two skills is one construction taught twice, and the model takes the
+repetition for the house pattern: the audit found about 130 shared names — `AppSettings` and
+`open_database_pool` in five skills, `RoomInventory` in both the broker and the consumer skill,
+`DocumentArchive` in a rule file and in a skill — each a domain leaking from one file into another.
+Every function, class and constant an example defines or calls is its skill's alone; an integration
+file shares names with the two skills it joins, and the names a framework or the language fixes —
+`main`, `lifespan`, `Settings`, a library's own API — are allowed everywhere. A clash is renamed in
+the skill, and in a rule file only when the skill cannot.
 
 ### A rule leads with the positive, states its reason, and saves capitals for nothing
 
@@ -138,14 +150,17 @@ protects data, money or a credential joins the second.
 ### `scripts/check_rules.py` runs before every commit
 
 **Why:** a budget counted by eye was broken by six lines before anyone noticed. The script checks
-the budgets and the `SKILL.md` ceilings, that every `python` block parses, that every skill and
-`.md` file a document names exists, that `core.md` names every skill, every front matter and
-description, the layering, a library's API outside its skill, and that every `CORRECT` keeps the
+the always-loaded budgets and each `SKILL.md`'s 300 lines and 5,000 tokens; that every `python`
+block parses; that every skill and `.md` file a document names exists, and that `core.md` names
+every skill; every front matter — `name`, `paths`, a `description` of at most 400 characters with
+`Use when`; that a skill names another only in a file's introduction; that a library's API appears
+only in its skill or its pair's integration file, which both `SKILL.md` link; that no name an
+example defines or calls lives in a second skill or a rule file; and that every `CORRECT` keeps the
 mechanical rules — `Final`, the dataclass flags, the modern typing spelling, no naive `now()`, no
-mutable default, no bare `except`, no setting read inside a factory or a root-built class; exit code
-1 means a finding, printed as `path:line: message`. What it
-cannot check — that a `CORRECT` passes `mypy --strict` against its library — stays a step of its
-own.
+mutable default, no bare `except`, no settings object below the root, no setting read in a body
+instead of defaulted in the signature. Exit code 1 means a finding, printed as `path:line:
+message`. What it cannot check — that a `CORRECT` passes `mypy --strict` against its library —
+stays a step of its own.
 
 ## Where a Rule Lives
 
@@ -155,9 +170,10 @@ budget and the `SKILL.md` ceilings, a reference file per branch, and what holds 
 
 ## One Rule, One Home
 
-**Before writing a rule another file already touches, or naming a library in a topic skill, read
-[layering.md](layering.md)** — one home per rule, topic skills library-agnostic, one imperative
-line plus a pointer.
+**Before writing a rule another file already touches, naming another skill, or writing a library
+skill's example, read [layering.md](layering.md)** — one home per rule, a neighbour named only in
+the introduction, topic skills library-agnostic, a library skill's own adapter and the library's
+own context manager.
 
 ## Descriptions
 
