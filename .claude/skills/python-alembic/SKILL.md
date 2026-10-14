@@ -13,10 +13,9 @@ paths:
 
 # alembic
 
-Checked against alembic 1.17. What a migration may contain and how it is deployed — one change per
-revision, a working downgrade, no backfill in a schema revision, expand before contract, one
-migration step per deploy — is `python-migrations`; the models it diffs against are
-`python-sqlalchemy`.
+Checked against alembic 1.13 and 1.20. Planning the change — what one revision holds, its
+downgrade, backfills, live-table locks, the deploy step — is `python-migrations`; the models it
+diffs against are `python-sqlalchemy`.
 
 ### The `MetaData` has a naming convention, so every constraint has a name
 
@@ -32,7 +31,7 @@ class Base(DeclarativeBase):
 
 
 # CORRECT — every constraint gets a deterministic name a revision can diff and drop
-_NAMING_CONVENTION: Final = {
+_CONSTRAINT_NAMING: Final = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
@@ -42,38 +41,35 @@ _NAMING_CONVENTION: Final = {
 
 
 class Base(DeclarativeBase):
-    metadata = MetaData(naming_convention=_NAMING_CONVENTION)
+    metadata = MetaData(naming_convention=_CONSTRAINT_NAMING)
 ```
 
-### `env.py` compares server defaults
+### `env.py` passes `compare_server_default=True`; a rename is edited in by hand
 
-**Why:** autogenerate misses a changed server default unless `compare_server_default=True`, and
-renames it never sees — a renamed table or column is generated as a drop plus an add, which the
-author edits into a rename (`python-migrations`).
+**Why:** `compare_type` is on by default since 1.12, `compare_server_default` is not, so a changed
+server default never reaches a revision. Autogenerate never sees a rename: a renamed table or column
+arrives as a drop plus an add, which the author rewrites as `op.alter_column(...,
+new_column_name=...)` or `op.rename_table(...)`.
 
-### A revision touches data through inline tables, never the application's models
+### A revision writes rows through `sa.table`, declared in the revision
 
 **Why:** a revision that imports today's model stops running when the model changes. `sa.table`
-with the columns it touches, as they were when the revision was written, goes into
-`op.execute(...)`.
+with only the columns the revision touches, as they were when it was written, goes to
+`op.bulk_insert` or `op.execute` and needs no `MetaData`.
 
 **Example:**
 ```python
-# WRONG — the revision imports today's model, and stops running when ShipmentRow changes
+# WRONG — the revision imports today's model, and stops running when PitchKindRow changes
 def upgrade() -> None:
-    op.execute(
-        update(ShipmentRow).where(ShipmentRow.carrier.is_(None)).values(carrier=_UNKNOWN_CARRIER)
-    )
+    op.bulk_insert(PitchKindRow.__table__, _PITCH_KINDS)
 
 
 # CORRECT — the revision carries the columns it touches
 def upgrade() -> None:
-    shipments = sa.table("shipments", sa.column("carrier", sa.String))
-    op.execute(
-        shipments.update()
-        .where(shipments.c.carrier.is_(None))
-        .values(carrier=_UNKNOWN_CARRIER)
+    pitch_kinds = sa.table(
+        "pitch_kinds", sa.column("code", sa.String), sa.column("label", sa.String)
     )
+    op.bulk_insert(pitch_kinds, _PITCH_KINDS)
 ```
 
 ### `CREATE INDEX CONCURRENTLY` runs in an `autocommit_block`
@@ -87,7 +83,7 @@ any transaction.
 # WRONG — PostgreSQL refuses: the revision runs inside alembic's transaction
 def upgrade() -> None:
     op.create_index(
-        "ix_shipments_carrier", "shipments", ["carrier"], postgresql_concurrently=True
+        "ix_campsite_stays_pitch_id", "campsite_stays", ["pitch_id"], postgresql_concurrently=True
     )
 
 
@@ -95,11 +91,16 @@ def upgrade() -> None:
 def upgrade() -> None:
     with op.get_context().autocommit_block():
         op.create_index(
-            "ix_shipments_carrier", "shipments", ["carrier"], postgresql_concurrently=True
+            "ix_campsite_stays_pitch_id",
+            "campsite_stays",
+            ["pitch_id"],
+            postgresql_concurrently=True,
         )
 ```
 
-### CI runs `alembic check` and the whole chain up and down
+### CI runs `alembic check`, then the chain up, down and up again on an empty database
 
-**Why:** `alembic check` fails on drift between the models and the revisions; `upgrade head` then
-`downgrade base` on an empty database proves every revision and every downgrade still runs.
+**Why:** `alembic check` exits non-zero when autogenerate would emit any operation, so a model
+changed without its revision fails the build; the second `upgrade head` catches a downgrade that
+left behind what the next upgrade creates — an enum type, an index. The chain is
+`alembic upgrade head`, `alembic downgrade base`, `alembic upgrade head`.
