@@ -1,10 +1,11 @@
 ---
 name: python-security
 description: >-
-  Handles input from outside the process: secrets and tokens, password hashing, parameterized SQL,
-  subprocess arguments, safe parsers, path traversal, archives, SSRF, size limits, failing closed.
-  Use when code handles a request body, a filename, a URL, an upload, an archive, a subprocess
-  argument, a credential or any untrusted payload. Not for tokens and permissions (python-auth).
+  Handles input from outside and who may act on it: parameterized SQL, subprocess arguments, safe
+  parsers, paths, uploads, archives, SSRF, size limits, passwords, tokens, permissions. ALWAYS
+  invoke this skill when code handles a request body, a filename, an upload, a URL, an Authorization
+  header, a cookie or a subprocess argument, or checks a role or an owner. Do not handle such input
+  directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -12,11 +13,11 @@ paths:
 
 # Security
 
-Input from outside the process, whatever library reads it. The rules name the function, because the
-function is what gets copied. Where a secret lives is `python-wiring`; keeping it out of a `repr`
-and a `LiteralString` check are `python-types`; verifying a bearer token and who may touch which
-resource are `python-auth`; a WebSocket's `Origin` check is `python-streaming`; dependency scanning
-is `python-project`; an exception escaping a gRPC handler is `python-grpc`.
+Input from outside the process, and who may act on what it asks for, whatever library reads it:
+the untrusted data and the decisions that fail closed here, and authentication, authorization,
+issued tokens and service credentials in the `auth` files below. The rules name the function,
+because the function is what gets copied. Where a secret lives is `python-wiring`; keeping it out of
+a `repr` and a `LiteralString` check are `python-types`.
 
 ## Untrusted Data
 
@@ -136,3 +137,51 @@ the resolved addresses, and every redirect checked before it is followed.
 
 - The check is on the addresses the name resolves to, not on the name
 - Redirects are followed by hand, and every hop is checked before it is requested
+
+## Authentication and Authorization
+
+**Before code reads an `Authorization` header or a session cookie, checks a role, a scope or a
+permission, or decides who may see a resource, read [auth.md](auth.md)** — a token verified into a
+frozen caller, the check in the service beside the load, 401 against 403, the session cookie.
+
+- The application verifies tokens through one contract that returns a frozen caller
+- Nothing in a token is believed before its signature, and its claims model ignores extra claims
+- A service takes the caller, never the token or the claims
+- Whether this caller may touch this resource is checked in the service, next to the load
+- A caller who may see a resource but not act on it gets a permission error
+- A list is authorized by its query, never by filtering the result
+- No valid credentials is 401, a valid caller refused is 403, unreachable signing keys are 503
+- A token travels in a header, and the access log records an allowlist of headers
+- A session cookie is `Secure`, `HttpOnly`, `SameSite` and `__Host-`-prefixed
+
+## Issuing Tokens and Guarding Credentials
+
+**Before issuing access or refresh tokens, rotating signing keys, or writing a sign-in,
+password-reset or token endpoint, read [auth-issuing.md](auth-issuing.md)** — short access tokens,
+rotated refresh tokens, key rotation through the key set, shared attempt limits per account and per
+source.
+
+- An access token lives minutes, and carries `iss`, `aud`, `sub`, `iat`, `exp`, `jti` and `kid`
+- A refresh token is opaque, stored hashed, and rotated on every use
+- A signing key rotates through the key set: publish, wait the cache lifetime, sign, retire
+- A credential endpoint counts attempts per account and per source, in the shared cache
+
+## Service-to-Service Credentials
+
+**Before one service calls another with a credential, read
+[auth-service-credentials.md](auth-service-credentials.md)** — a credential per service, the
+audience named, no forwarded user tokens across a boundary, an outbound token fetched once and
+reused.
+
+- Each service has its own credential, and the token names the service it is for
+- An outbound token is fetched once and reused until shortly before its `exp`
+
+## Testing
+
+**Before testing authentication or authorization, read [auth-testing.md](auth-testing.md)** — a
+fake verifier, one contract suite with a harness per implementation, authorization tested at the
+service with the owner and another pupil.
+
+- The unit tests take a fake verifier that issues opaque tokens and can lose its signing keys
+- Each implementation hands the contract suite a harness that issues a token and cuts off its keys
+- Authorization is tested at the service, with the owner and another pupil
