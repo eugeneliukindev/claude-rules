@@ -27,6 +27,6 @@ def postgres() -> Iterator[PostgresContainer]:
 def database_url() -> Iterator[str]:
     with PostgresContainer(_POSTGRES_IMAGE) as container:
         url = container.get_connection_url(driver=None)
-        run_migrations(url)
+        migrate_deck_database(url)
         yield url
 ```
