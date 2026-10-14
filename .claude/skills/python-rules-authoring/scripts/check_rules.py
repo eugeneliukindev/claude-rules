@@ -12,16 +12,20 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
 - every `python-*` skill and every `*.md` file a document names in backticks or links exists;
 - every `python-*` skill is named in `core.md` — a row in its map, or `/name` in its text;
 - every `SKILL.md` has a `name` equal to its directory, a `description` and `paths`;
-- a topic skill names a library skill only in a file's introduction, before its first heading
-  below the title;
+- a skill names another skill only in a file's introduction, before its first heading below the
+  title;
 - a library's API appears only in its own skill, or in the integration file of a pair it belongs
-  to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link.
+  to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link;
+- a function, class or constant defined in one skill's examples is defined in no other skill's,
+  and in none of the rules'; an integration file may share names with the pair it joins.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
 
 import argparse
 import ast
+import functools
+import importlib
 import re
 import sys
 import textwrap
@@ -38,7 +42,7 @@ _EXIT_INTERRUPTED: Final = 130
 
 # Close enough for English prose and code to set a ceiling by; a real tokenizer is not a dependency.
 _CHARACTERS_PER_TOKEN: Final = 4
-_SKILL_MAX_LINES: Final = 500
+_SKILL_MAX_LINES: Final = 300
 # Claude Code re-attaches the first 5,000 tokens of an invoked skill after compaction.
 _SKILL_MAX_TOKENS: Final = 5_000
 _SKILL_PREFIX: Final = "python-"
@@ -94,16 +98,96 @@ _SETTING_NAME: Final = re.compile(
     r"(SECONDS|TTL|_MAX_|^_?MAX_|LIMIT|SIZE|BYTES|WINDOW|INTERVAL|ATTEMPTS|DEADLINE|TIMEOUT"
     r"|LIFETIME|MARGIN|CAPACITY|WORKERS|_PATH|PREFIX)"
 )
-_FACTORY_NAME: Final = re.compile(r"^(build_|create_|make_|managed_|open_)")
+_FACTORY_NAME: Final = re.compile(r"^(build_|create_|make_|open_)")
+_ROOT_NAMES: Final = frozenset({"main", "run", "lifespan"})
+_TEST_PREFIX: Final = "test_"
+_SCRIPTS_SKILL: Final = "python-scripts"
+_IN_PLACE_DECORATORS: Final = (
+    "fixture",
+    ".get",
+    ".post",
+    ".put",
+    ".patch",
+    ".delete",
+    ".websocket",
+    ".route",
+    "subscriber",
+    "strawberry.",
+)
+_SETTING_MESSAGE: Final = "reads the setting"
+_LIFETIME_DECORATORS: Final = frozenset({"contextmanager", "asynccontextmanager"})
 _TEST_DOUBLE_PREFIXES: Final = ("InMemory", "Fake", "Recording", "Stub", "Broken")
 _SETTINGS_TYPE: Final = re.compile(r"\b\w*Settings\b")
+# Names a framework or the language fixes, which every skill may define.
+_SHARED_DEFINITIONS: Final = frozenset(
+    (
+        "main lifespan upgrade downgrade Settings Base Query Mutation Subscription Context app "
+        "client setup teardown "
+    ).split()
+)
+_RULES_OWNER: Final = "rules"
+# A bespoke name: CamelCase, or snake_case with an underscore; a lone lower-case word is vocabulary.
+_BESPOKE_NAME: Final = re.compile(
+    r"^(_?[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*|_?[a-z0-9]+(_[a-z0-9]+)+)$"
+)
+# Standard-library and library names an example may call without defining; everything else an
+# example calls or constructs is its own, and belongs to one skill.
+_STDLIB_MODULES: Final = tuple(
+    (
+        "builtins typing dataclasses contextlib functools asyncio collections collections.abc "
+        "itertools datetime decimal pathlib json re logging enum abc hmac hashlib secrets uuid "
+        "threading concurrent.futures queue subprocess signal os sys time argparse unittest.mock "
+        "warnings textwrap urllib.request urllib.parse http ssl socket tempfile shutil csv io "
+        "struct base64 random statistics math operator types weakref inspect importlib pickle copy "
+        "string zoneinfo smtplib sqlite3 gzip zipfile tarfile heapq bisect multiprocessing pprint "
+        "ipaddress fractions numbers selectors traceback unittest email html xml.etree.ElementTree "
+        "configparser tomllib platform errno stat getpass locale gettext codecs binascii zlib lzma "
+        "bz2 glob fnmatch shlex sched select mmap resource pwd grp ctypes "
+    ).split()
+)
+_LIBRARY_NAMES: Final = frozenset(
+    (
+        "FastAPI APIRouter Depends HTTPException JSONResponse StreamingResponse Response "
+        "Request WebSocket WebSocketDisconnect BackgroundTasks TestClient Query Body Header "
+        "Cookie Form File UploadFile Security BaseModel BaseSettings SettingsConfigDict "
+        "ConfigDict Field TypeAdapter ValidationError SecretStr AwareDatetime HttpUrl "
+        "field_validator model_validator computed_field AsyncSession async_sessionmaker "
+        "sessionmaker create_async_engine create_engine select insert update delete text "
+        "mapped_column relationship selectinload joinedload func and_ or_ Redis ConnectionPool "
+        "Retry NoBackoff ExponentialBackoff RabbitBroker RabbitRouter RabbitQueue "
+        "RabbitExchange TestRabbitBroker Context Logger retry stop_after_attempt "
+        "stop_after_delay wait_random_exponential wait_exponential_jitter wait_none "
+        "retry_if_exception_type before_sleep_log PyJWKClient AsyncClient Session AsyncSession "
+        "Timeout Cache op sa table column strawberry DataLoader GraphQLRouter Info Mock "
+        "MagicMock AsyncMock create_autospec patch fixture mark raises param approx given "
+        "settings st Channel Server ServicerContext StatusCode RpcError aio Timestamp Decimal "
+        "Money Faker Counter Histogram get_meter get_tracer Status SpanKind NullHandler "
+        "JsonFormatter orjson dumps loads uvicorn Config Process Thread ThreadPoolExecutor "
+        "ProcessPoolExecutor TaskGroup Semaphore Queue Event Lock PriorityQueue LifoQueue "
+        "ExitStack AsyncExitStack ContextVar NewType TypeVar ParamSpec Protocol "
+        "runtime_checkable final override dataclass field replace asdict partial cache "
+        "lru_cache cached_property wraps reduce deque defaultdict OrderedDict namedtuple Path "
+        "PurePosixPath UUID uuid4 uuid7 datetime date timedelta timezone time ZoneInfo Enum "
+        "StrEnum IntEnum Flag auto unique ABC abstractmethod Literal Annotated TypedDict "
+        "NamedTuple Never NoReturn cast assert_never TYPE_CHECKING Self ClassVar Final Unpack "
+        "Required NotRequired TypeIs TypeGuard Awaitable Coroutine Callable Iterator "
+        "AsyncIterator Iterable AsyncIterable Generator AsyncGenerator Mapping MutableMapping "
+        "Sequence MutableSequence Set MappingProxyType SimpleNamespace ArgumentParser Namespace "
+        "BooleanOptionalAction HTTPStatus HTTPError URLError urlopen urlparse urljoin quote "
+        "compare_digest token_urlsafe token_bytes sha256 pbkdf2_hmac scrypt getLogger "
+        "basicConfig run sleep gather wait_for timeout create_task to_thread get_running_loop "
+        "aclosing closing suppress contextmanager asynccontextmanager nullcontext "
+        "redirect_stdout monotonic perf_counter getcontext localcontext ROUND_HALF_EVEN "
+        "ROUND_HALF_UP ROUND_DOWN InvalidOperation dedent indent compile fullmatch match search "
+        "sub escape IGNORECASE MULTILINE VERBOSE DOTALL signal SIGTERM SIGINT SIGHUP SIG_DFL "
+        "Popen PIPE DEVNULL CalledProcessError TimeoutExpired check_output check_call "
+    ).split()
+)
 _LEGACY_TYPING: Final = frozenset({"Optional", "Union", "List", "Dict", "Tuple", "Set", "Type"})
 _NAIVE_NOW: Final = frozenset({"datetime.now", "datetime.utcnow", "date.today"})
 _DATACLASS_FLAGS: Final = ("frozen=True", "slots=True", "kw_only=True")
 # A reference file's table of contents is part of its introduction.
 _CONTENTS_HEADING: Final = "## Contents"
-# The map's table rows are "| skill | when |"; the cell after the first pipe names the skills.
-_LIBRARY_CELL_INDEX: Final = 2
 
 # A fence is three or more backticks; it closes on a bare fence at least as long (CommonMark).
 _FENCE: Final = re.compile(r"^\s*(`{3,})(\w*)\s*$")
@@ -222,6 +306,7 @@ def run(*, root: Path) -> int:
         ),
         *_map_findings(rules_directory / "core.md", skill_names),
         *_layering_findings(rules_directory / "core.md", skill_files),
+        *_shared_definition_findings((*rules, *skill_files)),
         *(
             finding
             for document in integration_files
@@ -444,12 +529,104 @@ def _map_findings(core_path: Path, skill_names: frozenset[str]) -> Iterator[_Fin
 
 
 def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Iterator[_Finding]:
-    library_skills = _library_skill_names(core_path.read_text(encoding="utf-8"))
     for document in skill_files:
         skill_name = document.path.parent.name
-        if skill_name in library_skills or skill_name in {*_META_SKILLS, _INTEGRATIONS_DIRECTORY}:
+        if skill_name in {*_META_SKILLS, _INTEGRATIONS_DIRECTORY}:
             continue
-        yield from _library_names_past_introduction(document, library_skills)
+        yield from _skill_names_past_introduction(document)
+
+
+def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Finding]:
+    # owner -> name -> first definition; the rules directory counts as one owner.
+    first_by_owner: dict[str, dict[str, tuple[Path, int]]] = {}
+    for document in documents:
+        owner = _definition_owner(document)
+        if owner in _META_SKILLS:
+            continue
+        definitions = first_by_owner.setdefault(owner, {})
+        for block in _code_blocks(document.lines):
+            if block.language != "python":
+                continue
+            try:
+                tree = ast.parse(textwrap.dedent("\n".join(block.body)))
+            except SyntaxError:
+                continue
+            for name, line in _defined_names(tree):
+                definitions.setdefault(name, (document.path, block.start_line + line))
+    owners_by_name: dict[str, list[str]] = {}
+    for owner, definitions in first_by_owner.items():
+        for name in definitions:
+            owners_by_name.setdefault(name, []).append(owner)
+    for name, owners in sorted(owners_by_name.items()):
+        for owner in owners:
+            others = [other for other in owners if other != owner and not _is_pair(owner, other)]
+            if not others:
+                continue
+            path, line = first_by_owner[owner][name]
+            yield _Finding(
+                path=path,
+                line=line,
+                message=f"{name} is also defined in {', '.join(sorted(others))}",
+            )
+
+
+def _definition_owner(document: _Document) -> str:
+    if document.path.parent.name.startswith(_SKILL_PREFIX):
+        owner = document.path.parent.name
+        if owner == _INTEGRATIONS_DIRECTORY:
+            return document.path.stem
+        return owner
+    return _RULES_OWNER
+
+
+def _is_pair(owner: str, other: str) -> bool:
+    integration, skill = sorted((owner, other), key=lambda name: name.startswith(_SKILL_PREFIX))
+    pair = _INTEGRATION_FILE.match(f"{integration}.md")
+    return pair is not None and skill in {f"{_SKILL_PREFIX}{name}" for name in pair.groups()}
+
+
+def _defined_names(tree: ast.Module) -> Iterator[tuple[str, int]]:
+    yield from _top_level_definitions(tree)
+    known = _known_names()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id not in known
+            and _BESPOKE_NAME.match(node.func.id)
+        ):
+            yield node.func.id, node.lineno
+
+
+@functools.cache
+def _known_names() -> frozenset[str]:
+    names = set(_LIBRARY_NAMES) | set(_SHARED_DEFINITIONS)
+    for module_name in _STDLIB_MODULES:
+        try:
+            names.update(dir(importlib.import_module(module_name)))
+        except ImportError:
+            continue
+    return frozenset(names)
+
+
+def _top_level_definitions(tree: ast.Module) -> Iterator[tuple[str, int]]:
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            name = node.name
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            name = node.target.id
+        elif (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and _CONSTANT_NAME.match(node.targets[0].id)
+        ):
+            name = node.targets[0].id
+        else:
+            continue
+        if name.startswith("__") or name in _SHARED_DEFINITIONS:
+            continue
+        yield name, node.lineno
 
 
 def _integration_findings(document: _Document, skills_directory: Path) -> Iterator[_Finding]:
@@ -484,6 +661,9 @@ def _example_findings(document: _Document) -> Iterator[_Finding]:
         except SyntaxError:
             continue
         for line, message in _example_violations(tree):
+            # A script is run, not tested, so it reads its constants where it stands.
+            if document.path.parent.name == _SCRIPTS_SKILL and _SETTING_MESSAGE in message:
+                continue
             yield _Finding(
                 path=document.path, line=block.start_line + line, message=f"CORRECT: {message}"
             )
@@ -555,12 +735,12 @@ def _settings_parameters(
 
 
 def _setting_violations(tree: ast.Module) -> Iterator[tuple[int, str]]:
-    # A setting read inside a factory, or inside a class the root builds, belongs in its signature.
+    # A setting read inside a function or a method belongs in its signature, defaulted to the
+    # constant; only the root, a test and a fixture read one where they stand.
     scopes: list[ast.FunctionDef | ast.AsyncFunctionDef] = [
         node
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and _FACTORY_NAME.match(node.name)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _reads_in_place(node)
     ]
     for node in ast.walk(tree):
         if (
@@ -593,6 +773,27 @@ def _setting_violations(tree: ast.Module) -> Iterator[tuple[int, str]]:
                     yield name.lineno, f"{scope.name} reads the setting {name.id}"
 
 
+def _reads_in_place(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    # A framework parses a route's or a subscriber's signature: a defaulted parameter there is
+    # an input the client sets, so the value stays in the body.
+    return (
+        function.name in _ROOT_NAMES
+        or function.name.startswith(_TEST_PREFIX)
+        or any(
+            marker in ast.unparse(decorator)
+            for decorator in function.decorator_list
+            for marker in _IN_PLACE_DECORATORS
+        )
+    )
+
+
+def _is_lifetime(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        ast.unparse(decorator).rsplit(".", 1)[-1] in _LIFETIME_DECORATORS
+        for decorator in function.decorator_list
+    )
+
+
 def _library_api_findings(document: _Document) -> Iterator[_Finding]:
     owner = document.path.parent.name
     if owner in _META_SKILLS:
@@ -622,18 +823,8 @@ def _library_api_findings(document: _Document) -> Iterator[_Finding]:
                     )
 
 
-def _library_skill_names(core_text: str) -> frozenset[str]:
-    library_row = next((line for line in core_text.splitlines() if _LIBRARY_ROW_MARKER in line), "")
-    cells = library_row.split("|")
-    library_cell = cells[_LIBRARY_CELL_INDEX] if len(cells) > _LIBRARY_CELL_INDEX else ""
-    return frozenset(
-        f"{_SKILL_PREFIX}{name}" for name in re.findall(r"`([a-z][a-z0-9]*)`", library_cell)
-    )
-
-
-def _library_names_past_introduction(
-    document: _Document, library_skills: frozenset[str]
-) -> Iterator[_Finding]:
+def _skill_names_past_introduction(document: _Document) -> Iterator[_Finding]:
+    own_name = document.path.parent.name
     code_lines = _code_line_numbers(document.lines)
     is_past_introduction = False
     for line_number, line in enumerate(document.lines, start=1):
@@ -644,13 +835,13 @@ def _library_names_past_introduction(
         if not is_past_introduction:
             continue
         for skill_name in _SKILL_REFERENCE.findall(line):
-            if skill_name in library_skills:
+            if skill_name != own_name:
                 yield _Finding(
                     path=document.path,
                     line=line_number,
                     message=(
-                        f"a topic skill names {skill_name} outside its introduction;"
-                        " route to it there, once"
+                        f"names {skill_name} outside the introduction; a skill stands alone,"
+                        " and routes to a neighbour in its introduction, once"
                     ),
                 )
 
