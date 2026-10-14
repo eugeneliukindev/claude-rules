@@ -22,30 +22,6 @@
           "why": "the name cannot leave the upload directory"
         }
       ]
-    },
-    {
-      "id": "pyjwt-verification-pinned",
-      "prompt": "Implement verify_bearer_token(token) in auth/tokens.py: it checks a JWT signed by our identity provider (JWKS at https://id.example.com/.well-known/jwks.json) and returns the user id.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"pyjwt[crypto]>=2.10\",\n]\n",
-        "auth/__init__.py": "",
-        "auth/tokens.py": "\"\"\"Bearer tokens.\"\"\"\n"
-      },
-      "skills": [
-        "python-pyjwt"
-      ],
-      "code": [
-        {
-          "files": "**/*.py",
-          "match": "algorithms\\s*=\\s*\\[",
-          "why": "algorithms pinned"
-        },
-        {
-          "files": "**/*.py",
-          "match": "audience\\s*=",
-          "why": "audience checked"
-        }
-      ]
     }
   ]
 }

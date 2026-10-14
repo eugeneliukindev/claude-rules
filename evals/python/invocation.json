@@ -1,18 +1,6 @@
 {
   "cases": [
     {
-      "id": "invoke-asyncpg",
-      "prompt": "In aquarium/readings.py, write latest_readings(pool, tank_id) that returns the last 24 hours of water readings for a tank, newest first, from the tank_readings table.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"asyncpg>=0.31\",\n]\n",
-        "aquarium/__init__.py": "",
-        "aquarium/readings.py": "from dataclasses import dataclass\nfrom datetime import datetime\n\nimport asyncpg\n\n\n@dataclass(frozen=True, slots=True)\nclass WaterReading:\n    tank_id: int\n    taken_at: datetime\n    temperature_celsius: float\n    ph: float\n"
-      },
-      "skills": [
-        "python-asyncpg"
-      ]
-    },
-    {
       "id": "invoke-auth",
       "prompt": "Add GET /kennels/{kennel_id}/dogs/{dog_id} to kennel/api.py. Staff of the kennel may see the dog's boarding record; owners may see only their own dogs. The caller comes from the Authorization header.",
       "files": {
@@ -22,7 +10,7 @@
         "kennel/records.py": "from typing import Protocol\n\n\nclass BoardingRecords(Protocol):\n    def get(self, kennel_id: int, dog_id: int) -> dict[str, str] | None: ...\n"
       },
       "skills": [
-        "python-auth"
+        "python-security"
       ]
     },
     {
@@ -38,42 +26,6 @@
       ]
     },
     {
-      "id": "invoke-caching",
-      "prompt": "beacon_schedule in lighthouse/schedules.py hits the database on every request and it's our hottest endpoint. Put a cache in front of it, and make sure an edit through update_schedule shows up right away.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "lighthouse/__init__.py": "",
-        "lighthouse/schedules.py": "from typing import Protocol\n\n\nclass ScheduleStore(Protocol):\n    def load(self, lighthouse_id: int) -> list[str]: ...\n    def save(self, lighthouse_id: int, flashes: list[str]) -> None: ...\n\n\ndef beacon_schedule(store: ScheduleStore, lighthouse_id: int) -> list[str]:\n    return store.load(lighthouse_id)\n\n\ndef update_schedule(store: ScheduleStore, lighthouse_id: int, flashes: list[str]) -> None:\n    store.save(lighthouse_id, flashes)\n"
-      },
-      "skills": [
-        "python-caching"
-      ]
-    },
-    {
-      "id": "invoke-cli",
-      "prompt": "Give vineyard/harvest.py a command line: `harvest plan BLOCK --date YYYY-MM-DD` and `harvest report BLOCK`, registered as the `harvest` console script.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "vineyard/__init__.py": "",
-        "vineyard/harvest.py": "from datetime import date\n\n\ndef plan_harvest(block: str, on: date) -> list[str]:\n    return [f\"{block}: pick rows 1-12 on {on.isoformat()}\"]\n\n\ndef harvest_report(block: str) -> str:\n    return f\"{block}: 4.2 t picked\"\n"
-      },
-      "skills": [
-        "python-cli"
-      ]
-    },
-    {
-      "id": "invoke-container",
-      "prompt": "We deploy the ferry timetable service to Kubernetes. Write the Dockerfile for it; it runs ferry/server.py.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"uvicorn>=0.38\",\n]\n",
-        "ferry/__init__.py": "",
-        "ferry/server.py": "import uvicorn\nfrom fastapi import FastAPI\n\napp = FastAPI()\n\n\n@app.get(\"/departures\")\ndef departures() -> list[str]:\n    return [\"07:15 Harbour - Isle\"]\n\n\ndef main() -> None:\n    uvicorn.run(app, host=\"0.0.0.0\", port=8000)\n"
-      },
-      "skills": [
-        "python-container"
-      ]
-    },
-    {
       "id": "invoke-contracts",
       "prompt": "scores/library.py only works with scores on local disk. Add a second store that keeps the sheet music in an FTP archive, an in-memory one for the tests, and make lend_score accept any of them.",
       "files": {
@@ -86,177 +38,6 @@
       ]
     },
     {
-      "id": "invoke-examples",
-      "prompt": "We're publishing knitting/gauge.py on PyPI next week. Write the usage example for the README and the docstring of stitches_for_width.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "knitting/__init__.py": "",
-        "knitting/gauge.py": "def stitches_for_width(width_cm: float, stitches_per_10cm: float) -> int:\n    return round(width_cm * stitches_per_10cm / 10)\n"
-      },
-      "skills": [
-        "python-examples"
-      ]
-    },
-    {
-      "id": "invoke-grpc",
-      "prompt": "In lifts/client.py, write request_car(channel, floor) that asks the dispatch service for a car to that floor and returns the car id.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"grpcio>=1.76\",\n    \"protobuf>=6.33\",\n]\n",
-        "lifts/__init__.py": "",
-        "lifts/client.py": "import grpc\n\nfrom lifts import dispatch_pb2, dispatch_pb2_grpc\n",
-        "lifts/dispatch.proto": "syntax = \"proto3\";\n\npackage lifts;\n\nservice Dispatch {\n  rpc RequestCar(CarRequest) returns (CarAssignment);\n}\n\nmessage CarRequest {\n  int32 floor = 1;\n}\n\nmessage CarAssignment {\n  string car_id = 1;\n}\n"
-      },
-      "skills": [
-        "python-grpc"
-      ]
-    },
-    {
-      "id": "invoke-layers",
-      "prompt": "`python -c 'import bakery.ovens'` fails with \"ImportError: cannot import name 'Recipe' from partially initialized module 'bakery.recipes'\". Fix it.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "bakery/__init__.py": "",
-        "bakery/ovens.py": "from dataclasses import dataclass\n\nfrom bakery.recipes import Recipe\n\n\n@dataclass\nclass Oven:\n    name: str\n    max_celsius: int\n\n    def can_bake(self, recipe: Recipe) -> bool:\n        return recipe.celsius <= self.max_celsius\n",
-        "bakery/recipes.py": "from dataclasses import dataclass\n\nfrom bakery.ovens import Oven\n\n\n@dataclass\nclass Recipe:\n    name: str\n    celsius: int\n\n    def ovens_for(self, ovens: list[Oven]) -> list[Oven]:\n        return [oven for oven in ovens if oven.can_bake(self)]\n"
-      },
-      "skills": [
-        "python-layers"
-      ]
-    },
-    {
-      "id": "invoke-metaclasses",
-      "prompt": "In seismic/readers.py, every reader subclass should register itself under the file extension it handles, so open_trace(path) can pick the right one without a hand-kept dict.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "seismic/__init__.py": "",
-        "seismic/readers.py": "from pathlib import Path\n\n\nclass TraceReader:\n    def read(self, path: Path) -> list[float]:\n        raise NotImplementedError\n\n\nclass MiniSeedReader(TraceReader):\n    def read(self, path: Path) -> list[float]:\n        return []\n\n\nclass SacReader(TraceReader):\n    def read(self, path: Path) -> list[float]:\n        return []\n\n\nREADERS = {\".mseed\": MiniSeedReader, \".sac\": SacReader}\n\n\ndef open_trace(path: Path) -> list[float]:\n    return READERS[path.suffix]().read(path)\n"
-      },
-      "skills": [
-        "python-metaclasses"
-      ]
-    },
-    {
-      "id": "invoke-migrations",
-      "prompt": "permits.plate holds values like \"DE:B-XY 123\". Write the next migration in permits/migrations/ splitting it into plate_country and plate_number. The table has 30 million rows and the app stays live while we deploy.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "permits/__init__.py": "",
-        "permits/migrations/__init__.py": "",
-        "permits/migrations/m0007_valid_until.py": "from typing import Protocol\n\n\nclass Connection(Protocol):\n    def execute(self, sql: str) -> None: ...\n\n\ndef upgrade(connection: Connection) -> None:\n    connection.execute(\"ALTER TABLE permits ADD COLUMN valid_until date\")\n\n\ndef downgrade(connection: Connection) -> None:\n    connection.execute(\"ALTER TABLE permits DROP COLUMN valid_until\")\n"
-      },
-      "skills": [
-        "python-migrations"
-      ]
-    },
-    {
-      "id": "invoke-niquests",
-      "prompt": "In balloon/forecast.py, write launch_window(site) that fetches the launch forecast for a site from https://forecast.example.org/v2/launch/{site} and returns it as a LaunchWindow.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"niquests>=3.15\",\n]\n",
-        "balloon/__init__.py": "",
-        "balloon/forecast.py": "from dataclasses import dataclass\nfrom datetime import datetime\n\nimport niquests\n\n\n@dataclass(frozen=True, slots=True)\nclass LaunchWindow:\n    opens_at: datetime\n    closes_at: datetime\n    burst_altitude_metres: int\n"
-      },
-      "skills": [
-        "python-niquests"
-      ]
-    },
-    {
-      "id": "invoke-observability",
-      "prompt": "Ops wants a dashboard for the ski turnstiles: how many passes are scanned per lift and how long validate_pass takes. Instrument skipass/gates.py.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"prometheus-client>=0.23\",\n]\n",
-        "skipass/__init__.py": "",
-        "skipass/gates.py": "from typing import Protocol\n\n\nclass PassRegistry(Protocol):\n    def is_valid(self, pass_id: str, lift: str) -> bool: ...\n\n\ndef validate_pass(registry: PassRegistry, pass_id: str, lift: str) -> bool:\n    return registry.is_valid(pass_id, lift)\n"
-      },
-      "skills": [
-        "python-observability"
-      ]
-    },
-    {
-      "id": "invoke-orjson",
-      "prompt": "Write standings_json(standings) in bowling/standings.py returning the league table as a JSON body for the scoreboard screens.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"orjson>=3.11\",\n]\n",
-        "bowling/__init__.py": "",
-        "bowling/standings.py": "from dataclasses import dataclass\nfrom datetime import datetime\n\nimport orjson\n\n\n@dataclass(frozen=True, slots=True)\nclass TeamStanding:\n    team: str\n    games: int\n    pins: int\n    last_game_at: datetime\n"
-      },
-      "skills": [
-        "python-orjson"
-      ]
-    },
-    {
-      "id": "invoke-packaging",
-      "prompt": "Rename crossword.grid.make_grid to build_grid. Other teams import make_grid from the crossword package, so the old name has to keep working for one more release.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "crossword/__init__.py": "from crossword.grid import make_grid\n",
-        "crossword/grid.py": "def make_grid(rows: int, columns: int) -> list[list[str]]:\n    return [[\".\"] * columns for _ in range(rows)]\n"
-      },
-      "skills": [
-        "python-packaging"
-      ]
-    },
-    {
-      "id": "invoke-performance",
-      "prompt": "busiest_rooms in museum/visits.py takes over a minute on a day of sensor data (about two million visits). Make it fast.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "museum/__init__.py": "",
-        "museum/visits.py": "def busiest_rooms(visits: list[tuple[str, str]], top: int) -> list[str]:\n    rooms: list[str] = []\n    counts: list[int] = []\n    for _visitor, room in visits:\n        if room in rooms:\n            counts[rooms.index(room)] += 1\n        else:\n            rooms.append(room)\n            counts.append(1)\n    ranked = sorted(zip(counts, rooms), reverse=True)\n    return [room for _count, room in ranked[:top]]\n"
-      },
-      "skills": [
-        "python-performance"
-      ]
-    },
-    {
-      "id": "invoke-persistence",
-      "prompt": "Two customers sometimes rent the same canoe for the same slot: both calls to rent_canoe in canoes/rentals.py succeed. Fix it.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "canoes/__init__.py": "",
-        "canoes/rentals.py": "import sqlite3\n\n\ndef rent_canoe(connection: sqlite3.Connection, canoe_id: int, slot: str, customer: str) -> bool:\n    row = connection.execute(\n        \"SELECT customer FROM rentals WHERE canoe_id = ? AND slot = ?\", (canoe_id, slot)\n    ).fetchone()\n    if row is not None:\n        return False\n    connection.execute(\n        \"INSERT INTO rentals (canoe_id, slot, customer) VALUES (?, ?, ?)\", (canoe_id, slot, customer)\n    )\n    connection.commit()\n    return True\n"
-      },
-      "skills": [
-        "python-persistence"
-      ]
-    },
-    {
-      "id": "invoke-project",
-      "prompt": "origami/folds.py should print the fold diagrams as coloured tables with rich. Add rich to the project, and pytest for the tests we'll write next.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "origami/__init__.py": "",
-        "origami/folds.py": "def fold_steps(model: str) -> list[str]:\n    return [f\"{model}: valley fold\", f\"{model}: mountain fold\"]\n"
-      },
-      "skills": [
-        "python-project"
-      ]
-    },
-    {
-      "id": "invoke-pytest",
-      "prompt": "Write property-based tests for braille/codec.py: decoding what encode produced gives back the original text, for any text made of letters and spaces.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "braille/__init__.py": "",
-        "braille/codec.py": "_CELLS = {chr(ord(\"a\") + i): chr(0x2801 + i) for i in range(26)} | {\" \": \"\\u2800\"}\n_LETTERS = {cell: letter for letter, cell in _CELLS.items()}\n\n\ndef encode(text: str) -> str:\n    return \"\".join(_CELLS[c] for c in text.lower())\n\n\ndef decode(cells: str) -> str:\n    return \"\".join(_LETTERS[c] for c in cells)\n"
-      },
-      "skills": [
-        "python-pytest"
-      ]
-    },
-    {
-      "id": "invoke-redis",
-      "prompt": "Keep each karaoke room's song queue in Redis instead of the dict in karaoke/queue.py, so all app instances see the same queue. A room's queue should vanish six hours after its last change.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"redis>=7.0\",\n]\n",
-        "karaoke/__init__.py": "",
-        "karaoke/queue.py": "import redis.asyncio as redis\n\n_queues: dict[str, list[str]] = {}\n\n\nasync def enqueue_song(room: str, song_id: str) -> None:\n    _queues.setdefault(room, []).append(song_id)\n\n\nasync def next_song(room: str) -> str | None:\n    queue = _queues.get(room)\n    return queue.pop(0) if queue else None\n"
-      },
-      "skills": [
-        "python-redis"
-      ]
-    },
-    {
       "id": "invoke-scripts",
       "prompt": "The stamp catalogue import put the issue year into the denomination field for about 300 rows. Write me a one-off fix for the database stamps/catalogue.py talks to; I'll run it once from my laptop.",
       "files": {
@@ -266,30 +47,6 @@
       },
       "skills": [
         "python-scripts"
-      ]
-    },
-    {
-      "id": "invoke-streaming",
-      "prompt": "Spectators want split times live. Add GET /races/{race_id}/splits to marathon/api.py that pushes each new split to the browser as the timing mats report it.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"uvicorn>=0.38\",\n]\n",
-        "marathon/__init__.py": "",
-        "marathon/api.py": "from collections.abc import AsyncIterator\nfrom typing import Protocol\n\nfrom fastapi import FastAPI\n\n\nclass SplitFeed(Protocol):\n    def subscribe(self, race_id: int) -> AsyncIterator[dict[str, str]]: ...\n\n\ndef create_app(*, feed: SplitFeed) -> FastAPI:\n    app = FastAPI()\n    return app\n"
-      },
-      "skills": [
-        "python-streaming"
-      ]
-    },
-    {
-      "id": "invoke-tenacity",
-      "prompt": "book_firing in pottery/kilns.py fails with KilnBusy while the kiln controller is still finishing another firing. Make it try again for up to a minute before giving up.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"tenacity>=9.1\",\n]\n",
-        "pottery/__init__.py": "",
-        "pottery/kilns.py": "from typing import Protocol\n\nimport tenacity\n\n\nclass KilnBusy(Exception):\n    pass\n\n\nclass KilnController(Protocol):\n    def reserve(self, kiln_id: int, peak_celsius: int) -> str: ...\n\n\ndef book_firing(controller: KilnController, kiln_id: int, peak_celsius: int) -> str:\n    return controller.reserve(kiln_id, peak_celsius)\n"
-      },
-      "skills": [
-        "python-tenacity"
       ]
     },
     {
@@ -314,18 +71,6 @@
       },
       "skills": [
         "python-wiring"
-      ]
-    },
-    {
-      "id": "invoke-workers",
-      "prompt": "Write the consumer for machine-finished messages in laundromat/consumer.py: mark the load as done in the database and text the customer. The broker redelivers anything that isn't acked.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "laundromat/__init__.py": "",
-        "laundromat/consumer.py": "from typing import Protocol\n\n\nclass Message(Protocol):\n    body: bytes\n\n    def ack(self) -> None: ...\n    def nack(self) -> None: ...\n\n\nclass Loads(Protocol):\n    def mark_done(self, load_id: int) -> None: ...\n\n\nclass Texter(Protocol):\n    def send(self, phone: str, text: str) -> None: ...\n"
-      },
-      "skills": [
-        "python-workers"
       ]
     }
   ]

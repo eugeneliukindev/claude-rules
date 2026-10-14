@@ -9,7 +9,7 @@
         "tracker/app.py": "from fastapi import FastAPI\n\n\ndef create_app(*, database_url: str) -> FastAPI:\n    app = FastAPI()\n    app.state.database_url = database_url\n    return app\n"
       },
       "skills": [
-        "python-fastapi"
+        "python-wiring"
       ],
       "code": [
         {
