@@ -14,12 +14,11 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
 - every `SKILL.md` has a `name` equal to its directory, a `description` and `paths`;
 - a skill names another skill only in a file's introduction, before its first heading below the
   title;
-- a library's API appears only in its own skill, or in the integration file of a pair it belongs
-  to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link;
+- no example is written in a known library's API; the skills hold design, and a library's
+  mechanics come from its current documentation;
 - a function, class or constant defined in one skill's examples is defined in no other skill's,
-  and in none of the rules'; an integration file may share names with the pair it joins;
-- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`, and of an
-  integration file in both skills' `SKILL.md`.
+  and in none of the rules';
+- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -48,50 +47,44 @@ _SKILL_MAX_LINES: Final = 300
 # Claude Code re-attaches the first 5,000 tokens of an invoked skill after compaction.
 _SKILL_MAX_TOKENS: Final = 5_000
 _SKILL_PREFIX: Final = "python-"
-# The map's row for library skills names them without the prefix.
-_LIBRARY_ROW_MARKER: Final = "`python-<library>`"
 # Skills about the skills themselves, which name the others by design.
 _META_SKILLS: Final = frozenset({"python-rules-authoring", "python-review"})
 _SECTION_HEADING: Final = re.compile(r"^#{2,3} ")
-# What a library's examples are written in; any other file shows the work against its own contracts.
+# Library APIs no example is written in: an example shows the work against its own contracts.
 _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
     {
-        "python-sqlalchemy": re.compile(
+        "sqlalchemy": re.compile(
             r"(?<![.\w])(AsyncSession|async_sessionmaker|sessionmaker|mapped_column|DeclarativeBase"
             r"|create_async_engine|create_engine|AsyncEngine|Mapped\[|select\()|(?<![.\w])Session\b"
             r"|\.scalars?\(|\bengine\.|\(engine\)|\bas engine\b|\bengine\s*="
         ),
-        "python-persistence": re.compile(r"UnitOfWork|unit_of_work"),
-        "python-pydantic": re.compile(
+        "a unit of work": re.compile(r"UnitOfWork|unit_of_work"),
+        "pydantic": re.compile(
             r"\b(BaseModel|BaseSettings|ConfigDict|TypeAdapter|SecretStr|AwareDatetime|HttpUrl"
             r"|model_validate\w*|model_dump\w*|model_copy|model_fields\w*|model_json_schema)\b"
         ),
-        "python-fastapi": re.compile(
+        "fastapi": re.compile(
             r"\b(FastAPI|APIRouter|HTTPException|JSONResponse)\b|Depends\("
         ),
-        "python-niquests": re.compile(r"\b(niquests|httpx)\b"),
-        "python-asyncpg": re.compile(r"\b(asyncpg|fetchrow|fetchval)\b"),
-        "python-redis": re.compile(r"\bredis\.|\bRedis\b"),
-        "python-cashews": re.compile(r"\bcashews\b|\bcache\.setup\b"),
-        "python-faststream": re.compile(r"\b(faststream|RabbitBroker|RabbitRouter|AckPolicy)\b"),
-        "python-tenacity": re.compile(r"\b(tenacity|stop_after_\w+|wait_random\w*)\b"),
-        "python-orjson": re.compile(r"\borjson\b"),
-        "python-pyjwt": re.compile(r"\bjwt\.|\bPyJWKClient\b"),
-        "python-strawberry": re.compile(r"\bstrawberry\b"),
-        "python-grpc": re.compile(r"\bgrpc\b|_pb2\b"),
-        "python-alembic": re.compile(r"\balembic\b"),
+        "niquests": re.compile(r"\b(niquests|httpx)\b"),
+        "asyncpg": re.compile(r"\b(asyncpg|fetchrow|fetchval)\b"),
+        "redis": re.compile(r"\bredis\.|\bRedis\b"),
+        "cashews": re.compile(r"\bcashews\b|\bcache\.setup\b"),
+        "faststream": re.compile(r"\b(faststream|RabbitBroker|RabbitRouter|AckPolicy)\b"),
+        "tenacity": re.compile(r"\b(tenacity|stop_after_\w+|wait_random\w*)\b"),
+        "orjson": re.compile(r"\borjson\b"),
+        "pyjwt": re.compile(r"\bjwt\.|\bPyJWKClient\b"),
+        "strawberry": re.compile(r"\bstrawberry\b"),
+        "grpc": re.compile(r"\bgrpc\b|_pb2\b"),
+        "alembic": re.compile(r"\balembic\b"),
     }
 )
-# Two libraries meet only in their pair's file, `python-integrations/<a>-<b>.md` with the names in
-# alphabetical order, linked from both skills; the directory is not a skill. alembic is built on
-# SQLAlchemy, so every alembic file speaks it.
-_INTEGRATIONS_DIRECTORY: Final = "python-integrations"
-_INTEGRATION_FILE: Final = re.compile(r"^([a-z0-9]+)-([a-z0-9]+)\.md$")
-_BUILT_ON: Final = frozenset({("python-alembic", "python-sqlalchemy")})
-# A description says what the skill does and when to use it; the listing every session pays for
+# A description says what the skill does and when to invoke it; the listing every session pays for
 # is capped at 1% of the context window, so a description is a trigger, not a table of contents.
 _DESCRIPTION_MAX_CHARACTERS: Final = 400
-_DESCRIPTION_TRIGGER: Final = "Use when"
+# The directive form activated in all of 650 trials, where "Use when" left the choice to the model:
+# https://medium.com/@ivan.seleznov1/why-claude-code-skills-dont-activate-and-how-to-fix-it-86f679409af1
+_DESCRIPTION_TRIGGER: Final = "ALWAYS invoke"
 # What a CORRECT half shows is what the model copies, so it keeps the mechanical rules of every
 # other rule: a constant is Final, a dataclass is frozen, slotted and keyword-only, and so on.
 _EXAMPLE_MARKER: Final = re.compile(r"^# (WRONG|CORRECT)\b")
@@ -289,14 +282,7 @@ def run(*, root: Path) -> int:
         for path in sorted(directory.rglob("*.md"))
         if not _is_hidden(path.relative_to(directory))
     )
-    skill_names = frozenset(
-        directory.name
-        for directory in skill_directories
-        if directory.name != _INTEGRATIONS_DIRECTORY
-    )
-    integration_files = tuple(
-        document for document in skill_files if document.path.parent.name == _INTEGRATIONS_DIRECTORY
-    )
+    skill_names = frozenset(directory.name for directory in skill_directories)
 
     findings = [
         *_budget_findings(rules, skill_files),
@@ -310,11 +296,6 @@ def run(*, root: Path) -> int:
         *_layering_findings(rules_directory / "core.md", skill_files),
         *_shared_definition_findings((*rules, *skill_files)),
         *_router_findings(skill_files),
-        *(
-            finding
-            for document in integration_files
-            for finding in _integration_findings(document, skills_directory)
-        ),
         *(
             finding
             for document in (*rules, *skill_files)
@@ -523,18 +504,15 @@ def _reference_findings(
 
 def _map_findings(core_path: Path, skill_names: frozenset[str]) -> Iterator[_Finding]:
     core_text = core_path.read_text(encoding="utf-8")
-    library_row = next((line for line in core_text.splitlines() if _LIBRARY_ROW_MARKER in line), "")
     for skill_name in sorted(skill_names):
-        library_name = skill_name.removeprefix(_SKILL_PREFIX)
-        is_named = f"`{skill_name}`" in core_text or f"`/{skill_name}`" in core_text
-        if not is_named and f"`{library_name}`" not in library_row:
+        if f"`{skill_name}`" not in core_text and f"`/{skill_name}`" not in core_text:
             yield _Finding(path=core_path, line=1, message=f"{skill_name} is not named in core.md")
 
 
 def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Iterator[_Finding]:
     for document in skill_files:
         skill_name = document.path.parent.name
-        if skill_name in {*_META_SKILLS, _INTEGRATIONS_DIRECTORY}:
+        if skill_name in _META_SKILLS:
             continue
         yield from _skill_names_past_introduction(document)
 
@@ -547,26 +525,14 @@ def _router_findings(skill_files: Sequence[_Document]) -> Iterator[_Finding]:
         if document.path.name == "SKILL.md"
     }
     for document in skill_files:
-        pair = _INTEGRATION_FILE.match(document.path.name)
-        if document.path.parent.name == _INTEGRATIONS_DIRECTORY and pair is not None:
-            # An integration file is listed by both skills of its pair.
-            skills_root = document.path.parent.parent
-            router = "\n".join(
-                routers.get(skills_root / f"{_SKILL_PREFIX}{name}", "") for name in pair.groups()
-            )
-            pair_routers = [
-                routers.get(skills_root / f"{_SKILL_PREFIX}{name}", "") for name in pair.groups()
-            ]
-        else:
-            router = routers.get(document.path.parent, "")
-            pair_routers = [router]
+        router = routers.get(document.path.parent, "")
         if document.path.name == "SKILL.md" or not router:
             continue
         code_lines = _code_line_numbers(document.lines)
         for line_number, line in enumerate(document.lines, start=1):
             if line.startswith("### ") and line_number not in code_lines:
                 heading = line.removeprefix("### ")
-                if any(heading not in pair_router for pair_router in pair_routers):
+                if heading not in router:
                     yield _Finding(
                         path=document.path,
                         line=line_number,
@@ -597,7 +563,7 @@ def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Fin
             owners_by_name.setdefault(name, []).append(owner)
     for name, owners in sorted(owners_by_name.items()):
         for owner in owners:
-            others = [other for other in owners if other != owner and not _is_pair(owner, other)]
+            others = [other for other in owners if other != owner]
             if not others:
                 continue
             path, line = first_by_owner[owner][name]
@@ -610,17 +576,8 @@ def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Fin
 
 def _definition_owner(document: _Document) -> str:
     if document.path.parent.name.startswith(_SKILL_PREFIX):
-        owner = document.path.parent.name
-        if owner == _INTEGRATIONS_DIRECTORY:
-            return document.path.stem
-        return owner
+        return document.path.parent.name
     return _RULES_OWNER
-
-
-def _is_pair(owner: str, other: str) -> bool:
-    integration, skill = sorted((owner, other), key=lambda name: name.startswith(_SKILL_PREFIX))
-    pair = _INTEGRATION_FILE.match(f"{integration}.md")
-    return pair is not None and skill in {f"{_SKILL_PREFIX}{name}" for name in pair.groups()}
 
 
 def _defined_names(tree: ast.Module) -> Iterator[tuple[str, int]]:
@@ -665,26 +622,6 @@ def _top_level_definitions(tree: ast.Module) -> Iterator[tuple[str, int]]:
         if name.startswith("__") or name in _SHARED_DEFINITIONS:
             continue
         yield name, node.lineno
-
-
-def _integration_findings(document: _Document, skills_directory: Path) -> Iterator[_Finding]:
-    name = _INTEGRATION_FILE.match(document.path.name)
-    if name is None or name.group(1) >= name.group(2):
-        yield _Finding(
-            path=document.path,
-            line=1,
-            message="an integration file is named <a>-<b>.md, the libraries in alphabetical order",
-        )
-        return
-    link = f"](../{_INTEGRATIONS_DIRECTORY}/{document.path.name})"
-    for library in name.groups():
-        router = skills_directory / f"{_SKILL_PREFIX}{library}" / "SKILL.md"
-        if not router.is_file() or link not in router.read_text(encoding="utf-8"):
-            yield _Finding(
-                path=document.path,
-                line=1,
-                message=f"{_SKILL_PREFIX}{library}/SKILL.md does not link this integration",
-            )
 
 
 def _example_findings(document: _Document) -> Iterator[_Finding]:
@@ -836,28 +773,16 @@ def _library_api_findings(document: _Document) -> Iterator[_Finding]:
     owner = document.path.parent.name
     if owner in _META_SKILLS:
         return
-    integration = _INTEGRATION_FILE.match(document.path.name)
-    if owner == _INTEGRATIONS_DIRECTORY and integration is not None:
-        speakers = frozenset(f"{_SKILL_PREFIX}{library}" for library in integration.groups())
-    else:
-        speakers = frozenset({owner})
     for block in _code_blocks(document.lines):
         if block.language != "python":
             continue
         for offset, line in enumerate(block.body, start=1):
             for library, api in _LIBRARY_API.items():
-                if (
-                    library not in speakers
-                    and (owner, library) not in _BUILT_ON
-                    and api.search(line)
-                ):
+                if api.search(line):
                     yield _Finding(
                         path=document.path,
                         line=block.start_line + offset,
-                        message=(
-                            f"{library}'s API outside its skill; show it in the pair's file"
-                            f" under {_INTEGRATIONS_DIRECTORY}/, or use a contract"
-                        ),
+                        message=f"{library}'s API in an example; use a contract of the skill's own",
                     )
 
 
