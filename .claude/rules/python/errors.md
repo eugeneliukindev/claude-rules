@@ -5,61 +5,14 @@ paths:
 
 # Python — Errors
 
-## What Is an Error
-
-### `None` is for lookups where absence is normal; a promised value raises
-
-**Why:** `-> User | None` makes every caller handle absence, which is right for a search; a
-signature promising a value that returns `None`, `False`, `-1` or an empty list on failure lets the
-caller carry on with nonsense.
-
-**Example:**
-```python
-# WRONG — "no rate" and "rate service down" look the same
-def exchange_rate(source: Currency, target: Currency, *, rates: RateService) -> Decimal | None:
-    try:
-        return rates.fetch(source, target)
-    except RateServiceError:
-        return None
-
-
-# CORRECT — a lookup that may legitimately find nothing says so; a failure raises
-def find_user(email: str, *, users: UserRepository) -> User | None:
-    return users.find_by_email(email)
-```
-
-### An outcome the caller would treat as success is not an error
-
-**Why:** `cancel` on a cancelled booking and `delete` of a missing key promise a state, and they
-succeed — a retry then needs no special case.
-**Except:** never a guess in place of an error — a clipped index, an empty list for "not found".
-
-**Example:**
-```python
-# WRONG — the second cancel, from a retry, fails a call that already got what it asked for
-def cancel_booking(booking_id: BookingId, *, bookings: BookingRepository) -> None:
-    booking = bookings.get(booking_id)
-    if booking.status is BookingStatus.CANCELLED:
-        raise BookingAlreadyCancelledError(booking_id)
-    bookings.save(replace(booking, status=BookingStatus.CANCELLED))
-
-
-# CORRECT — "cancelled afterwards" holds after a repeat too
-def cancel_booking(booking_id: BookingId, *, bookings: BookingRepository) -> None:
-    booking = bookings.get(booking_id)
-    if booking.status is BookingStatus.CANCELLED:
-        return
-    bookings.save(replace(booking, status=BookingStatus.CANCELLED))
-```
-
-
 ## Raising
 
 ### A failure is caught narrowly, translated with its cause, and never returned as `None`
 
-**Why:** the four broken most often, together: a broad `except` swallows the bug along with the
-expected failure, a `try` around everything hides which line failed, a driver's error re-raised
-without `from` loses its cause, and `None` for an error makes every caller guess.
+**Why:** a broad `except` swallows the bug along with the expected failure, a `try` around
+everything hides which line failed, a driver's error re-raised without `from` loses its cause, and
+`None`, `False` or `-1` for an error lets the caller carry on with nonsense. `-> User | None` is for
+a lookup where absence is normal.
 
 **Example:**
 ```python
@@ -89,6 +42,12 @@ def load_user(
     return User.from_payload(payload)
 ```
 
+### An outcome the caller would treat as success is not an error
+
+**Why:** `cancel` on a cancelled booking and `delete` of a missing key promise a state, and they
+succeed — a retry then needs no special case.
+**Except:** never a guess in place of an error — a clipped index, an empty list for "not found".
+
 ### A message carries the identifying values, and the exception carries them as attributes
 
 **Why:** `"Bad ticket"` in a log names nothing a reader can look up; a handler that has to parse
@@ -114,61 +73,36 @@ class TicketNotTransferableError(TicketingError):
 
 ## The Hierarchy
 
-### Every package defines one root exception, named for the package
+### One root exception per package; a leaf names the failure and inherits what stdlib catches
 
-**Why:** `BillingError(Exception)` lets a caller catch "anything from billing" with one clause; a
-package whose errors inherit `Exception` directly leaves it to list them all, and miss the next.
-
-### A leaf class is earned by a caller who catches it, and inherits the stdlib type it expects
-
-**Why:** until a caller catches it alone, the nearest category with the identifying values is
-enough. A leaf names the failure without the prefix (`naming.md`) and inherits `LookupError`,
-`ValueError` or `TypeError` where stdlib code catches it — a missing key from a `Mapping`'s
-`__getitem__` must be a `KeyError`, or `in` and `.get()` break.
-**Except:** never an `OSError` subtype — `PermissionError`, `TimeoutError`, `FileNotFoundError`
-carry errno semantics, and an `except OSError` around a socket swallows the domain failure.
+**Why:** `CatalogError(Exception)` lets a caller catch "anything from the catalog" with one clause,
+and is the one name that carries the package's prefix — a leaf says what went wrong, not where. A
+leaf is earned by a caller who catches it alone, and inherits `LookupError`, `ValueError` or
+`TypeError` where stdlib code catches it — a `Mapping`'s missing key must be a `KeyError`, or `in`
+and `.get()` break.
+**Except:** never an `OSError` subtype — `PermissionError`, `TimeoutError` carry errno semantics,
+and an `except OSError` around a socket swallows the domain failure.
 
 **Example:**
 ```python
-# WRONG — PermissionError is an OSError: `except OSError` around file handling now takes it
-class AccessDeniedError(CatalogError, PermissionError): ...
+# WRONG — no root to catch, and PermissionError makes it an OSError
+class ProductNotFoundError(Exception): ...
 
 
-# CORRECT — the errno family stays the operating system's
-class AccessDeniedError(CatalogError): ...
+class AccessDeniedError(PermissionError): ...
 
 
-# CORRECT — a Mapping's missing key is a KeyError, so `in` and `.get()` keep working
+# CORRECT — one root per package; a leaf adds the stdlib type its callers expect
+class CatalogError(Exception): ...
+
+
 class ProductNotFoundError(CatalogError, KeyError): ...
 
 
-@final
-class ProductIndex(Mapping[Sku, Product]):
-    def __init__(self, products: Iterable[Product]) -> None:
-        self._product_by_sku = {product.sku: product for product in products}
-
-    @override
-    def __getitem__(self, sku: Sku) -> Product:
-        try:
-            return self._product_by_sku[sku]
-        except KeyError as error:
-            raise ProductNotFoundError(sku) from error
-
-    @override
-    def __iter__(self) -> Iterator[Sku]:
-        return iter(self._product_by_sku)
-
-    @override
-    def __len__(self) -> int:
-        return len(self._product_by_sku)
+class AccessDeniedError(CatalogError): ...
 ```
 
 ## Handling
-
-### EAFP when the failure is rare and checking would race; LBYL when the check is cheap and atomic
-
-**Why:** checking a file exists and then opening it races with whoever deletes it; catching a
-`KeyError` for the common case is slower and hides the expected path. Never both for one operation.
 
 ### An error is caught where it can be handled, and logged once there
 
