@@ -1,10 +1,11 @@
 ---
 name: python-wiring
 description: >-
-  Designs construction and configuration: one composition root, dependencies through the
-  constructor, resource lifetime, settings passed as fields, constants, parameter objects. Use
-  when writing an entry point or an application factory, deciding where an object is built, adding
-  a settings field or a constant, or removing a global.
+  Designs construction and configuration: one composition root, default collaborators, scopes,
+  resource lifetime, settings, constants, parameter objects. Use when writing an entry point or
+  an application factory, deciding where an object is built, opening a pool or a client, adding
+  a settings field or a constant, or removing a global. Not for which layer imports which
+  (python-layers).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -12,77 +13,80 @@ paths:
 
 # Wiring: Composition Root, Resource Lifetime
 
-Which layer may import which is `python-layers`. In an ASGI service the composition root is the
-application's lifespan (`python-fastapi`); a cashews `Cache` connects when the root calls `setup()`
-(`python-cashews`).
+Which layer may import which is `python-layers`; in an ASGI service the composition root is the
+application's lifespan (`python-fastapi`). Collaborators arrive through the constructor
+(`classes.md`), plain values instead of the settings object (`functions.md`), nothing runs at import
+(`modules.md`), and a test hands in fakes instead of patching (`testing.md`).
 
 ## Composition Root
 
 ### All construction happens in one place — the composition root
 
 **Why:** the entry point of a worker or CLI, or the application factory of a service, is the one
-place that knows every concrete class; everywhere else a dependency arrives through a constructor or
-a signature, so a test or a second entry point can hand in another.
+place that knows every concrete class; a function below it that opens its own resources is a second
+root, and no test or second entry point can hand it another.
 
 **Example:**
 ```python
-# WRONG — the service wires itself: a module-level pool, opened at import from the environment
-pool = open_database_pool(os.environ["DATABASE_URL"])
+# WRONG — a second root below main: the intake opens its own pool from a URL it was handed
+def run_loan_intake(*, registry_url: str, batch_size: int) -> None:
+    with RegistryPool(registry_url) as pool:
+        office = LoanOffice(agreements=PostgresAgreementLedger(pool))
+        consume_loan_requests(office, batch_size=batch_size)
 
 
-@final
-class InvoiceService:
-    def __init__(self) -> None:
-        self._invoices = PostgresInvoiceRepository(pool)
-
-    def issue(self, draft: InvoiceDraft) -> InvoiceId:
-        return self._invoices.add(Invoice.from_draft(draft))
-
-
-# CORRECT — the root builds settings, resources, adapters and services, and hands them down
 def main() -> None:
     settings = Settings()
-    with managed_pool(settings.database_url) as pool:
-        invoices = InvoiceService(invoices=PostgresInvoiceRepository(pool), clock=SystemClock())
-        run_consumer(invoices, batch_size=settings.consumer_batch_size)
+    run_loan_intake(registry_url=settings.registry_url, batch_size=settings.intake_batch_size)
+
+
+# CORRECT — main builds settings, resources, adapters and services, and hands them down
+def main() -> None:
+    settings = Settings()
+    with RegistryPool(settings.registry_url) as pool:
+        office = LoanOffice(agreements=PostgresAgreementLedger(pool))
+        consume_loan_requests(office, batch_size=settings.intake_batch_size)
 ```
 
-### A constructor only assigns; it never builds a collaborator or reads settings to choose one
+### The root chooses an implementation from settings; a class never does
 
-**Why:** a collaborator built inside cannot be replaced by a fake, and the choice it makes from
-settings is a second composition root hidden in a class.
+**Why:** a constructor that picks between two implementations from a flag is a second composition
+root hidden in a class: it must know every implementation's settings, and a test has to set the
+flag to reach the fake.
 
 **Example:**
 ```python
-# WRONG — the notifier is chosen and built inside, from a setting the service should not know
+# WRONG — the channel is chosen inside, from values the reminders should not know
 @final
-class ReminderService:
-    def __init__(self, *, invoices: InvoiceRepository, settings: Settings) -> None:
-        self._invoices = invoices
-        self._notifier = (
-            SmsNotifier(settings.sms_api_key) if settings.sms_enabled else EmailNotifier()
+class ReturnReminders:
+    def __init__(
+        self, *, agreements: AgreementLedger, portal_enabled: bool, portal_url: str
+    ) -> None:
+        self._agreements = agreements
+        self._lender_channel = (
+            LenderPortalChannel(base_url=portal_url) if portal_enabled else LenderEmailChannel()
         )
 
-    def remind_overdue(self, today: date) -> None:
-        for invoice in self._invoices.overdue_on(today):
-            self._notifier.send(invoice.customer_id, Message(f"Invoice {invoice.number} is due"))
+    def remind_ending(self, today: date) -> None:
+        for agreement in self._agreements.ending_on(today):
+            self._lender_channel.send(agreement.lender_id, f"Loan {agreement.number} ends today")
 
 
-# CORRECT — the root chose and built the notifier; the constructor assigns what it is given
+# CORRECT — the root chose and built the channel; the reminders take the contract
 @final
-class ReminderService:
-    def __init__(self, *, invoices: InvoiceRepository, notifier: Notifier) -> None:
-        self._invoices = invoices
-        self._notifier = notifier
+class ReturnReminders:
+    def __init__(self, *, agreements: AgreementLedger, lender_channel: LenderChannel) -> None:
+        self._agreements = agreements
+        self._lender_channel = lender_channel
 
-    def remind_overdue(self, today: date) -> None:
-        for invoice in self._invoices.overdue_on(today):
-            self._notifier.send(invoice.customer_id, Message(f"Invoice {invoice.number} is due"))
+    def remind_ending(self, today: date) -> None:
+        for agreement in self._agreements.ending_on(today):
+            self._lender_channel.send(agreement.lender_id, f"Loan {agreement.number} ends today")
 ```
 
-### A default collaborator is the one exception, and it is what production runs
+### A default collaborator is what production runs, and needs no setting
 
-**Why:** `clock: Clock | None = None` then `clock or SystemClock()` is what pydantic
+**Why:** `clock: Clock | None = None` then `clock or WallClock()` is what pydantic
 (`ns_resolver or NsResolver()`) and the OpenTelemetry SDK (`span_limits or SpanLimits()`) do: the
 parameter is a seam for a test or a second root, and the default costs the caller nothing. A default
 that needs a setting wastes that setting whenever the collaborator is passed.
@@ -92,103 +96,63 @@ plain value — a path, a limit — is no collaborator: it is defaulted in the s
 
 **Example:**
 ```python
-# WRONG — the default needs a host, so smtp_host is wasted whenever a notifier is passed
+# WRONG — the default needs a URL, so courier_api_url is wasted whenever couriers are passed
 @final
-class InvoiceService:
+class CourierScheduler:
     def __init__(
-        self, *, smtp_host: str, notifier: Notifier | None = None, clock: Clock | None = None
+        self,
+        *,
+        courier_api_url: str,
+        couriers: CourierBooking | None = None,
+        clock: Clock | None = None,
     ) -> None:
-        self._notifier = notifier or SmtpNotifier(host=smtp_host)
-        self._clock = clock or SystemClock()
+        self._couriers = couriers or CourierApiBooking(base_url=courier_api_url)
+        self._clock = clock or WallClock()
 
-    def issue(self, draft: InvoiceDraft) -> Invoice:
-        return Invoice.from_draft(draft, issued_at=self._clock.now())
+    def book_courier(self, agreement: LoanAgreement) -> CourierSlot:
+        return self._couriers.book(agreement.exhibit_id, earliest=self._clock.now())
 
 
-# CORRECT — the clock defaults to what production runs; the notifier is built by the root
+# CORRECT — the clock defaults to what production runs; the couriers are built by the root
 @final
-class InvoiceService:
-    def __init__(self, *, notifier: Notifier, clock: Clock | None = None) -> None:
-        self._notifier = notifier
-        self._clock = clock or SystemClock()
+class CourierScheduler:
+    def __init__(self, *, couriers: CourierBooking, clock: Clock | None = None) -> None:
+        self._couriers = couriers
+        self._clock = clock or WallClock()
 
-    def issue(self, draft: InvoiceDraft) -> Invoice:
-        return Invoice.from_draft(draft, issued_at=self._clock.now())
+    def book_courier(self, agreement: LoanAgreement) -> CourierSlot:
+        return self._couriers.book(agreement.exhibit_id, earliest=self._clock.now())
 ```
 
-### A class closes only what it built
+### The wiring is plain code; a container, if one is used at all, never leaves the root
 
-**Why:** a resource passed in belongs to whoever passed it, and closing it breaks every other user;
-a store that built its own client and never closed it leaked a connection per instance.
+**Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one handed
+below the root is a service locator: the signature no longer lists what the class needs, and a
+test must register every lookup before the first call.
+**Except:** module-level names that hold nothing until the root configures them (`modules.md`) —
+and the task-queue app object tasks are decorated with, whose pools the worker's startup hook
+builds.
 
 **Example:**
 ```python
-# WRONG — close() also shuts down a pool the caller passed in, and every other user of it
+# WRONG — the container reached from inside: what the desk needs is known only at run time
 @final
-class ThumbnailRenderer:
-    def __init__(
-        self, executor: Executor | None = None, *, max_workers: int = _MAX_RENDER_WORKERS
-    ) -> None:
-        self._executor = executor or ThreadPoolExecutor(max_workers=max_workers)
+class GalleryDesk:
+    def __init__(self, *, container: Container) -> None:
+        self._container = container
 
-    def render(self, document: Document) -> Future[bytes]:
-        return self._executor.submit(render_thumbnail, document)
-
-    def close(self) -> None:
-        self._executor.shutdown()
+    def assign_gallery(self, exhibit: Exhibit) -> GalleryId:
+        return self._container.resolve(GalleryPlanner).free_gallery_for(exhibit)
 
 
-# CORRECT — remembers whether it built the pool, and shuts down only its own
+# CORRECT — the root resolved the planner and passed it in
 @final
-class ThumbnailRenderer:
-    def __init__(
-        self, executor: Executor | None = None, *, max_workers: int = _MAX_RENDER_WORKERS
-    ) -> None:
-        self._owns_executor = executor is None
-        self._executor = executor or ThreadPoolExecutor(max_workers=max_workers)
+class GalleryDesk:
+    def __init__(self, *, planner: GalleryPlanner) -> None:
+        self._planner = planner
 
-    def render(self, document: Document) -> Future[bytes]:
-        return self._executor.submit(render_thumbnail, document)
-
-    def close(self) -> None:
-        if self._owns_executor:
-            self._executor.shutdown()
-```
-
-### The wiring is plain code; a DI framework stays inside the root if one is used at all
-
-**Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one that is
-reached from inside the code is a service locator — the hidden global below.
-
-### No global singletons, no service locator
-
-**Why:** a module-level connection or a globally reachable container is hidden global state:
-import-time side effects, un-fakeable tests, ordering bugs.
-**Except:** the module-level names that record nothing until the entry point configures them — the
-logger, the tracer, the meter and its instruments, a context variable (`python-observability`); the
-Celery or taskiq app object tasks are decorated with, whose pools are built in the worker's startup
-hook (`python-workers`); a decorator library's cache object, which connects only when the root sets
-it up.
-
-**Example:**
-```python
-# WRONG — a module-level client connected at import: every importer shares it, no test replaces it
-storage = ObjectStorageClient(os.environ["STORAGE_URL"])
-
-
-def archive(document: Document) -> str:
-    return storage.put(f"archive/{document.document_id}", document.content)
-
-
-# CORRECT — the client is built by the root and passed to the one object that uses it
-@final
-class DocumentArchive:
-    def __init__(self, *, storage: ObjectStorage, prefix: str = DEFAULT_ARCHIVE_PREFIX) -> None:
-        self._storage = storage
-        self._prefix = prefix
-
-    def archive(self, document: Document) -> str:
-        return self._storage.put(f"{self._prefix}/{document.document_id}", document.content)
+    def assign_gallery(self, exhibit: Exhibit) -> GalleryId:
+        return self._planner.free_gallery_for(exhibit)
 ```
 
 ### Scopes are explicit: application-scoped objects built once, request-scoped by a passed factory
@@ -198,150 +162,32 @@ built per request exhausts the pool.
 
 **Example:**
 ```python
-# WRONG — one request's catalog built once: the first request's language answers every request
+# WRONG — one request's glossary built once: the first request's language answers every request
 @final
-class ReceiptRenderer:
-    def __init__(self, *, catalog: TranslationCatalog) -> None:
-        self._catalog = catalog
+class WallLabelWriter:
+    def __init__(self, *, glossary: LabelGlossary) -> None:
+        self._glossary = glossary
 
-    def render(self, receipt: Receipt) -> str:
-        return self._catalog.translate("receipt.total", amount=receipt.total)
+    def write_label(self, exhibit: Exhibit) -> str:
+        return self._glossary.caption(exhibit.title_key, lender=exhibit.lender_name)
 
 
-# CORRECT — the renderer holds the factory; each request builds the catalog for its own locale
+# CORRECT — the writer holds the factory; each request builds the glossary for its own locale
 @final
-class ReceiptRenderer:
-    def __init__(self, *, catalog_for: Callable[[Locale], TranslationCatalog]) -> None:
-        self._catalog_for = catalog_for
+class WallLabelWriter:
+    def __init__(self, *, glossary_for: Callable[[Locale], LabelGlossary]) -> None:
+        self._glossary_for = glossary_for
 
-    def render(self, receipt: Receipt, *, locale: Locale) -> str:
-        return self._catalog_for(locale).translate("receipt.total", amount=receipt.total)
-```
-
-### Tests get their own root
-
-**Why:** a helper that builds the graph with in-memory fakes and a fixed clock is the production
-wiring with other leaves; if a test needs to patch a dependency, the production wiring is wrong.
-
-**Example:**
-```python
-# WRONG — the test patches a module attribute the service reaches for
-def test_overdue_invoices_are_reminded(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[Message] = []
-    monkeypatch.setattr(reminders, "notifier", RecordingNotifier(sent))
-    reminders.remind_overdue(date(2026, 3, 1))
-
-
-# CORRECT — the test builds the same graph from fakes
-def test_overdue_invoices_are_reminded() -> None:
-    notifier = RecordingNotifier()
-    invoices = InMemoryInvoiceRepository([overdue_invoice(due_on=date(2026, 2, 1))])
-    service = ReminderService(invoices=invoices, notifier=notifier)
-
-    service.remind_overdue(date(2026, 3, 1))
-
-    assert len(notifier.sent) == 1
+    def write_label(self, exhibit: Exhibit, *, locale: Locale) -> str:
+        return self._glossary_for(locale).caption(exhibit.title_key, lender=exhibit.lender_name)
 ```
 
 ## Resource Lifetime
 
-The root acquires, so the root releases; everything below it borrows.
-
-### An own resource is a `@contextmanager` named for its lifecycle, releasing in `finally`
-
-**Why:** `try/finally: close()` at every use site is the one that gets forgotten; a context manager
-named for the lifecycle — `managed_pool` — yields exactly once and cleans up in `finally`, so an
-exception in the block still releases.
-**Except:** a class with `__enter__`/`__exit__` when the object has other methods besides those two.
-
-### A known set of resources is one `with` statement, an item per resource
-
-**Why:** the parenthesized form closes them in reverse order exactly as nesting would, and shows
-what is open; `ExitStack` is for a count known only at runtime — one connection per configured shard
-— and hides that for two or three fixed resources.
-
-**Example:**
-```python
-# WRONG — an ExitStack for two fixed resources hides what is open and in which order it closes
-def main() -> None:
-    settings = Settings()
-    with ExitStack() as resources:
-        pool = resources.enter_context(managed_pool(settings.database_url))
-        client = resources.enter_context(managed_http_client(settings.http_timeout_seconds))
-        run_import(documents=PostgresDocumentRepository(pool), source=HttpDocumentSource(client))
-
-
-# CORRECT — one with item per resource, closed in reverse order
-def main() -> None:
-    settings = Settings()
-    with (
-        managed_pool(settings.database_url) as pool,
-        managed_http_client(settings.http_timeout_seconds) as client,
-    ):
-        run_import(documents=PostgresDocumentRepository(pool), source=HttpDocumentSource(client))
-```
-
-### An async root has the same shape
-
-**Why:** `asyncio.run(main())` once, `async with` an item per resource, `AsyncExitStack` only for a
-runtime count. A pool created with a bare `await` and never entered is closed by nobody: the process
-exits with its connections open and the server logs them as dropped. In a web service the
-framework's startup and shutdown hook is this root.
-
-**Example:**
-```python
-# WRONG — the pool is created and never closed; shutdown drops its connections mid-protocol
-async def main() -> None:
-    settings = Settings()
-    pool = await AsyncConnectionPool.open(settings.database_url)
-    documents = DocumentService(documents=PostgresDocumentRepository(pool))
-    await run_consumer(documents)
-
-
-# CORRECT — entered like any resource, and closed on the way out whatever happened
-async def main() -> None:
-    settings = Settings()
-    async with managed_async_pool(settings.database_url) as pool:
-        documents = DocumentService(documents=PostgresDocumentRepository(pool))
-        await run_consumer(documents)
-```
-
-### Cleanup never raises over the block's own error
-
-**Why:** `__exit__` propagates by default, and a release that fails replaces the error the caller
-needed — a failed two-phase commit once tried to roll back, a state guard refused the rollback, and
-the guard's error was all the caller ever saw.
-
-**Example:**
-```python
-# WRONG — a failed release replaces the block's own error, and the caller's except misses it
-@contextmanager
-def managed_lock(name: str, *, locks: LockService) -> Iterator[Lock]:
-    lock = locks.acquire(name)
-    try:
-        yield lock
-    finally:
-        locks.release(lock)
-
-
-# CORRECT — the release failure is logged on its own, and the block's error propagates intact
-@contextmanager
-def managed_lock(name: str, *, locks: LockService) -> Iterator[Lock]:
-    lock = locks.acquire(name)
-    try:
-        yield lock
-    finally:
-        try:
-            locks.release(lock)
-        except LockReleaseError:
-            logger.exception("lock release failed", extra={"lock": name})
-```
-
-### No hidden global mutation in library or service code
-
-**Why:** a context manager that flips process state — `chdir`, an environment variable, logging
-configuration — changes every other caller for its duration; it belongs to tests and entry points
-only.
+**Before writing a `with` or `async with` over a pool, a client or a session, a `@contextmanager`,
+an `ExitStack`, or a `close()` method, read [lifetime.md](lifetime.md)** — the library's own
+context manager, one `with` per known set, the async root, a class closing only what it built,
+cleanup that never raises over the block's error, no process-wide mutation.
 
 ## Constants
 
@@ -352,8 +198,8 @@ constant lives beside the one module that owns its concept, never in a grab-bag.
 
 **Before adding or reading a settings field, an environment variable, a feature flag or a secret,
 read [settings.md](settings.md)** — typed settings built at the root, the server's apart from the
-application's, fields passed instead of the root, tests that never build them, validation at startup,
-secrets without defaults.
+application's, no branch on the environment's name, validation at startup, secrets without
+defaults.
 
 ## Parameter Objects
 

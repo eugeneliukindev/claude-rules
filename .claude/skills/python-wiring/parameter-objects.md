@@ -1,7 +1,5 @@
 # Parameter Objects
 
-The composition root and resource lifetime are in `SKILL.md`.
-
 ### A cohesive group of values passed as one frozen object is encouraged
 
 **Why:** `RetryPolicy(attempts, backoff, jitter)` is a concept the callee uses whole; the
@@ -19,17 +17,17 @@ as a `TypeError` on the first call, so builders that share one signature are pre
 
 **Example:**
 ```python
-# WRONG — untyped options: a misspelt timeout_secs passes the checker and the builder swallows it
-def build_notifier(kind: NotifierKind, **options: object) -> Notifier:
-    return _BUILDER_BY_KIND[kind](**options)
+# WRONG — untyped options: a misspelt seal_ttl_secs passes the checker and the builder swallows it
+def build_crate_tracker(kind: TrackerKind, **options: object) -> CrateTracker:
+    return _TRACKER_BUILDER_BY_KIND[kind](**options)
 
 
 # CORRECT — every option is named once, and the checker rejects a misspelt one at the call site
-class NotifierOptions(TypedDict, total=False):
-    sender: str
-    timeout_seconds: float
+class TrackerOptions(TypedDict, total=False):
+    courier_name: str
+    seal_ttl_seconds: float
 
 
-def build_notifier(kind: NotifierKind, **options: Unpack[NotifierOptions]) -> Notifier:
-    return _BUILDER_BY_KIND[kind](**options)
+def build_crate_tracker(kind: TrackerKind, **options: Unpack[TrackerOptions]) -> CrateTracker:
+    return _TRACKER_BUILDER_BY_KIND[kind](**options)
 ```
