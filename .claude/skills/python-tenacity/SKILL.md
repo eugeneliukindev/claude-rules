@@ -11,15 +11,13 @@ paths:
 
 # tenacity
 
-Checked against tenacity 9.2. What is retried — only a transient failure, at one level, within a
-total deadline — is `python-boundaries`; inside a worker, a backoff that fits the handler's deadline
-is tenacity's and a longer wait the broker's (`python-workers`); a client with a retry policy of
-its own gets no tenacity around it.
+Checked against tenacity 9.2. Which failures are retried, at which level and under which deadline
+is `python-boundaries`; this skill is how tenacity spells the policy.
 
 ### A policy names `retry=` by exception type, `stop=` with a total budget, and `reraise=True`
 
 **Why:** without `retry=` every exception is retried, a `KeyError` from your own parsing included;
-keyed on the adapter's translated transient type, the policy reads as a sentence. Without `stop=`
+`retry_if_exception_type` keyed on the adapter's transient type retries that alone. Without `stop=`
 it retries forever — a dependency's outage becomes an unkillable worker — and `stop_after_delay`,
 checked between attempts, bounds the total while the per-request timeout bounds each one. Without
 `reraise=True` the caller gets `RetryError` and loses the exception its handling was written for.
@@ -28,19 +26,23 @@ checked between attempts, bounds the total while the per-request timeout bounds 
 ```python
 # WRONG — the README shape: every exception retried, bugs included, the cause hidden in RetryError
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
-async def fetch_rates(*, upstream: RatesUpstream) -> RateTable:
-    return await upstream.fetch_table()
+async def lookup_postal_code(
+    postal_code: PostalCode, *, directory: AddressDirectory
+) -> AddressMatch:
+    return await directory.find_addresses(postal_code)
 
 
 # CORRECT — transient failures only, a total budget, and the real exception on give-up
 @retry(
-    retry=retry_if_exception_type(TransientUpstreamError),
+    retry=retry_if_exception_type(TransientDirectoryError),
     wait=wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2),
-    stop=stop_after_attempt(3) | stop_after_delay(_FETCH_BUDGET_SECONDS),
+    stop=stop_after_attempt(3) | stop_after_delay(_LOOKUP_BUDGET_SECONDS),
     reraise=True,
 )
-async def fetch_rates(*, upstream: RatesUpstream) -> RateTable:
-    return await upstream.fetch_table()
+async def lookup_postal_code(
+    postal_code: PostalCode, *, directory: AddressDirectory
+) -> AddressMatch:
+    return await directory.find_addresses(postal_code)
 ```
 
 ### The jitter is stated in proportion to the backoff, and the first wait is `multiplier=`
@@ -53,34 +55,34 @@ import, for a module-level one — which a suite with warnings as errors turns i
 **Example:**
 ```python
 # WRONG — jitter left at 1 second, five times the 0.2-second first wait, and a deprecated name
-_FETCH_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0)
+_LOOKUP_WAIT: Final = wait_exponential_jitter(initial=0.2, max=5.0)
 
 
 # CORRECT — the first wait and the jitter both chosen
-_FETCH_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2)
+_LOOKUP_WAIT: Final = wait_exponential_jitter(multiplier=0.2, max=5.0, jitter=0.2)
 ```
 
-### A retried call is logged before each sleep, and the give-up once, at the boundary
+### A retried call is logged before each sleep with `before_sleep_log`
 
-**Why:** a silent retry hides a degrading dependency until it fails completely;
-`before_sleep_log` makes each retry visible. The final failure is logged once, where it is
-converted, never on every attempt.
+**Why:** a silent retry hides a degrading dependency until it fails completely; `before_sleep_log`
+writes one line per retry naming the call, the exception and the wait, and with `reraise=True` the
+give-up reaches whoever handles the exception, which logs it.
 
 **Example:**
 ```python
 # WRONG — retries happen in silence
-_RATES_POLICY: Final = retry(
-    retry=retry_if_exception_type(TransientUpstreamError),
-    wait=_FETCH_WAIT,
+_LOOKUP_POLICY: Final = retry(
+    retry=retry_if_exception_type(TransientDirectoryError),
+    wait=_LOOKUP_WAIT,
     stop=stop_after_attempt(3),
     reraise=True,
 )
 
 
 # CORRECT — every retry leaves a warning that names the call and the wait
-_RATES_POLICY: Final = retry(
-    retry=retry_if_exception_type(TransientUpstreamError),
-    wait=_FETCH_WAIT,
+_LOOKUP_POLICY: Final = retry(
+    retry=retry_if_exception_type(TransientDirectoryError),
+    wait=_LOOKUP_WAIT,
     stop=stop_after_attempt(3),
     reraise=True,
     before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -97,19 +99,19 @@ asserted on a fake that counts calls, never on timing.
 **Example:**
 ```python
 # WRONG — the test sleeps through the real backoff on every run
-async def test_fetch_rates_retries_transient_failures() -> None:
-    upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
+async def test_lookup_postal_code_retries_transient_failures() -> None:
+    directory = FlakyAddressDirectory(failures=_FAILURES_BEFORE_ANSWER)
 
-    await fetch_rates(upstream=upstream)
+    await lookup_postal_code(_POSTAL_CODE, directory=directory)
 
-    assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
+    assert directory.calls == _FAILURES_BEFORE_ANSWER + 1
 
 
 # CORRECT — the same policy without the waits; attempts and classification stay under test
-async def test_fetch_rates_retries_transient_failures() -> None:
-    upstream = FlakyRatesUpstream(failures=_FAILURES_BEFORE_SUCCESS)
+async def test_lookup_postal_code_retries_transient_failures() -> None:
+    directory = FlakyAddressDirectory(failures=_FAILURES_BEFORE_ANSWER)
 
-    await fetch_rates.retry_with(wait=wait_none())(upstream=upstream)
+    await lookup_postal_code.retry_with(wait=wait_none())(_POSTAL_CODE, directory=directory)
 
-    assert upstream.calls == _FAILURES_BEFORE_SUCCESS + 1
+    assert directory.calls == _FAILURES_BEFORE_ANSWER + 1
 ```
