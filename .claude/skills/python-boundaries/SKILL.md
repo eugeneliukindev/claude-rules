@@ -245,10 +245,16 @@ class SailingSchedule:
 message, a stored payload — or parses one back, read [serialization.md](serialization.md)** — the
 round-trip test, `NaN` and `Infinity` refused, a version on every queued or stored shape.
 
+- A serialized type round-trips, and a test says so
+- `NaN` and `Infinity` are refused where a payload arrives
+- A shape that is queued or stored carries its version
+
 ## Files
 
 **Before writing a file another process reads, read [files.md](files.md)** — a temporary file in
 the same directory, flushed to disk and moved over the target in one step.
+
+- A file someone else reads is replaced, never rewritten in place
 
 ## Time
 
@@ -256,13 +262,23 @@ the same directory, flushed to disk and moved over the target in one step.
 or holds a duration, read [time.md](time.md)** — aware UTC, offsets required at the edge, arithmetic
 in UTC, `date` for calendar days, the injected clock, monotonic deadlines.
 
+- A datetime is timezone-aware UTC; local time exists only at the presentation edge
+- A boundary rejects a datetime without an offset, and stores it as ISO-8601
+- Elapsed time is added in UTC; a calendar day is a `date`
+- A deadline or an elapsed time is measured on the monotonic clock
+
 ## Money
 
 **Before writing code that holds, adds, rounds or sends an amount of money, read
 [money.md](money.md)** — `Decimal` built from text inside a value object with its currency, and a
 string on the wire.
 
+- Money is a `Decimal` built from text, inside a value object with its currency
+- On the wire an amount is a string
+
 ## Identifiers
 
 **Before minting or exposing an identifier, read [identifiers.md](identifiers.md)** — random,
 opaque public ids, `uuid4` or `uuid7`.
+
+- A public identifier is random and opaque
