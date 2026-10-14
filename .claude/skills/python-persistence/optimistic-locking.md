@@ -11,9 +11,9 @@ for edits that span a user's think time.
 **Example:**
 ```sql
 -- WRONG — both requests read version 7, and the second write silently erases the first
-UPDATE events SET capacity = :capacity WHERE id = :id;
+UPDATE colonies SET frame_count = :frame_count WHERE id = :id;
 
 -- CORRECT — a stale version matches no row, and the repository raises that as a conflict
-UPDATE events SET capacity = :capacity, version = version + 1
+UPDATE colonies SET frame_count = :frame_count, version = version + 1
 WHERE id = :id AND version = :read_version;
 ```

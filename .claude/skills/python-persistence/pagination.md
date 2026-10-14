@@ -11,10 +11,11 @@ last key, with a unique tiebreaker and an index in exactly that order.
 **Example:**
 ```sql
 -- WRONG — the database reads and discards every row before the page
-SELECT id, starts_at, title FROM events ORDER BY starts_at, id LIMIT 50 OFFSET 100000;
+SELECT id, inspected_at, colony_id FROM hive_inspections ORDER BY inspected_at, id
+LIMIT 50 OFFSET 100000;
 
--- CORRECT — the index on (starts_at, id) seeks straight to the last row the caller saw
-SELECT id, starts_at, title FROM events
-WHERE (starts_at, id) > (:last_starts_at, :last_id)
-ORDER BY starts_at, id LIMIT 50;
+-- CORRECT — the index on (inspected_at, id) seeks straight to the last row the caller saw
+SELECT id, inspected_at, colony_id FROM hive_inspections
+WHERE (inspected_at, id) > (:last_inspected_at, :last_id)
+ORDER BY inspected_at, id LIMIT 50;
 ```

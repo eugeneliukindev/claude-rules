@@ -9,8 +9,8 @@ change happen in one short transaction, and the work itself runs after it commit
 **Example:**
 ```sql
 -- WRONG — the second worker blocks on the first worker's rows until that transaction ends
-SELECT id FROM export_jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE;
+SELECT id FROM extraction_jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE;
 
 -- CORRECT — each worker takes rows nobody holds, and none of them waits
-SELECT id FROM export_jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE SKIP LOCKED;
+SELECT id FROM extraction_jobs WHERE status = 'pending' ORDER BY id LIMIT 10 FOR UPDATE SKIP LOCKED;
 ```
