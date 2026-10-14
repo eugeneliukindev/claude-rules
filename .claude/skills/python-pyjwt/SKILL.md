@@ -1,7 +1,7 @@
 ---
 name: python-pyjwt
 description: >-
-  PyJWT mechanics behind the token verifier: pinned algorithms, required claims, audience and
+  PyJWT mechanics for verifying and signing JWTs: pinned algorithms, required claims, audience and
   issuer, PyJWKClient caching and timeouts, its errors, the blocking fetch off the loop, a
   round-trip test. Use when code imports jwt, calls jwt.decode or jwt.encode, or builds a
   PyJWKClient. Not for 401 against 403 (python-auth).
@@ -12,10 +12,10 @@ paths:
 
 # PyJWT
 
-Checked against PyJWT 2.15.1 with `cryptography`, which RS256 needs — the `pyjwt[crypto]` extra. The
-contract this implements, the `Principal` it returns, its two errors and how the edge answers them
-are `python-auth`. `authentication/pyjwt.py` is the only module that imports `jwt`
-(`python-contracts`).
+Checked against PyJWT 2.15.1 with `cryptography`, which RS256 needs — the `pyjwt[crypto]` extra. One
+module imports `jwt`; its verifier returns the application's own frozen value and raises the
+application's own two errors, a rejected token and unreachable signing keys. How the edge answers
+each is `python-auth`.
 
 ## The Verifier
 
@@ -27,21 +27,20 @@ token signed by a retired key, a client's mistake, becomes a 500 (measured: `isi
 InvalidTokenError)` is `False`). `PyJWKClientConnectionError` subclasses it and means the key set
 could not be fetched — the service's failure, so it is caught first. A key set fetched but empty
 raises `PyJWKSetError`, neither of the two — `{"keys": []}` escaped in the measured run — and is
-answered like an unreachable key set. A claim of the wrong shape is rejected by
-`parse_access_claims` as the client's mistake.
+answered like an unreachable key set. A claim of the wrong shape is rejected while the claims are
+read into the returned value.
 
 **Example:**
 ```python
 # WRONG — an unknown kid and an empty key set escape as 500s
 @final
-class JwtTokenVerifier(TokenVerifier):
-    def __init__(self, signing_keys: PyJWKClient, *, audience: str, issuer: str) -> None:
+class MemberPassVerifier:
+    def __init__(self, *, signing_keys: PyJWKClient, audience: str, issuer: str) -> None:
         self._signing_keys = signing_keys
         self._audience = audience
         self._issuer = issuer
 
-    @override
-    def verify(self, token: str) -> Principal:
+    def verify(self, token: str) -> MemberPass:
         try:
             signing_key = self._signing_keys.get_signing_key_from_jwt(token)
             claims = jwt.decode(
@@ -50,22 +49,23 @@ class JwtTokenVerifier(TokenVerifier):
                 algorithms=_ALGORITHMS,
                 audience=self._audience,
                 issuer=self._issuer,
+                options={"require": ["exp", "iat", "sub"]},
             )
+            member_pass = _member_pass_from(claims)
         except InvalidTokenError as error:
-            raise InvalidCredentialsError(type(error).__name__) from error
-        return parse_access_claims(claims).to_principal()
+            raise MemberTokenRejectedError(type(error).__name__) from error
+        return member_pass
 
 
 # CORRECT — the key set's failures are the service's; every other rejection is the client's
 @final
-class JwtTokenVerifier(TokenVerifier):
-    def __init__(self, signing_keys: PyJWKClient, *, audience: str, issuer: str) -> None:
+class MemberPassVerifier:
+    def __init__(self, *, signing_keys: PyJWKClient, audience: str, issuer: str) -> None:
         self._signing_keys = signing_keys
         self._audience = audience
         self._issuer = issuer
 
-    @override
-    def verify(self, token: str) -> Principal:
+    def verify(self, token: str) -> MemberPass:
         try:
             signing_key = self._signing_keys.get_signing_key_from_jwt(token)
             claims = jwt.decode(
@@ -74,15 +74,14 @@ class JwtTokenVerifier(TokenVerifier):
                 algorithms=_ALGORITHMS,
                 audience=self._audience,
                 issuer=self._issuer,
-                leeway=_CLOCK_SKEW,
                 options={"require": ["exp", "iat", "sub"]},
             )
-            access_claims = parse_access_claims(claims)
+            member_pass = _member_pass_from(claims)
         except (PyJWKClientConnectionError, PyJWKSetError) as error:
-            raise KeySetUnavailableError(self._signing_keys.uri) from error
+            raise MembershipKeysUnreachableError(self._signing_keys.uri) from error
         except (PyJWKClientError, InvalidTokenError) as error:
-            raise InvalidCredentialsError(type(error).__name__) from error
-        return access_claims.to_principal()
+            raise MemberTokenRejectedError(type(error).__name__) from error
+        return member_pass
 ```
 
 ### The algorithm list is pinned by the verifier, never read from the token
@@ -99,7 +98,7 @@ anyway. One family per key, never `"none"`, never `get_default_algorithms()`.
 **Example:**
 ```python
 # WRONG — the token chooses how it is checked
-def decode_access_token(token: str, signing_key: PyJWK) -> dict[str, Any]:
+def decode_member_token(token: str, signing_key: PyJWK) -> dict[str, object]:
     return jwt.decode(token, signing_key, algorithms=[jwt.get_unverified_header(token)["alg"]])
 
 
@@ -107,7 +106,7 @@ def decode_access_token(token: str, signing_key: PyJWK) -> dict[str, Any]:
 _ALGORITHMS: Final = ("RS256",)
 
 
-def decode_access_token(token: str, signing_key: PyJWK) -> dict[str, Any]:
+def decode_member_token(token: str, signing_key: PyJWK) -> dict[str, object]:
     return jwt.decode(token, signing_key, algorithms=_ALGORITHMS)
 ```
 
@@ -123,21 +122,26 @@ every stolen token.
 **Example:**
 ```python
 # WRONG — "Invalid audience" silenced, iss never compared, and a token without exp lives forever
-def decode_access_token(token: str, signing_key: PyJWK) -> dict[str, Any]:
+def decode_member_claims(token: str, signing_key: PyJWK) -> dict[str, object]:
     return jwt.decode(token, signing_key, algorithms=_ALGORITHMS, options={"verify_aud": False})
 
 
 # CORRECT — this service's audience, its one issuer, the claims every decision reads made mandatory
-def decode_access_token(
-    token: str, signing_key: PyJWK, *, audience: str, issuer: str
-) -> dict[str, Any]:
+def decode_member_claims(
+    token: str,
+    signing_key: PyJWK,
+    *,
+    audience: str,
+    issuer: str,
+    clock_skew_seconds: float = _CLOCK_SKEW_SECONDS,
+) -> dict[str, object]:
     return jwt.decode(
         token,
         signing_key,
         algorithms=_ALGORITHMS,
         audience=audience,
         issuer=issuer,
-        leeway=_CLOCK_SKEW,
+        leeway=clock_skew_seconds,
         options={"require": ["exp", "iat", "sub"]},
     )
 ```
@@ -154,15 +158,15 @@ thread pool. Keys come from the configured URL, never a `jku` or `x5u` header.
 **Example:**
 ```python
 # WRONG — a client per call: the cache dies with it, and every request fetches the key set
-def signing_key_for(token: str, *, jwks_url: str) -> PyJWK:
+def member_signing_key(token: str, *, jwks_url: str) -> PyJWK:
     return PyJWKClient(jwks_url).get_signing_key_from_jwt(token)
 
 
 # CORRECT — built once by the root and passed in; the cache and the cooldown survive between calls
-def build_signing_keys(
+def build_member_signing_keys(
     jwks_url: str,
     *,
-    lifespan_seconds: int = _JWKS_LIFESPAN_SECONDS,
+    lifespan_seconds: float = _JWKS_LIFESPAN_SECONDS,
     timeout_seconds: float = _JWKS_TIMEOUT_SECONDS,
 ) -> PyJWKClient:
     return PyJWKClient(jwks_url, lifespan=lifespan_seconds, timeout=timeout_seconds)
@@ -176,5 +180,5 @@ aware datetimes from an injected clock.
 ## Testing
 
 **Before testing the JWT verifier, read [testing.md](testing.md)** — a generated key and a local key
-set for the contract harness, the rejections as one parametrized test, the unknown `kid` on its own,
-forged tokens built by hand.
+set, the rejections as one parametrized test, the unknown `kid` and the unreachable key set on their
+own, forged tokens built by hand.
