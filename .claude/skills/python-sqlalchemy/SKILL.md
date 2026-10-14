@@ -248,10 +248,20 @@ parameters, and a list as an expanding `bindparam`.
 [asyncpg-sqlalchemy.md](../python-integrations/asyncpg-sqlalchemy.md)** — the engine's pool instead
 of asyncpg's, and the statement timeout through `server_settings`.
 
+- On `postgresql+asyncpg`, the engine owns the pool, and the statement timeout is a server setting
+
 **Before using SQLAlchemy in a FastAPI app, read
 [fastapi-sqlalchemy.md](../python-integrations/fastapi-sqlalchemy.md)** — the engine and a `partial`
 service factory in the lifespan, a session per request on `scope="function"`, the service commits.
 
+- The lifespan builds the engine and the session maker, and disposes the engine as it ends
+- The lifespan binds fixed values into a service factory; a request adds its session
+- The request's session comes from a dependency with `scope="function"`, and repositories take it
+- The service commits; the dependency only closes the session
+- A route takes the service, never the session
+
 **Before building a pydantic model from a SQLAlchemy row, read
 [pydantic-sqlalchemy.md](../python-integrations/pydantic-sqlalchemy.md)** — no `from_attributes` on
 an ORM row; the model is built from the domain object.
+
+- A model is never validated from an ORM row with `from_attributes`
