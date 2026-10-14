@@ -17,7 +17,8 @@ models over-apply them: a forty-line script that renames files once does not imp
 contract, a fake and a composition root. A script is a file run by hand or by one person's one-off
 job, imported by nothing, read by its author — a data fix, a report, a backfill, a notebook. Where
 it uses a library, that library's skill still holds: a token it acts on is verified as
-`python-pyjwt` says, a call to a gRPC service is made as `python-grpc` says.
+`python-pyjwt` says, a call to a gRPC service is made as `python-grpc` says. How a backfill is
+batched and bounded against a live table is `python-migrations`; this skill is the script around it.
 
 ### A file stops being a script once it is imported, scheduled, run by others, or outgrows a screen
 
@@ -29,51 +30,52 @@ fakes and tests arrive with the second implementation or the first test, as they
 
 ### A script calls its one implementation directly: no contract, no fake, no composition root
 
-**Why:** an ABC with a single implementation in a file nobody imports is ceremony, and so are a
-fake, layers, `__init__.py`, `__all__` and the `_` prefix, which tell an importer what is internal
-when there is no importer. A script is verified by running it — on a copy of the data, or dry-run
-first; a function in it subtle enough to need a test is the first sign of a promotion. The module
-docstring says in one line what it does and how it is run.
+**Why:** an ABC with a single implementation in a file nobody imports is ceremony — the swappable
+behaviour of `classes.md` has nothing to swap — and so are the fakes of `testing.md`, layers,
+`__init__.py`, `__all__` and the `_` prefix, which `modules.md` already waives for a script. A
+function reads its constants where it stands: the defaulted setting of `functions.md` is for code a
+test calls. A script is verified by running it — on a copy of the data, or dry-run first; a
+function in it subtle enough to need a test is the first sign of a promotion. The module docstring
+says in one line what it does and how it is run.
 
 **Example:**
 ```python
 # WRONG — a contract, an implementation and a root, for one CSV read once
-class StatusSource(ABC):
+class ConditionSource(ABC):
     @abstractmethod
-    def statuses(self) -> Iterator[str]: ...
+    def conditions(self) -> Iterator[str]: ...
 
 
 @final
-class CsvStatusSource(StatusSource):
+class CsvConditionSource(ConditionSource):
     def __init__(self, *, path: Path) -> None:
         self._path = path
 
     @override
-    def statuses(self) -> Iterator[str]:
-        with self._path.open(encoding="utf-8", newline="") as source:
-            yield from (row["status"] for row in csv.DictReader(source))
+    def conditions(self) -> Iterator[str]:
+        with self._path.open(encoding="utf-8", newline="") as shelf_list:
+            yield from (row["condition"] for row in csv.DictReader(shelf_list))
 
 
 def main() -> None:
-    source: StatusSource = CsvStatusSource(path=Path(sys.argv[1]))
-    print(Counter(source.statuses()))
+    source: ConditionSource = CsvConditionSource(path=Path(sys.argv[1]))
+    print(Counter(source.conditions()))
 
 
 # CORRECT — one function, called from main()
-def count_statuses(path: Path) -> Counter[str]:
-    with path.open(encoding="utf-8", newline="") as source:
-        return Counter(row["status"] for row in csv.DictReader(source))
+def count_books_by_condition(path: Path) -> Counter[str]:
+    with path.open(encoding="utf-8", newline="") as shelf_list:
+        return Counter(row["condition"] for row in csv.DictReader(shelf_list))
 
 
 def main() -> None:
-    print(count_statuses(Path(sys.argv[1])))
+    print(count_books_by_condition(Path(sys.argv[1])))
 ```
 
 ### The statements still live in `main()` and functions, never at module level
 
-**Why:** `main()` builds what it needs — the pool, the client — and uses it inside a `with`;
-statements at module level run on import, so the file cannot be imported by a test or promoted
-without running.
+**Why:** `modules.md` holds here too: `main()` builds what it needs — the connection, the client —
+and uses it inside a `with`, so the file can be imported by a test or promoted without running.
 
 ### The standard library comes first, and any other package is declared in the script's own header
 
@@ -88,7 +90,7 @@ block, it runs anywhere with one command and never against whatever happens to b
 **Example:**
 ```python
 # WRONG — assumes openpyxl is installed wherever the script happens to run
-"""Convert the nightly export to a spreadsheet. Run: python export_to_xlsx.py CSV."""
+"""Turn the shelf list into a spreadsheet for the valuer. Run: python shelf_list_to_xlsx.py CSV."""
 
 import openpyxl
 
@@ -97,7 +99,7 @@ import openpyxl
 # requires-python = ">=3.12"
 # dependencies = ["openpyxl>=3.1"]
 # ///
-"""Convert the nightly export to a spreadsheet. Run: uv run export_to_xlsx.py CSV."""
+"""Turn the shelf list into a spreadsheet for the valuer. Run: uv run shelf_list_to_xlsx.py CSV."""
 
 import openpyxl
 ```
@@ -105,54 +107,54 @@ import openpyxl
 ### Under `basicConfig`, what the reader must see goes in the message, not in `extra=`
 
 **Why:** plain-text logging is enough for a script, and `basicConfig`'s format prints no `extra=`
-field — the name of a skipped item passed there never reaches the terminal. The counts the reader
-must see go to stderr at the end.
+field — the ISBN of a skipped book passed there, as `logging.md` asks of a service, never reaches
+the terminal. The counts the reader must see go to stderr at the end.
 
 **Example:**
 ```python
-# WRONG — prints "target exists, skipped" and nothing about which file
-logger.warning("target exists, skipped", extra={"file_name": source.name})
+# WRONG — prints "isbn not in the catalogue, skipped" and nothing about which book
+logger.warning("isbn not in the catalogue, skipped", extra={"isbn": isbn})
 
-# CORRECT — the file's name is in the message basicConfig prints
-logger.warning("target exists, skipped: %s", source.name)
+# CORRECT — the ISBN is in the message basicConfig prints
+logger.warning("isbn not in the catalogue, skipped: %s", isbn)
 ```
 
 ### What fails on exactly the run that mattered never relaxes
 
 **Why:** a script is the code most often run once against production data. What holds there:
-- a timeout on every network call (`python-boundaries`);
+- a timeout on every network call;
 - secrets from the environment, never in the file — scripts get pasted into chats and committed;
 - `encoding="utf-8"` on every text file, `Decimal` for money, aware UTC datetimes;
-- a narrow `except` and no swallowed error — a script that "finished" after silently skipping half
-  the rows is worse than one that crashed;
-- the failure boundary from `principles.md`: one row, one file, one request recorded and counted,
+- the narrow `except` of `errors.md` — a script that "finished" after silently skipping half the
+  rows is worse than one that crashed;
+- the failure boundary of `principles.md`: one row, one file, one request recorded and counted,
   the count reported at the end, and a non-zero exit code when it is not zero;
-- subprocess argument lists and parameterized SQL (`python-security`);
-- a key written to a shared cache carries a TTL and never holds a pickle (`python-caching`);
-- annotated signatures — the cheapest part of a later promotion, and mypy still finds the `None`
-  passed where a value was required.
+- subprocess argument lists and parameterized SQL;
+- a key written to a shared cache carries a TTL and never holds a pickle;
+- annotated signatures (`types.md`) — the cheapest part of a later promotion, and mypy still finds
+  the `None` passed where a value was required.
 
 **Example:**
 ```python
 # WRONG — urlopen has no default timeout: a server that stops answering holds the script forever
-def fetch_export(export_url: str) -> bytes:
-    with urllib.request.urlopen(export_url) as response:
-        export: bytes = response.read()
-    return export
+def fetch_wanted_titles(wants_url: str) -> bytes:
+    with urllib.request.urlopen(wants_url) as response:
+        wanted_titles: bytes = response.read()
+    return wanted_titles
 
 
 # CORRECT — even a one-off waits for a stated time, then fails and says so
-def fetch_export(export_url: str) -> bytes:
-    with urllib.request.urlopen(export_url, timeout=TIMEOUT_SECONDS) as response:
-        export: bytes = response.read()
-    return export
+def fetch_wanted_titles(wants_url: str) -> bytes:
+    with urllib.request.urlopen(wants_url, timeout=WANTS_TIMEOUT_SECONDS) as response:
+        wanted_titles: bytes = response.read()
+    return wanted_titles
 ```
 
 ## A Script That Changes Data
 
 **Before writing a script that changes data — a fix, a backfill, a replay — read
-[data-fixes.md](data-fixes.md)** — dry run by default, a journal of what changed, a second run that
-changes nothing, a replay under the original event ids, and a complete example.
+[data-fixes.md](data-fixes.md)** — dry run by default, a journal of what changed, and a complete
+example.
 
 ## Notebooks
 
