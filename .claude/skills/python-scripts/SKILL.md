@@ -156,7 +156,14 @@ def fetch_wanted_titles(wants_url: str) -> bytes:
 [data-fixes.md](data-fixes.md)** — dry run by default, a journal of what changed, and a complete
 example.
 
+- Dry run is the default, and writing takes `--apply`
+- Every change is written to a journal as it is made
+
 ## Notebooks
 
 **Before writing or committing a notebook, read [notebooks.md](notebooks.md)** — restart and run all
 before sharing, outputs cleared of secrets and customer rows, surviving code moved to a module.
+
+- A notebook is restarted and run top to bottom before its result is shared
+- Outputs that hold a token or a customer's row are cleared before the notebook is committed
+- Code that survives the exploration moves to a module the notebook imports
