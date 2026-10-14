@@ -282,20 +282,26 @@ def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount
 
 ## Naming
 
-**Before naming a contract, a base class or an implementation, read [naming.md](naming.md)** —
-the capability as the contract's name, `Base` only for a class that hands down implementation,
-an implementation named for what makes it concrete.
+**Before naming a contract, a base class or an implementation, read [naming.md](naming.md)**:
+
+- A contract is named after the capability, without a prefix or a mechanism suffix
+- `Base` means "inherit me", never "implement me"
+- An implementation is named for what makes it concrete, never `Default` or `Impl`
 
 ## Layout
 
 **Before creating the module or directory for a contract or a new implementation, or deciding where
-a helper one implementation uses goes, read [layout.md](layout.md)** — one directory per
-capability with the contract in `base.py`, a contract module that imports nothing an
-implementation needs, a one-implementation helper kept private in the group, no directory without
-a contract.
+a helper one implementation uses goes, read [layout.md](layout.md)**:
+
+- A contract and its implementations are one directory, and nothing else is
+- `base.py` is a position, not a `Base` class
+- The contract's module imports nothing any implementation needs
+- A helper only one implementation uses is private and stays in the group
+- No contract, no directory
 
 ## Fakes
 
 **Before writing a fake of a contract for a test, or the tests every implementation must pass, read
-[fakes.md](fakes.md)** — one parametrized suite runs against every implementation, the fake
-included.
+[fakes.md](fakes.md)**:
+
+- One parametrized fixture runs the contract suite against every implementation
