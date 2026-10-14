@@ -50,45 +50,13 @@ class BerthPlanner:
         return self._allocations.add(allocation)
 ```
 
-### The two families are mapped field by field, never by splatting one into the other
+### The two families are mapped field by field — a plain copy as a method on the schema, a mapping with rules as a function beside it
 
-**Why:** the splat is typed `Any`, so a field renamed on either side passes the type check and
-fails in production; named fields fail the check on the line that maps them.
-
-**Example:**
-```python
-# WRONG — asdict() feeds BerthAllocation whatever keys the request happens to have
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class BerthAllocationRequest:
-    berth_id: UUID
-    arrives_at: datetime
-    departs_at: datetime
-
-    def to_domain(self) -> BerthAllocation:
-        return BerthAllocation(**asdict(self))
-
-
-# CORRECT — every field named once, so a rename on either side is a type error here
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class BerthAllocationRequest:
-    berth_id: UUID
-    arrives_at: datetime
-    departs_at: datetime
-
-    def to_domain(self) -> BerthAllocation:
-        return BerthAllocation(
-            berth_id=BerthId(self.berth_id),
-            window=BerthWindow(arrives_at=self.arrives_at, departs_at=self.departs_at),
-        )
-```
-
-### A field-by-field copy is a method on the schema; a mapping with rules is a function beside it
-
-**Why:** once the view hides a field by permission, converts a currency or computes a total, a
-schema that maps itself answers to two actors — the API's shape and the view's rules. The mapping
-moves to a function in the same boundary module, and the schema stays a shape.
+**Why:** a splat is typed `Any`, so a field renamed on either side passes the type check and fails
+in production; named fields fail the check on the line that maps them. Once the view hides a field
+by permission, converts a currency or computes a total, a schema that maps itself answers to two
+actors — the API's shape and the view's rules — so that mapping moves to a function in the same
+boundary module, and the schema stays a shape.
 
 **Example:**
 ```python
@@ -144,16 +112,22 @@ outage into your own: a server that accepts the connection and never answers hol
 forever. Client defaults are set once where the client is built; a call overrides them only with a
 named constant.
 
-### Only a transient failure is retried, and the adapter classifies it once
+### Only a transient failure is retried, at one level — the adapter that classifies it — and the outermost boundary owns the deadline
 
 **Why:** a connect or read timeout, a rate limit, a server error, a broker disconnect pass with
 time; a business rejection, a validation error or an auth failure does not, and retrying a conflict
 is a loop, not resilience. The adapter translates upstream errors (`errors.md`) into a transient and
 a permanent type, and the retry policy keys on the type — bounded, exponential and jittered, with
-the numbers named in the adapter. A pool that let the event loop's own timeout escape untranslated
-broke every caller that caught the library's documented timeout error.
+the numbers named in the adapter; a pool that let the event loop's own timeout escape untranslated
+broke every caller that caught the library's documented timeout error. Budgets nest
+multiplicatively — four attempts inside a caller that also makes four is sixteen, and a five-second
+budget becomes eighty — so a service sees one call that succeeded or raised a final error; a
+client's built-in retry policy, where it has one, is that level. When a dependency keeps failing,
+the adapter stops calling it and raises an unavailability error, so callers degrade deliberately
+instead of queueing timeouts.
 **Except:** a cache read is not retried even when the failure is transient — the source is its
-fallback.
+fallback; a deadlock or serialization failure is retried above the adapter, by rerunning the whole
+transaction.
 
 **Example:**
 ```python
@@ -206,42 +180,6 @@ async def _levy_harbour_fee(fee: HarbourFee, *, port_billing: PortBilling) -> Le
     return await port_billing.levy(fee.amount, idempotency_key=str(fee.fee_id))
 ```
 
-### Retries happen at one level, the adapter, and the outermost boundary owns the deadline
-
-**Why:** budgets nest multiplicatively — four attempts inside a caller that also makes four is
-sixteen, and a five-second budget becomes eighty. A service sees one call that succeeded or raised a
-final error; a client's built-in retry policy, where it has one, is that level. When a dependency
-keeps failing, the adapter stops calling it and raises an unavailability error, so callers degrade
-deliberately instead of queueing timeouts.
-**Except:** a deadlock or serialization failure is retried above the adapter, by rerunning the whole
-transaction.
-
-**Example:**
-```python
-# WRONG — the schedule retries an adapter that already retries: up to sixteen calls per request
-@final
-class SailingSchedule:
-    def __init__(self, *, tides: TideClient, attempts: int = _TIDE_ATTEMPTS) -> None:
-        self._tides = tides
-        self._attempts = attempts
-
-    def tide_table(self, harbour: HarbourCode) -> TideTable:
-        for _ in range(self._attempts):
-            with contextlib.suppress(TransientTideError):
-                return self._tides.fetch_tide_table(harbour)
-        raise TideTableUnavailableError(harbour)
-
-
-# CORRECT — the adapter retried; what reaches the schedule is final
-@final
-class SailingSchedule:
-    def __init__(self, *, tides: TideClient) -> None:
-        self._tides = tides
-
-    def tide_table(self, harbour: HarbourCode) -> TideTable:
-        return self._tides.fetch_tide_table(harbour)
-```
-
 ## Serialization
 
 **Before writing code that turns a value into bytes or text for another process — JSON, a queued
@@ -265,8 +203,7 @@ the same directory, flushed to disk and moved over the target in one step.
 or holds a duration, read [time.md](time.md)** — aware UTC, offsets required at the edge, arithmetic
 in UTC, `date` for calendar days, the injected clock, monotonic deadlines.
 
-- A datetime is timezone-aware UTC; local time exists only at the presentation edge
-- A boundary rejects a datetime without an offset, and stores it as ISO-8601
+- A datetime is aware UTC: refused at the boundary without an offset, stored as ISO-8601, local only at the presentation edge
 - Elapsed time is added in UTC; a calendar day is a `date`
 - A deadline or an elapsed time is measured on the monotonic clock
 
@@ -276,8 +213,7 @@ in UTC, `date` for calendar days, the injected clock, monotonic deadlines.
 [money.md](money.md)** — `Decimal` built from text inside a value object with its currency, and a
 string on the wire.
 
-- Money is a `Decimal` built from text, inside a value object with its currency
-- On the wire an amount is a string
+- Money is a `Decimal` built from text, inside a value object with its currency, and a string on the wire
 
 ## Identifiers
 

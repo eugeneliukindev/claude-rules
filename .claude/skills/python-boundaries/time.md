@@ -1,18 +1,15 @@
 # Time
 
-### A datetime is timezone-aware UTC; local time exists only at the presentation edge
+### A datetime is aware UTC: refused at the boundary without an offset, stored as ISO-8601, local only at the presentation edge
 
 **Why:** a naive `datetime.now()` shifts with the server's zone and cannot be ordered against an
-aware value; `datetime.utcnow()` is naive too, and deprecated. Conversion to local time uses
-`zoneinfo.ZoneInfo`, never a hand-written offset. `datetime.now(UTC)` appears in exactly one place,
-the system clock; everything else asks an injected `Clock` (`testing.md`).
-
-### A boundary rejects a datetime without an offset, and stores it as ISO-8601
-
-**Why:** `"2026-03-01T09:00:00"` is an instant in no zone at all, and whichever zone the reader
-assumes is a guess. A driver may not reject one — one writes a naive `datetime` into
-`timestamptz` as the client machine's local time. Stored and serialized, an instant is
-`.isoformat()` and `datetime.fromisoformat`; epoch numbers are for machine-to-machine metrics.
+aware value; `datetime.utcnow()` is naive too, and deprecated. `"2026-03-01T09:00:00"` is an
+instant in no zone at all, and whichever zone the reader assumes is a guess; a driver may not
+reject one — one writes a naive `datetime` into `timestamptz` as the client machine's local time.
+Stored and serialized, an instant is `.isoformat()` and `datetime.fromisoformat`; epoch numbers are
+for machine-to-machine metrics. Conversion to local time uses `zoneinfo.ZoneInfo`, never a
+hand-written offset. `datetime.now(UTC)` appears in exactly one place, the system clock; everything
+else asks an injected `Clock` (`testing.md`).
 
 **Example:**
 ```python
