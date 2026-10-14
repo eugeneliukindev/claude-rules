@@ -206,21 +206,30 @@ async def pairings_of(
 **Before writing many rows at once, read [bulk-writes.md](bulk-writes.md)** —
 `copy_records_to_table` for plain rows, `executemany` when each row needs SQL.
 
+- Many plain rows go through `copy_records_to_table`; rows that need SQL, `executemany`
+
 ## Errors
 
 **Before catching an asyncpg error or classifying one for a retry, read [errors.md](errors.md)** —
 the SQLSTATE class and the constraint name, a rollback that arrives at `COMMIT`, which errors are
 transient.
 
+- A database error is caught by its class and its constraint name, never its message
+- A rollback raised at `COMMIT` is translated where the transaction closes, not in a repository
+
 ## JSON and Other Codecs
 
 **Before reading or writing a `json` or `jsonb` column, or registering a type codec, read
 [codecs.md](codecs.md)** — a codec in the pool's `init`, on `pg_catalog`.
 
+- A type codec is registered in the pool's `init`, on `pg_catalog`
+
 ## PgBouncer
 
 **Before running behind PgBouncer, read [pgbouncer.md](pgbouncer.md)** — the prepared-statement
 cache in transaction mode, `max_prepared_statements` or `statement_cache_size=0`.
+
+- Behind PgBouncer in transaction mode, prepared statements are tracked by PgBouncer or not cached
 
 ## Timeouts and Cancellation
 
@@ -228,10 +237,15 @@ cache in transaction mode, `max_prepared_statements` or `statement_cache_size=0`
 [timeouts.md](timeouts.md)** — the three timeouts, what cancellation does to a query and a
 transaction, `QueryCanceledError`.
 
+- A client timeout and a cancellation both stop the query on the server
+- A server-side `statement_timeout` is set through `server_settings` or the role
+
 ## Tests
 
 **Before testing a repository against PostgreSQL, read [testing.md](testing.md)** — testcontainers
 with the right URL, a transaction per test rolled back.
+
+- Repositories are tested against a real PostgreSQL, each test inside a transaction rolled back
 
 ## With Other Libraries
 
