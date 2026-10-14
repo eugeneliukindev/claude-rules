@@ -83,11 +83,17 @@ pytest refuse to start.
 crash — read [hypothesis.md](hypothesis.md)** — strategies from the domain's constraints, failures
 pinned with `@example`, a CI profile without the deadline.
 
+- A strategy is built once, from the domain's own bounds, and a found failure is pinned
+- CI loads a profile without the deadline
+
 ## HTTP Adapters
 
 **Before testing an adapter that calls an HTTP API, read [http-adapters.md](http-adapters.md)** — a
 real local server through the adapter's real client, never a patched `get`; `respx` only for
 `httpx`; a request no handler matched fails the test.
+
+- An adapter is tested against a real local server, never a patched client method
+- A test that expects a server error ends with `httpserver.check_assertions()`
 
 ## Containers
 
@@ -95,7 +101,11 @@ real local server through the adapter's real client, never a patched `get`; `res
 [containers.md](containers.md)** — `testcontainers.community`, the extras, `get_connection_url`, one
 container per session, migrations in the fixture, the integration marker.
 
+- Integration tests start the production image from `testcontainers.community`, once per session
+
 ## Coverage
 
 **Before setting up or judging coverage, read [coverage.md](coverage.md)** — branch coverage, a
 floor that only ratchets up, never a target.
+
+- Coverage measures branches, with a floor that only ratchets up, and is never a target
