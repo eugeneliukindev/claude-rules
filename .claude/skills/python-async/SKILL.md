@@ -48,7 +48,7 @@ async def download_scene(
 
 ## Tasks
 
-### Concurrent tasks run in a `TaskGroup`; a bare `create_task` is never fired and forgotten
+### Concurrent tasks run in a `TaskGroup`, a fan-out under a semaphore; a bare `create_task` never
 
 **Why:** a task nobody holds can be garbage-collected mid-flight and its exception silently lost.
 The group holds every task, waits for all, cancels the siblings at the first failure and raises
@@ -70,6 +70,25 @@ async def publish_scene(scene: Scene, *, catalogue: SceneCatalogue, previews: Pr
     async with asyncio.TaskGroup() as group:
         group.create_task(catalogue.index(scene))
         group.create_task(previews.cut(scene))
+
+
+# CORRECT — a fan-out over a collection: the semaphore bounds what is in flight, one deadline the run
+async def fetch_footprints(
+    scene_ids: Sequence[SceneId],
+    *,
+    archive: SceneArchive,
+    max_in_flight: int = _MAX_IN_FLIGHT,
+    deadline_seconds: float = _FOOTPRINTS_DEADLINE_SECONDS,
+) -> dict[SceneId, Footprint]:
+    in_flight = asyncio.Semaphore(max_in_flight)
+
+    async def fetch_one(scene_id: SceneId) -> Footprint:
+        async with in_flight:
+            return await archive.footprint(scene_id)
+
+    async with asyncio.timeout(deadline_seconds), asyncio.TaskGroup() as group:
+        tasks = {scene_id: group.create_task(fetch_one(scene_id)) for scene_id in scene_ids}
+    return {scene_id: task.result() for scene_id, task in tasks.items()}
 ```
 
 ### A `TaskGroup`'s failures are caught with `except*`
