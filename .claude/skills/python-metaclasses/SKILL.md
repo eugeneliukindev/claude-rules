@@ -244,67 +244,39 @@ def index_by_game(rules: Iterable[ScoringRule]) -> dict[str, ScoringRule]:
 
 ## Typing
 
-### What a hook assigns is declared on the base as a `ClassVar`
+**Before declaring what a hook assigns, a hook that synthesizes `__init__`, or a registry of classes,
+read [typing.md](typing.md)**:
 
-**Why:** undeclared, `cls.game = ...` is `"type[ScoringRule]" has no attribute "game"`, and every
-later read is an error or an `Any`. mypy checks class keywords against `__init_subclass__` — a
-missing one is `[call-arg]` on the class statement, a wrong type `[arg-type]` — but a keyword the
-hook does not name passes through `**kwargs` unchecked, and keywords a metaclass consumes are not
-checked at all. An attribute a metaclass adds is declared the same way.
-
-### A hook that synthesizes `__init__` is marked `@dataclass_transform`
-
-**Why:** without it mypy rejects every constructor call — `Unexpected keyword argument "square"`.
-The rung below is usually better: `@dataclass(frozen=True, slots=True, kw_only=True)` written on
-each class is explicit, and the only way to get `slots`, which a hook cannot add (`run-order.md`).
-
-**Example:**
-```python
-# WRONG — the hook builds __init__ at runtime, and mypy knows nothing about it
-class GameEvent:
-    @override
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        dataclass(frozen=True, kw_only=True)(cls)
-
-
-# CORRECT — mypy synthesizes the same frozen, keyword-only __init__ the hook builds
-@dataclass_transform(frozen_default=True, kw_only_default=True)
-class GameEvent:
-    @override
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        dataclass(frozen=True, kw_only=True)(cls)
-
-
-@final
-class PieceCaptured(GameEvent):
-    piece: str
-    square: str
-```
-
-### A registry of classes is typed `type[Base]`, and `Cls[...]` is for generics only
-
-**Why:** mypy refuses the abstract base itself in a `type[ScoringRule]` slot (`[type-abstract]`);
-a classmethod constructor on the base returns `Self`. A PEP 695 class gets `__class_getitem__`
-without writing it; written by hand for a lookup, `ScoringRule["go"]` is a registry with operator
-syntax, rejected by mypy and found by nobody who searches for a call.
+- What a hook assigns is declared on the base as a `ClassVar`
+- A hook that synthesizes `__init__` is marked `@dataclass_transform`
+- A registry of classes is typed `type[Base]`, and `Cls[...]` is for generics only
 
 ## Run Order
 
 **Before writing a hook that reads the class's abstract methods or dataclass fields, replaces the
-class, or consumes a class keyword in a metaclass, read [run-order.md](run-order.md)** — the
-sequence for one class statement, `inspect.isabstract` inside the hook, what only a decorator can
-do, `abc.update_abstractmethods`, keywords a metaclass consumes.
+class, or consumes a class keyword in a metaclass, read [run-order.md](run-order.md)**:
+
+- `__init_subclass__` collects named descriptors, and asks `inspect.isabstract` about abstractness
+- A hook that must replace the class, or read its dataclass fields, is a class decorator
+- A class decorator that implements an abstract method calls `abc.update_abstractmethods`
+- A metaclass that consumes a class keyword leaves it out of `super().__new__`
 
 ## Descriptors
 
 **Before writing a descriptor, `__set_name__`, `__get__`, or a declarative base whose class body
-declares fields, read [descriptors.md](descriptors.md)** — the name from `__set_name__`, a
-declarative base without a metaclass, errors that name the owner, caching on a slotted class.
+declares fields, read [descriptors.md](descriptors.md)**:
+
+- A descriptor that needs its attribute name takes it from `__set_name__`
+- A declarative base is `__set_name__` plus `__init_subclass__`, without a metaclass
+- An error raised in `__set_name__` is the package's own, naming the owner
+- A descriptor that caches into the instance needs a `__dict__`, which `slots=True` removes
 
 ## Metaclasses
 
 **Before writing or reviewing a metaclass, or mixing a base that brings one, read
-[metaclasses.md](metaclasses.md)** — what each metaclass method is for, `__init__` over `__new__`,
-no singleton or value set through a metaclass, metaclass conflicts, a legitimate `__prepare__`.
+[metaclasses.md](metaclasses.md)**:
+
+- What does not replace the namespace or the bases goes in `__init__`, not `__new__`
+- A singleton through `__call__`, or a set of named values through operators, is not a metaclass
+- A base that adds a metaclass cannot be mixed with any other metaclass
+- `__prepare__` is how a library refuses an option defined twice
