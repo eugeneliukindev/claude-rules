@@ -4,18 +4,19 @@ How a contract is declared and what its methods look like are in `SKILL.md`.
 
 ## Contents
 
-- A contract and its implementations are one directory, and nothing else is
+- A contract and its implementations are one directory, nothing else is, and no contract means no directory
 - `base.py` is a position, not a `Base` class
 - The contract's module imports nothing any implementation needs
 - A helper only one implementation uses is private and stays in the group
-- No contract, no directory
 
-### A contract and its implementations are one directory, and nothing else is
+### A contract and its implementations are one directory, nothing else is, and no contract means no directory
 
 **Why:** the contract is the reason the implementations exist; one directory per capability, the
 contract in `base.py`, one module per implementation named for what makes it concrete, and an
 `__init__.py` exporting the contract and the implementations — so a new implementation is a new
-file and no existing file changes.
+file and no existing file changes. An implementation that will only ever be the only one is a
+single module named concretely, with no `base.py` above it; the group appears when the second
+implementation does, or when a test needs a fake — the same threshold that earns the contract.
 **Except:** an implementation whose driver is an optional extra is reached through its builder, so
 importing the contract never imports the driver (the extras reason for a function-level import,
 `modules.md`).
@@ -64,9 +65,3 @@ class DeepLTranslationEngine(TranslationEngine):
 
 **Why:** `_glossary_upload.py` beside `deepl_engine.py` is found by whoever edits `deepl_engine.py`;
 the same code in a shared `utils` is found by nobody and imported by everybody.
-
-### No contract, no directory
-
-**Why:** an implementation that will only ever be the only one is a single module named concretely,
-with no `base.py` above it; the group appears when the second implementation does, or when a test
-needs a fake — the same threshold that earns the contract.

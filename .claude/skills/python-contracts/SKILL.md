@@ -284,20 +284,18 @@ def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount
 
 **Before naming a contract, a base class or an implementation, read [naming.md](naming.md)**:
 
-- A contract is named after the capability, without a prefix or a mechanism suffix
+- A contract is named after the capability, an implementation for what makes it concrete, and neither for its mechanism
 - `Base` means "inherit me", never "implement me"
-- An implementation is named for what makes it concrete, never `Default` or `Impl`
 
 ## Layout
 
 **Before creating the module or directory for a contract or a new implementation, or deciding where
 a helper one implementation uses goes, read [layout.md](layout.md)**:
 
-- A contract and its implementations are one directory, and nothing else is
+- A contract and its implementations are one directory, nothing else is, and no contract means no directory
 - `base.py` is a position, not a `Base` class
 - The contract's module imports nothing any implementation needs
 - A helper only one implementation uses is private and stays in the group
-- No contract, no directory
 
 ## Fakes
 
