@@ -95,8 +95,16 @@ in the one module that imports it.
 — the lock moved in a commit of its own, the floors tested by a `lowest-direct` job, `pip-audit`
 pointed at the lock.
 
+- The lock moves on purpose, in a commit of its own
+- A lower bound is tested by a CI job that installs every direct dependency at its floor
+- `pip-audit` reads the lock's export, not the environment it runs in
+
 ## A New Project's Configuration
 
 **Before writing a new project's `pyproject.toml` tool tables, read
 [new-project.md](new-project.md)** — a complete starting file, and why ruff selects `ALL`, which
 mypy codes `strict` leaves off, and pytest's strict mode.
+
+- ruff selects `ALL`, and each ignore names its code and its reason
+- mypy enables the error codes `strict` leaves off, and is the only type checker
+- pytest runs strict, with warnings as errors
