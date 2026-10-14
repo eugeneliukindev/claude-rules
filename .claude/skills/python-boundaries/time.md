@@ -38,13 +38,20 @@ timetable's service day is a `date`; stored as a midnight `datetime`, it invents
 **Example:**
 ```python
 # WRONG — the crossing time is added on the destination's wall clock
-def estimated_arrival(departed_at: datetime, *, destination_zone: ZoneInfo) -> datetime:
-    return departed_at.astimezone(destination_zone) + _CROSSING_DURATION
+def estimated_arrival(
+    departed_at: datetime,
+    *,
+    destination_zone: ZoneInfo,
+    crossing_duration: timedelta = _CROSSING_DURATION,
+) -> datetime:
+    return departed_at.astimezone(destination_zone) + crossing_duration
 
 
 # CORRECT — elapsed time in UTC; the destination's zone is for display
-def estimated_arrival(departed_at: datetime) -> datetime:
-    return departed_at.astimezone(UTC) + _CROSSING_DURATION
+def estimated_arrival(
+    departed_at: datetime, *, crossing_duration: timedelta = _CROSSING_DURATION
+) -> datetime:
+    return departed_at.astimezone(UTC) + crossing_duration
 ```
 
 ### A deadline or an elapsed time is measured on the monotonic clock

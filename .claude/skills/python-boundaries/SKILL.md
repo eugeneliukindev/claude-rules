@@ -174,8 +174,13 @@ _RETRYABLE_TIDE_STATUSES: Final = frozenset(
 )
 
 
-def _raise_for_tide_status(status_code: int, harbour: HarbourCode) -> None:
-    if status_code in _RETRYABLE_TIDE_STATUSES:
+def _raise_for_tide_status(
+    status_code: int,
+    harbour: HarbourCode,
+    *,
+    retryable_statuses: frozenset[int] = _RETRYABLE_TIDE_STATUSES,
+) -> None:
+    if status_code in retryable_statuses:
         raise TransientTideError(f"tides for {harbour}: service answered {status_code}")
     if status_code >= HTTPStatus.BAD_REQUEST:
         raise PermanentTideError(f"tides for {harbour}: service answered {status_code}")
