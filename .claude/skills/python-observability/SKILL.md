@@ -123,8 +123,13 @@ def annotate_pickup_span(span: trace.Span, *, bag_count_header: str) -> None:
 [correlation.md](correlation.md)** — a context variable set by the entry point, one filter that
 stamps it, the trace id as the id.
 
+- The id lives in a `ContextVar` set by the entry point, and one logging filter stamps it
+- With OpenTelemetry, the trace id is the correlation id
+
 ## Log Output
 
 **Before configuring logging — `basicConfig`, a handler, a formatter — read
 [log-output.md](log-output.md)** — once, in the entry point, JSON lines with every `extra=` field,
 the filter attached to the handler.
+
+- Logging is configured once, in the entry point, by a formatter that writes every field as JSON
