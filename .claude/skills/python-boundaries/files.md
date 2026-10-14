@@ -13,17 +13,17 @@ through `close()` and still removes it when anything fails before the rename.
 
 **Example:**
 ```python
-# WRONG — a reader can open the sitemap half written
-def publish_sitemap(path: Path, sitemap: bytes) -> None:
-    path.write_bytes(sitemap)
+# WRONG — a departure board can open the timetable half written
+def publish_timetable(path: Path, timetable: bytes) -> None:
+    path.write_bytes(timetable)
 
 
 # CORRECT — written beside the target, flushed to disk, then renamed over it in one step
-def publish_sitemap(path: Path, sitemap: bytes) -> None:
+def publish_timetable(path: Path, timetable: bytes) -> None:
     with tempfile.NamedTemporaryFile(
         dir=path.parent, prefix=f".{path.name}.", delete_on_close=False
     ) as temporary:
-        temporary.write(sitemap)
+        temporary.write(timetable)
         temporary.flush()
         os.fsync(temporary.fileno())
         temporary.close()

@@ -14,7 +14,8 @@ paths:
 # Boundaries
 
 The library mechanics behind these rules: a validating model in pydantic is `python-pydantic`, a
-retry policy's numbers are `python-tenacity`, a gRPC channel's retries `python-grpc`.
+retry policy's numbers are `python-tenacity`, a gRPC channel's retries `python-grpc`, a consumer
+that absorbs a redelivered message `python-workers`.
 
 ## Boundary Models and Domain Objects
 
@@ -29,26 +30,26 @@ validated through one adapter instance built once — constructing the validator
 
 **Example:**
 ```python
-# WRONG — the service takes the request model and re-checks what the boundary should have
+# WRONG — the planner takes the request model and re-checks what the boundary should have
 @final
-class BookingService:
-    def __init__(self, *, bookings: BookingRepository) -> None:
-        self._bookings = bookings
+class BerthPlanner:
+    def __init__(self, *, allocations: BerthAllocations) -> None:
+        self._allocations = allocations
 
-    def book(self, request: BookingRequest) -> BookingId:
-        if request.check_out <= request.check_in:
-            raise EmptyStayError(request.check_in, request.check_out)
-        return self._bookings.add(request.to_domain())
+    def allocate(self, request: BerthAllocationRequest) -> AllocationId:
+        if request.departs_at <= request.arrives_at:
+            raise EmptyBerthWindowError(request.arrives_at, request.departs_at)
+        return self._allocations.add(request.to_domain())
 
 
-# CORRECT — the edge parsed and converted; Stay refuses an empty stay when it is built
+# CORRECT — the edge parsed and converted; BerthWindow refuses an empty window when it is built
 @final
-class BookingService:
-    def __init__(self, *, bookings: BookingRepository) -> None:
-        self._bookings = bookings
+class BerthPlanner:
+    def __init__(self, *, allocations: BerthAllocations) -> None:
+        self._allocations = allocations
 
-    def book(self, booking: Booking) -> BookingId:
-        return self._bookings.add(booking)
+    def allocate(self, allocation: BerthAllocation) -> AllocationId:
+        return self._allocations.add(allocation)
 ```
 
 ### The two families are mapped field by field, never by splatting one into the other
@@ -58,30 +59,30 @@ fails in production; named fields fail the check on the line that maps them.
 
 **Example:**
 ```python
-# WRONG — asdict() feeds Booking whatever keys the request happens to have
+# WRONG — asdict() feeds BerthAllocation whatever keys the request happens to have
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class BookingRequest:
-    room_id: UUID
-    check_in: date
-    check_out: date
+class BerthAllocationRequest:
+    berth_id: UUID
+    arrives_at: datetime
+    departs_at: datetime
 
-    def to_domain(self) -> Booking:
-        return Booking(**asdict(self))
+    def to_domain(self) -> BerthAllocation:
+        return BerthAllocation(**asdict(self))
 
 
 # CORRECT — every field named once, so a rename on either side is a type error here
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class BookingRequest:
-    room_id: UUID
-    check_in: date
-    check_out: date
+class BerthAllocationRequest:
+    berth_id: UUID
+    arrives_at: datetime
+    departs_at: datetime
 
-    def to_domain(self) -> Booking:
-        return Booking(
-            room_id=RoomId(self.room_id),
-            stay=Stay(check_in=self.check_in, check_out=self.check_out),
+    def to_domain(self) -> BerthAllocation:
+        return BerthAllocation(
+            berth_id=BerthId(self.berth_id),
+            window=BerthWindow(arrives_at=self.arrives_at, departs_at=self.departs_at),
         )
 ```
 
@@ -93,39 +94,39 @@ moves to a function in the same boundary module, and the schema stays a shape.
 
 **Example:**
 ```python
-# WRONG — the response model owns who may see the author's email
+# WRONG — the response model owns who may see the master's phone number
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ArticleResponse:
-    title: str
-    body: str
-    author_email: str | None
+class VesselResponse:
+    name: str
+    flag_state: str
+    master_phone: str | None
 
     @classmethod
-    def from_domain(cls, article: Article, *, viewer: Principal) -> Self:
-        is_visible = viewer.user_id == article.author_id or viewer.is_editor
+    def from_domain(cls, vessel: Vessel, *, viewer: HarbourViewer) -> Self:
+        is_visible = viewer.operator_id == vessel.operator_id or viewer.is_harbour_master
         return cls(
-            title=article.title,
-            body=article.body,
-            author_email=article.author_email if is_visible else None,
+            name=vessel.name,
+            flag_state=vessel.flag_state,
+            master_phone=vessel.master_phone if is_visible else None,
         )
 
 
 # CORRECT — the shape stays a shape; the view's rule is a function beside it
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ArticleResponse:
-    title: str
-    body: str
-    author_email: str | None
+class VesselResponse:
+    name: str
+    flag_state: str
+    master_phone: str | None
 
 
-def article_response(article: Article, *, viewer: Principal) -> ArticleResponse:
-    is_visible = viewer.user_id == article.author_id or viewer.is_editor
-    return ArticleResponse(
-        title=article.title,
-        body=article.body,
-        author_email=article.author_email if is_visible else None,
+def vessel_response(vessel: Vessel, *, viewer: HarbourViewer) -> VesselResponse:
+    is_visible = viewer.operator_id == vessel.operator_id or viewer.is_harbour_master
+    return VesselResponse(
+        name=vessel.name,
+        flag_state=vessel.flag_state,
+        master_phone=vessel.master_phone if is_visible else None,
     )
 ```
 
@@ -149,22 +150,23 @@ named constant.
 
 **Why:** a connect or read timeout, a rate limit, a server error, a broker disconnect pass with
 time; a business rejection, a validation error or an auth failure does not, and retrying a conflict
-is a loop, not resilience. The adapter translates upstream errors into a transient and a permanent
-type, and the retry policy keys on the type — bounded, exponential and jittered, with the numbers
-named in the adapter. A pool that let the event loop's own timeout escape untranslated broke every
-caller that caught the library's documented timeout error. A cache read is not retried even when the
-failure is transient: the source is its fallback (`python-caching`).
+is a loop, not resilience. The adapter translates upstream errors (`errors.md`) into a transient and
+a permanent type, and the retry policy keys on the type — bounded, exponential and jittered, with
+the numbers named in the adapter. A pool that let the event loop's own timeout escape untranslated
+broke every caller that caught the library's documented timeout error.
+**Except:** a cache read is not retried even when the failure is transient — the source is its
+fallback.
 
 **Example:**
 ```python
 # WRONG — one error type for every status, so the policy retries a 404 like a 503
-def _raise_for_status(status_code: int, tracking_number: TrackingNumber) -> None:
+def _raise_for_tide_status(status_code: int, harbour: HarbourCode) -> None:
     if status_code >= HTTPStatus.BAD_REQUEST:
-        raise CarrierError(f"parcel {tracking_number}: carrier answered {status_code}")
+        raise TideServiceError(f"tides for {harbour}: service answered {status_code}")
 
 
-# CORRECT — classified once, here; the retry policy keys on TransientCarrierError alone
-_TRANSIENT_STATUSES: Final = frozenset(
+# CORRECT — classified once, here; the retry policy keys on TransientTideError alone
+_RETRYABLE_TIDE_STATUSES: Final = frozenset(
     {
         HTTPStatus.TOO_MANY_REQUESTS,
         HTTPStatus.BAD_GATEWAY,
@@ -174,113 +176,67 @@ _TRANSIENT_STATUSES: Final = frozenset(
 )
 
 
-def _raise_for_status(status_code: int, tracking_number: TrackingNumber) -> None:
-    if status_code in _TRANSIENT_STATUSES:
-        raise TransientCarrierError(f"parcel {tracking_number}: carrier answered {status_code}")
+def _raise_for_tide_status(status_code: int, harbour: HarbourCode) -> None:
+    if status_code in _RETRYABLE_TIDE_STATUSES:
+        raise TransientTideError(f"tides for {harbour}: service answered {status_code}")
     if status_code >= HTTPStatus.BAD_REQUEST:
-        raise PermanentCarrierError(f"parcel {tracking_number}: carrier answered {status_code}")
+        raise PermanentTideError(f"tides for {harbour}: service answered {status_code}")
 ```
 
 ### A write is retried only with an idempotency key the operation minted before its first attempt
 
-**Why:** a client that times out after the server committed, and retries with a fresh key, charges
-the customer twice. Where the API takes no key, the operation is made idempotent on your side, or
+**Why:** a client that times out after the server committed, and retries with a fresh key, levies
+the operator twice. Where the API takes no key, the operation is made idempotent on your side, or
 it is not retried.
 
 **Example:**
 ```python
-# WRONG — every attempt mints a new key, so the gateway sees three different charges
-@_RETRY_TRANSIENT
-async def _charge(payment: Payment, *, gateway: PaymentGateway) -> Receipt:
-    return await gateway.charge(payment.amount, idempotency_key=str(uuid.uuid4()))
+# WRONG — every attempt mints a new key, so the port authority sees three different levies
+@_RETRY_LEVY
+async def _levy_harbour_fee(fee: HarbourFee, *, port_billing: PortBilling) -> LevyConfirmation:
+    return await port_billing.levy(fee.amount, idempotency_key=str(uuid.uuid4()))
 
 
-# CORRECT — the payment's own id, minted when the payment was created, is the key
-@_RETRY_TRANSIENT
-async def _charge(payment: Payment, *, gateway: PaymentGateway) -> Receipt:
-    return await gateway.charge(payment.amount, idempotency_key=str(payment.payment_id))
-```
-
-### A consumer tolerates the same message twice, keyed on the event's own id
-
-**Why:** at-least-once delivery redelivers after a crash between the effect and the
-acknowledgement. The id that makes a repeat harmless travels in the payload — the broker's id
-changes on redelivery; how a consumer records it is in `python-workers`.
-
-**Example:**
-```python
-# WRONG — a redelivered purchase awards the points a second time
-def award_points(message: PurchaseCompleted, *, ledger: LoyaltyLedger) -> None:
-    ledger.award(message.member_id, message.points)
-
-
-# CORRECT — the ledger stores the event id with the award in one write, and refuses a repeat
-def award_points(message: PurchaseCompleted, *, ledger: LoyaltyLedger) -> None:
-    ledger.award_once(message.event_id, member_id=message.member_id, points=message.points)
-```
-
-### An operation promises a state, so a repeat of it succeeds
-
-**Why:** a retry, a redelivery or a double click cancels what the first call already cancelled; an
-error there turns a success into a failure every caller must special-case — "define errors out of
-existence". A state the call cannot reach is still an error, and a guess is never one in its place:
-a clipped index or an empty result for "not found" is a wrong answer that looks right.
-
-**Example:**
-```python
-# WRONG — a retried cancel fails on the subscription the first attempt already cancelled
-def cancel_subscription(subscription_id: SubscriptionId, *, subscriptions: Subscriptions) -> None:
-    subscription = subscriptions.get(subscription_id)
-    if subscription.status is SubscriptionStatus.CANCELLED:
-        raise SubscriptionAlreadyCancelledError(subscription_id)
-    if subscription.status is SubscriptionStatus.EXPIRED:
-        raise SubscriptionExpiredError(subscription_id)
-    subscriptions.save(replace(subscription, status=SubscriptionStatus.CANCELLED))
-
-
-# CORRECT — "cancelled afterwards" holds after a repeat too; only the unreachable state raises
-def cancel_subscription(subscription_id: SubscriptionId, *, subscriptions: Subscriptions) -> None:
-    subscription = subscriptions.get(subscription_id)
-    if subscription.status is SubscriptionStatus.CANCELLED:
-        return
-    if subscription.status is SubscriptionStatus.EXPIRED:
-        raise SubscriptionExpiredError(subscription_id)
-    subscriptions.save(replace(subscription, status=SubscriptionStatus.CANCELLED))
+# CORRECT — the fee's own id, minted when the fee was assessed, is the key
+@_RETRY_LEVY
+async def _levy_harbour_fee(fee: HarbourFee, *, port_billing: PortBilling) -> LevyConfirmation:
+    return await port_billing.levy(fee.amount, idempotency_key=str(fee.fee_id))
 ```
 
 ### Retries happen at one level, the adapter, and the outermost boundary owns the deadline
 
 **Why:** budgets nest multiplicatively — four attempts inside a caller that also makes four is
 sixteen, and a five-second budget becomes eighty. A service sees one call that succeeded or raised a
-final error; a client's built-in retry policy, where it has one, is that level. The one retry above
-the adapter is a deadlock or serialization failure, which retries the whole transaction
-(`python-persistence`). When a dependency keeps failing, the adapter stops calling it and raises an
-unavailability error, so callers degrade deliberately instead of queueing timeouts.
+final error; a client's built-in retry policy, where it has one, is that level. When a dependency
+keeps failing, the adapter stops calling it and raises an unavailability error, so callers degrade
+deliberately instead of queueing timeouts.
+**Except:** a deadlock or serialization failure is retried above the adapter, by rerunning the whole
+transaction.
 
 **Example:**
 ```python
-# WRONG — the service retries an adapter that already retries: up to sixteen calls per request
+# WRONG — the schedule retries an adapter that already retries: up to sixteen calls per request
 @final
-class WeatherReport:
-    def __init__(self, *, forecasts: ForecastClient, attempts: int = _ATTEMPTS) -> None:
-        self._forecasts = forecasts
+class SailingSchedule:
+    def __init__(self, *, tides: TideClient, attempts: int = _TIDE_ATTEMPTS) -> None:
+        self._tides = tides
         self._attempts = attempts
 
-    def today(self, city: City) -> Forecast:
+    def tide_table(self, harbour: HarbourCode) -> TideTable:
         for _ in range(self._attempts):
-            with contextlib.suppress(TransientUpstreamError):
-                return self._forecasts.fetch(city)
-        raise ForecastUnavailableError(city)
+            with contextlib.suppress(TransientTideError):
+                return self._tides.fetch_tide_table(harbour)
+        raise TideTableUnavailableError(harbour)
 
 
-# CORRECT — the adapter retried; what reaches the service is final
+# CORRECT — the adapter retried; what reaches the schedule is final
 @final
-class WeatherReport:
-    def __init__(self, *, forecasts: ForecastClient) -> None:
-        self._forecasts = forecasts
+class SailingSchedule:
+    def __init__(self, *, tides: TideClient) -> None:
+        self._tides = tides
 
-    def today(self, city: City) -> Forecast:
-        return self._forecasts.fetch(city)
+    def tide_table(self, harbour: HarbourCode) -> TideTable:
+        return self._tides.fetch_tide_table(harbour)
 ```
 
 ## Serialization
@@ -309,4 +265,4 @@ string on the wire.
 ## Identifiers
 
 **Before minting or exposing an identifier, read [identifiers.md](identifiers.md)** — random,
-opaque public ids wrapped in a `NewType`, `uuid4` or `uuid7`.
+opaque public ids, `uuid4` or `uuid7`.
