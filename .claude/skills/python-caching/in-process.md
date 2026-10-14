@@ -16,23 +16,23 @@ lock, threaded code passes `lock=` to `cached`.
 **Example:**
 ```python
 # WRONG — a module global, bounded by nothing, read by the wall clock
-_rate_by_currency: dict[Currency, Decimal] = {}
+_inflections_by_headword: dict[Headword, Inflections] = {}
 
 
 # CORRECT — bounded in size and age, owned by an object the root builds, on an injected timer
 @final
-class ExchangeRates:
+class InflectionTables:
     def __init__(
         self,
         *,
-        source: RateSource,
+        morphology: MorphologyService,
         timer: Callable[[], float] = time.monotonic,
-        max_currencies: int = _MAX_CACHED_CURRENCIES,
-        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
+        max_headwords: int = _MAX_CACHED_HEADWORDS,
+        inflection_ttl_seconds: float = _INFLECTION_TTL_SECONDS,
     ) -> None:
-        self._source = source
-        self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=max_currencies, ttl=rate_ttl_seconds, timer=timer
+        self._morphology = morphology
+        self._inflections_by_headword: TTLCache[Headword, Inflections] = TTLCache(
+            maxsize=max_headwords, ttl=inflection_ttl_seconds, timer=timer
         )
 ```
 
@@ -44,45 +44,45 @@ already awaited coroutine`. The awaited value is what goes into the cache.
 
 **Example:**
 ```python
-# WRONG — the cache holds the coroutine; the second fetch of a currency raises RuntimeError
+# WRONG — the cache holds the coroutine; the second lookup of a headword raises RuntimeError
 @final
-class ExchangeRates:
+class InflectionTables:
     def __init__(
         self,
         *,
-        source: RateSource,
-        max_currencies: int = _MAX_CACHED_CURRENCIES,
-        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
+        morphology: MorphologyService,
+        max_headwords: int = _MAX_CACHED_HEADWORDS,
+        inflection_ttl_seconds: float = _INFLECTION_TTL_SECONDS,
     ) -> None:
-        self._source = source
-        self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=max_currencies, ttl=rate_ttl_seconds
+        self._morphology = morphology
+        self._inflections_by_headword: TTLCache[Headword, Inflections] = TTLCache(
+            maxsize=max_headwords, ttl=inflection_ttl_seconds
         )
 
-    @cachedmethod(attrgetter("_rate_by_currency"))
-    async def fetch(self, currency: Currency) -> Decimal:
-        return await self._source.fetch(currency)
+    @cachedmethod(attrgetter("_inflections_by_headword"))
+    async def inflect(self, headword: Headword) -> Inflections:
+        return await self._morphology.inflect(headword)
 
 
-# CORRECT — the awaited rate is what goes into the cache
+# CORRECT — the awaited inflections are what goes into the cache
 @final
-class ExchangeRates:
+class InflectionTables:
     def __init__(
         self,
         *,
-        source: RateSource,
-        max_currencies: int = _MAX_CACHED_CURRENCIES,
-        rate_ttl_seconds: float = _RATE_TTL_SECONDS,
+        morphology: MorphologyService,
+        max_headwords: int = _MAX_CACHED_HEADWORDS,
+        inflection_ttl_seconds: float = _INFLECTION_TTL_SECONDS,
     ) -> None:
-        self._source = source
-        self._rate_by_currency: TTLCache[Currency, Decimal] = TTLCache(
-            maxsize=max_currencies, ttl=rate_ttl_seconds
+        self._morphology = morphology
+        self._inflections_by_headword: TTLCache[Headword, Inflections] = TTLCache(
+            maxsize=max_headwords, ttl=inflection_ttl_seconds
         )
 
-    async def fetch(self, currency: Currency) -> Decimal:
-        rate = self._rate_by_currency.get(currency)
-        if rate is None:
-            rate = await self._source.fetch(currency)
-            self._rate_by_currency[currency] = rate
-        return rate
+    async def inflect(self, headword: Headword) -> Inflections:
+        inflections = self._inflections_by_headword.get(headword)
+        if inflections is None:
+            inflections = await self._morphology.inflect(headword)
+            self._inflections_by_headword[headword] = inflections
+        return inflections
 ```

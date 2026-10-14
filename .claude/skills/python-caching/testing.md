@@ -1,18 +1,10 @@
 # Testing a Cache
 
-## Contents
-
-- The service's tests run on a fake that honours the TTL against an injected clock
-- One contract suite runs against every implementation
-- An unreachable cache answers as an empty one, fast
-
-Real servers for the suite come from testcontainers, configured in `python-pytest`.
-
 ### The service's unit tests run on a fake that honours the TTL against an injected clock
 
 **Why:** a fake that never expires passes a service that forgets its TTL, and a test that sleeps
-for a TTL is slow and flaky. The fake lives in `tests/fakes.py`, inherits the contract and passes
-the same suite as every implementation (`python-contracts`).
+for a TTL is slow and flaky. The contract suite (`testing.md`) adds the case that catches it: a
+value is gone once its TTL has passed, polled under a deadline, never slept.
 
 **Example:**
 ```python
@@ -77,50 +69,12 @@ class InMemoryCache(Cache):
         self._cached_by_key.pop(key, None)
 ```
 
-### One contract suite runs against the fake and every real implementation
-
-**Why:** an implementation tested only by its own tests passes things the contract forbids, and the
-fake drifts from what production does. The fixture parametrizes over every implementation, the real
-ones with the integration marker; the tests are written once against `Cache` — a set value is
-found, a deleted key is a miss, a value is gone once its TTL has passed (polled under a deadline,
-never slept).
-
-**Example:**
-```python
-# WRONG — the fake has its own tests, and the redis implementation its own
-async def test_in_memory_cache_add_sets_only_absent_key() -> None:
-    cache = InMemoryCache()
-
-    was_added_first = await cache.add(_KEY, _VALUE, ttl=_TTL)
-
-    assert was_added_first
-
-
-# CORRECT — one test, every implementation
-@pytest.fixture(
-    params=[
-        pytest.param("memory", id="memory"),
-        pytest.param("redis", id="redis", marks=pytest.mark.integration),
-    ]
-)
-def cache(request: pytest.FixtureRequest) -> Cache:
-    cache: Cache = request.getfixturevalue(f"{request.param}_cache")
-    return cache
-
-
-async def test_add_sets_only_an_absent_key(cache: Cache) -> None:
-    was_added_first = await cache.add(_KEY, _VALUE, ttl=_TTL)
-    was_added_second = await cache.add(_KEY, b"other", ttl=_TTL)
-
-    assert (was_added_first, was_added_second) == (True, False)
-    assert await cache.get(_KEY) == _VALUE
-```
-
 ### An unreachable cache answers as an empty one, within its timeout
 
 **Why:** the contract promises that a cache which cannot answer behaves as an empty one, and fast:
 the source is the fallback, and a slow failure is an outage of its own. Every real implementation
-is built against an address nothing answers on, with the production timeouts.
+is built against an address nothing answers on, with the production timeouts, and joins the suite
+as `unreachable_cache`.
 
 **Example:**
 ```python

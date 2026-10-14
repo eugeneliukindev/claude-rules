@@ -4,65 +4,61 @@ When a hot key expires, every request in flight misses at once and each loads th
 
 ### In one process, a miss for a key that is already loading awaits that load
 
-**Why:** fifty concurrent misses for one profile are fifty loads from the database. The first miss
-starts the load and later misses await the same task. `shield` keeps one caller's cancellation from
-cancelling the load the others wait on; the dictionary holds the task, so it is never a dropped
-`create_task` (`python-async`), and the done callback removes it, so the dictionary does not grow.
+**Why:** fifty concurrent misses for one headword are fifty loads from the database. The first
+miss starts the load and later misses await the same task. `shield` keeps one caller's cancellation
+from cancelling the load the others wait on; the dictionary holds the task, so it is never dropped,
+and the done callback removes it, so the dictionary does not grow.
 
 **Example:**
 ```python
-# WRONG — every concurrent miss for one profile loads it again
+# WRONG — every concurrent miss for one headword loads it again
 @final
-class ProfileLookup:
-    def __init__(
-        self, *, profiles: ProfileRepository, cache: Cache, ttl: timedelta = _PROFILE_TTL
-    ) -> None:
-        self._profiles = profiles
+class SharedArticleLookup:
+    def __init__(self, *, lexicon: Lexicon, cache: Cache, ttl: timedelta = _ARTICLE_TTL) -> None:
+        self._lexicon = lexicon
         self._cache = cache
         self._ttl = ttl
 
-    async def find(self, user_id: UserId) -> Profile | None:
-        payload = await self._cache.get(_profile_key(user_id))
+    async def find(self, headword: Headword) -> DictionaryArticle | None:
+        payload = await self._cache.get(_article_key(headword))
         if payload is not None:
-            return _profile_from_payload(payload)
-        return await self._load_and_cache(user_id)
+            return _article_from_payload(payload)
+        return await self._load_and_cache(headword)
 
-    async def _load_and_cache(self, user_id: UserId) -> Profile | None:
-        profile = await self._profiles.find(user_id)
-        if profile is not None:
-            payload = _profile_to_payload(profile)
-            await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)
-        return profile
+    async def _load_and_cache(self, headword: Headword) -> DictionaryArticle | None:
+        article = await self._lexicon.find_article(headword)
+        if article is not None:
+            payload = _article_to_payload(article)
+            await self._cache.set(_article_key(headword), payload, ttl=self._ttl)
+        return article
 
 
-# CORRECT — the first miss loads; the others for the same user await the same task
+# CORRECT — the first miss loads; the others for the same headword await the same task
 @final
-class ProfileLookup:
-    def __init__(
-        self, *, profiles: ProfileRepository, cache: Cache, ttl: timedelta = _PROFILE_TTL
-    ) -> None:
-        self._profiles = profiles
+class SharedArticleLookup:
+    def __init__(self, *, lexicon: Lexicon, cache: Cache, ttl: timedelta = _ARTICLE_TTL) -> None:
+        self._lexicon = lexicon
         self._cache = cache
         self._ttl = ttl
-        self._loads_in_flight: dict[UserId, asyncio.Task[Profile | None]] = {}
+        self._loads_in_flight: dict[Headword, asyncio.Task[DictionaryArticle | None]] = {}
 
-    async def find(self, user_id: UserId) -> Profile | None:
-        payload = await self._cache.get(_profile_key(user_id))
+    async def find(self, headword: Headword) -> DictionaryArticle | None:
+        payload = await self._cache.get(_article_key(headword))
         if payload is not None:
-            return _profile_from_payload(payload)
-        load = self._loads_in_flight.get(user_id)
+            return _article_from_payload(payload)
+        load = self._loads_in_flight.get(headword)
         if load is None:
-            load = asyncio.create_task(self._load_and_cache(user_id))
-            self._loads_in_flight[user_id] = load
-            load.add_done_callback(lambda _: self._loads_in_flight.pop(user_id, None))
+            load = asyncio.create_task(self._load_and_cache(headword))
+            self._loads_in_flight[headword] = load
+            load.add_done_callback(lambda _: self._loads_in_flight.pop(headword, None))
         return await asyncio.shield(load)
 
-    async def _load_and_cache(self, user_id: UserId) -> Profile | None:
-        profile = await self._profiles.find(user_id)
-        if profile is not None:
-            payload = _profile_to_payload(profile)
-            await self._cache.set(_profile_key(user_id), payload, ttl=self._ttl)
-        return profile
+    async def _load_and_cache(self, headword: Headword) -> DictionaryArticle | None:
+        article = await self._lexicon.find_article(headword)
+        if article is not None:
+            payload = _article_to_payload(article)
+            await self._cache.set(_article_key(headword), payload, ttl=self._ttl)
+        return article
 ```
 
 ### Across processes, a hot and expensive key is refreshed before it expires, by one caller
@@ -75,24 +71,34 @@ recomputes, while everyone else is served the current value. The marker is an ef
 
 **Example:**
 ```python
-# WRONG — the leaderboard expires everywhere at once, and every worker recomputes it
-async def leaderboard(*, cache: Cache, scores: ScoreBoard) -> Leaderboard:
-    payload = await cache.get(_LEADERBOARD_KEY)
+# WRONG — the trending list expires everywhere at once, and every worker recomputes it
+async def trending_headwords(
+    *, cache: Cache, lookups: LookupStatistics, ttl: timedelta = _TRENDING_TTL
+) -> TrendingHeadwords:
+    payload = await cache.get(_TRENDING_KEY)
     if payload is not None:
-        return _leaderboard_from_payload(payload)
-    board = await scores.compute_leaderboard()
-    await cache.set(_LEADERBOARD_KEY, _leaderboard_to_payload(board), ttl=_LEADERBOARD_TTL)
-    return board
+        return _trending_from_payload(payload)
+    trending = await lookups.rank_trending()
+    await cache.set(_TRENDING_KEY, _trending_to_payload(trending), ttl=ttl)
+    return trending
 
 
 # CORRECT — past most of its life, one caller refreshes it; the rest keep reading the old one
-async def leaderboard(*, cache: Cache, scores: ScoreBoard, clock: Clock) -> Leaderboard:
-    payload = await cache.get(_LEADERBOARD_KEY)
+async def trending_headwords(
+    *,
+    cache: Cache,
+    lookups: LookupStatistics,
+    clock: Clock,
+    ttl: timedelta = _TRENDING_TTL,
+    refresh_after_fraction: float = _REFRESH_AFTER_FRACTION,
+    refresh_marker_ttl: timedelta = _REFRESH_MARKER_TTL,
+) -> TrendingHeadwords:
+    payload = await cache.get(_TRENDING_KEY)
     if payload is None:
-        return await _recompute(cache=cache, scores=scores, clock=clock)
-    cached = _leaderboard_from_payload(payload)
-    is_ageing = clock.now() - cached.computed_at > _LEADERBOARD_TTL * _REFRESH_AFTER_FRACTION
-    if is_ageing and await cache.add(_LEADERBOARD_REFRESH_KEY, b"", ttl=_REFRESH_MARKER_TTL):
-        return await _recompute(cache=cache, scores=scores, clock=clock)
-    return cached
+        return await _rank_and_cache(cache=cache, lookups=lookups, clock=clock, ttl=ttl)
+    trending = _trending_from_payload(payload)
+    is_ageing = clock.now() - trending.computed_at > ttl * refresh_after_fraction
+    if is_ageing and await cache.add(_TRENDING_REFRESH_KEY, b"", ttl=refresh_marker_ttl):
+        return await _rank_and_cache(cache=cache, lookups=lookups, clock=clock, ttl=ttl)
+    return trending
 ```
