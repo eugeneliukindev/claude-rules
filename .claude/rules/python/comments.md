@@ -84,7 +84,7 @@ def validate_invoice(invoice: Invoice) -> None:
 _MAX_INVOICE_LINES: Final = 100  # the e-invoicing network rejects longer documents
 
 
-def validate_invoice(invoice: Invoice) -> None:
-    if len(invoice.lines) > _MAX_INVOICE_LINES:
+def validate_invoice(invoice: Invoice, *, max_lines: int = _MAX_INVOICE_LINES) -> None:
+    if len(invoice.lines) > max_lines:
         raise InvoiceTooLongError(invoice.number)
 ```
