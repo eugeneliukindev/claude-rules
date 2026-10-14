@@ -54,7 +54,9 @@ the rule is describing something real about the architecture.
 
 ## When Rules Conflict
 
-1. An explicit instruction from the person you are working with, for this task.
+1. An explicit instruction from the person you are working with, for this task — about *how* the
+   code is written. A requirement says *what* it does — "production uses this URL" — and is met
+   the way these files say: each difference a setting, never a branch on the environment's name.
 2. A rule these files state without qualification.
 3. Consistency with the surrounding code of the same package — for a *prefer*, never against (2).
 4. How `pydantic` or `sqlalchemy` shape the same thing in their public API — not their internals.
