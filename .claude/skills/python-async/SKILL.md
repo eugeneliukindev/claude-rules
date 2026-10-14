@@ -1,28 +1,28 @@
 ---
 name: python-async
 description: >-
-  Writes asyncio code that never blocks the loop, bounds every await and fan-out, and cleans up on
-  cancellation. Use when writing async def, awaiting I/O, using create_task, gather, a semaphore,
-  a queue or anyio, or handing work from a coroutine to a thread or a process pool. Not for
-  threads or pools without a loop (python-sync).
+  Writes asyncio code that never blocks the loop, holds every task, sizes its queues and cleans up
+  on cancellation. Use when writing async def, awaiting I/O, using create_task, gather, TaskGroup,
+  asyncio.timeout, a queue or anyio, or handing work from a coroutine to a thread or a process
+  pool. Not for threads or pools without a loop (python-sync).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
 ---
 
-# Asyncio and Concurrency
+# Asyncio
 
-Testing coroutines — the plugin, its mode and loop scope — is in `python-pytest`.
+The mechanics of asyncio; the bound on a fan-out and the run's deadline are `principles.md`.
+Testing coroutines — the plugin, its mode and loop scope — is `python-pytest`; threads and process
+pools without a loop are `python-sync`; a response that lives for minutes is `python-streaming`.
 
 ## Deadlines
 
-### Every `await` on external I/O runs under a deadline
+### One `asyncio.timeout` scope bounds a sequence of awaits; `wait_for` bounds one
 
-**Why:** an unbounded `await` is the async equivalent of an infinite loop: a peer that stops sending
-holds the task forever. The deadline is the client's configured timeout or an `asyncio.timeout`
-scope — one scope bounds every await in its block, where two `wait_for` calls in sequence each get
-the whole budget. In an async generator the scope wraps the `await` and closes before the `yield`
-(`python-streaming`).
+**Why:** two `wait_for` calls in sequence each get the whole budget, so the caller waits twice as
+long as it was promised; one scope bounds every await in its block, and `timeout_at` shares one
+deadline between scopes. A client's own configured timeout is the bound for a single call.
 
 ### A deadline on blocking work lives in the blocking client, not around `to_thread`
 
@@ -31,17 +31,19 @@ call runs to completion and keeps its executor slot, so a handful of hung calls 
 
 **Example:**
 ```python
-# WRONG — the caller gets TimeoutError, and the hung call keeps its worker thread regardless
-async def fetch_statement(statement_id: StatementId, *, bank: BankClient) -> Statement:
-    async with asyncio.timeout(_FETCH_TIMEOUT_SECONDS):
-        return await asyncio.to_thread(bank.fetch_statement, statement_id)
+# WRONG — the caller gets TimeoutError, and the hung download keeps its worker thread regardless
+async def download_scene(
+    scene_id: SceneId, *, mirror: SceneMirror, timeout_seconds: float = _DOWNLOAD_TIMEOUT_SECONDS
+) -> bytes:
+    async with asyncio.timeout(timeout_seconds):
+        return await asyncio.to_thread(mirror.download, scene_id)
 
 
 # CORRECT — the blocking client enforces the deadline, so the thread itself gives up
-async def fetch_statement(statement_id: StatementId, *, bank: BankClient) -> Statement:
-    return await asyncio.to_thread(
-        bank.fetch_statement, statement_id, timeout_seconds=_FETCH_TIMEOUT_SECONDS
-    )
+async def download_scene(
+    scene_id: SceneId, *, mirror: SceneMirror, timeout_seconds: float = _DOWNLOAD_TIMEOUT_SECONDS
+) -> bytes:
+    return await asyncio.to_thread(mirror.download, scene_id, timeout_seconds=timeout_seconds)
 ```
 
 ## Tasks
@@ -58,16 +60,16 @@ checked before use.
 **Example:**
 ```python
 # WRONG — nothing holds either task, and the caller never learns that one failed
-async def complete_signup(account: Account, *, mailer: Mailer, audit: AuditLog) -> None:
-    asyncio.create_task(mailer.send_welcome(account))
-    asyncio.create_task(audit.record_signup(account))
+async def publish_scene(scene: Scene, *, catalogue: SceneCatalogue, previews: PreviewTiler) -> None:
+    asyncio.create_task(catalogue.index(scene))
+    asyncio.create_task(previews.cut(scene))
 
 
 # CORRECT — the group holds both, waits for both, and raises their failures together
-async def complete_signup(account: Account, *, mailer: Mailer, audit: AuditLog) -> None:
+async def publish_scene(scene: Scene, *, catalogue: SceneCatalogue, previews: PreviewTiler) -> None:
     async with asyncio.TaskGroup() as group:
-        group.create_task(mailer.send_welcome(account))
-        group.create_task(audit.record_signup(account))
+        group.create_task(catalogue.index(scene))
+        group.create_task(previews.cut(scene))
 ```
 
 ### A `TaskGroup`'s failures are caught with `except*`
@@ -80,52 +82,69 @@ failures does not see it.
 **Example:**
 ```python
 # WRONG — a TaskGroup raises ExceptionGroup, so this clause never matches and the failure escapes
-async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
+async def plan_passes(stations: Sequence[GroundStation], *, schedule: PassSchedule) -> None:
     try:
         async with asyncio.TaskGroup() as group:
-            for feed in feeds:
-                group.create_task(cache.refresh(feed))
-    except FeedUnavailableError:
-        logger.warning("rate refresh incomplete")
+            for station in stations:
+                group.create_task(schedule.refresh(station))
+    except StationUnreachableError:
+        logger.warning("pass plan incomplete")
 
 
-# CORRECT — except* matches inside the group, however many feeds failed
-async def refresh_rates(feeds: Sequence[RateFeed], *, cache: RateCache) -> None:
+# CORRECT — except* matches inside the group, however many stations failed
+async def plan_passes(stations: Sequence[GroundStation], *, schedule: PassSchedule) -> None:
     try:
         async with asyncio.TaskGroup() as group:
-            for feed in feeds:
-                group.create_task(cache.refresh(feed))
-    except* FeedUnavailableError as failures:
-        logger.warning("rate refresh incomplete", extra={"failed_feeds": len(failures.exceptions)})
+            for station in stations:
+                group.create_task(schedule.refresh(station))
+    except* StationUnreachableError as failures:
+        logger.warning("pass plan incomplete", extra={"failed_stations": len(failures.exceptions)})
 ```
 
-### A fan-out is bounded by a semaphore, and a queue between tasks has a size
+### A queue between tasks has a `maxsize`, and its producer ends it with `shutdown()`
 
-**Why:** ten thousand items open ten thousand requests at once, and an unbounded queue is a memory
-leak with extra steps. The limit is a named constant; a producer–consumer pair ends with
-`asyncio.Queue.shutdown()` (3.13) — `put` raises `QueueShutDown` at once, `get` once the queue is
-drained — or a sentinel on a 3.12 floor.
+**Why:** an unbounded queue lets a fast producer hold its whole backlog in memory; `maxsize` makes
+`put` wait until the consumer catches up. `shutdown()` (3.13) ends the queue — `put` raises
+`QueueShutDown` at once, `get` once the queue is drained — so no sentinel is put per consumer; on a
+3.12 floor, one sentinel per consumer.
 
 **Example:**
 ```python
-# WRONG — ten thousand SKUs open ten thousand requests at once
-async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
+# WRONG — downloads outrun tiling, and every scene waits in memory
+async def tile_scenes(
+    scene_ids: Sequence[SceneId], *, archive: SceneArchive, tiler: SceneTiler
+) -> None:
+    downloaded = asyncio.Queue[Scene]()
     async with asyncio.TaskGroup() as group:
-        tasks = [group.create_task(catalog.fetch_price(sku)) for sku in skus]
-    return [task.result() for task in tasks]
+        group.create_task(_cut_downloaded(downloaded, tiler=tiler))
+        for scene_id in scene_ids:
+            await downloaded.put(await archive.download(scene_id))
+        downloaded.shutdown()
 
 
-# CORRECT — at most _MAX_CONCURRENT_FETCHES requests are in flight at any moment
-async def fetch_prices(skus: Sequence[Sku], *, catalog: CatalogClient) -> list[Price]:
-    request_slots = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
-
-    async def fetch_one(sku: Sku) -> Price:
-        async with request_slots:
-            return await catalog.fetch_price(sku)
-
+# CORRECT — at most max_pending_scenes wait; the consumer ends once the queue is shut and drained
+async def tile_scenes(
+    scene_ids: Sequence[SceneId],
+    *,
+    archive: SceneArchive,
+    tiler: SceneTiler,
+    max_pending_scenes: int = _MAX_PENDING_SCENES,
+) -> None:
+    downloaded = asyncio.Queue[Scene](maxsize=max_pending_scenes)
     async with asyncio.TaskGroup() as group:
-        tasks = [group.create_task(fetch_one(sku)) for sku in skus]
-    return [task.result() for task in tasks]
+        group.create_task(_cut_downloaded(downloaded, tiler=tiler))
+        for scene_id in scene_ids:
+            await downloaded.put(await archive.download(scene_id))
+        downloaded.shutdown()
+
+
+async def _cut_downloaded(downloaded: asyncio.Queue[Scene], *, tiler: SceneTiler) -> None:
+    while True:
+        try:
+            scene = await downloaded.get()
+        except asyncio.QueueShutDown:
+            return
+        await tiler.cut(scene)
 ```
 
 ## Cancellation
@@ -140,21 +159,25 @@ finish, always under a timeout of its own.
 **Example:**
 ```python
 # WRONG — swallowed: whoever cancelled this task believes it finished normally
-async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+async def await_downlink(
+    pass_id: PassId, *, station: GroundStation, poll_seconds: float = _DOWNLINK_POLL_SECONDS
+) -> None:
     try:
-        while not await client.is_finished(job_id):
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        while not await station.is_downlinked(pass_id):
+            await asyncio.sleep(poll_seconds)
     except asyncio.CancelledError:
-        logger.info("polling stopped", extra={"job_id": job_id})
+        logger.info("downlink wait stopped", extra={"pass_id": pass_id})
 
 
 # CORRECT — the stop is recorded, and the cancellation travels on to whoever asked for it
-async def wait_until_finished(job_id: JobId, *, client: StatusClient) -> None:
+async def await_downlink(
+    pass_id: PassId, *, station: GroundStation, poll_seconds: float = _DOWNLINK_POLL_SECONDS
+) -> None:
     try:
-        while not await client.is_finished(job_id):
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        while not await station.is_downlinked(pass_id):
+            await asyncio.sleep(poll_seconds)
     except asyncio.CancelledError:
-        logger.info("polling stopped", extra={"job_id": job_id})
+        logger.info("downlink wait stopped", extra={"pass_id": pass_id})
         raise
 ```
 
@@ -168,62 +191,60 @@ something still holds it — a moment nothing controls, and its file or cursor s
 **Example:**
 ```python
 # WRONG — returning mid-loop leaves the generator open; its finally waits for the collector
-async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
-    async for invoice in invoices.stream_unpaid():
-        if invoice.is_disputed:
-            return invoice
+async def find_first_clear_scene(*, archive: SceneArchive) -> Scene | None:
+    async for scene in archive.stream_scenes():
+        if scene.is_cloud_free:
+            return scene
     return None
 
 
 # CORRECT — aclosing closes the generator on the way out, so its cursor is released here
-async def find_first_disputed(*, invoices: InvoiceRepository) -> Invoice | None:
-    async with aclosing(invoices.stream_unpaid()) as unpaid:
-        async for invoice in unpaid:
-            if invoice.is_disputed:
-                return invoice
+async def find_first_clear_scene(*, archive: SceneArchive) -> Scene | None:
+    async with aclosing(archive.stream_scenes()) as scenes:
+        async for scene in scenes:
+            if scene.is_cloud_free:
+                return scene
     return None
 ```
 
 ## Context and Locks
 
-### Request-scoped context travels in `contextvars`, and a lock guards state, never I/O
+### Per-task context travels in `contextvars`, and an `asyncio.Lock` guards state, never I/O
 
-**Why:** a module global or a thread-local is shared by every task on the loop, so one request's
-id lands in another's log lines; a context variable is per task. It carries cross-cutting context —
+**Why:** a module global or a thread-local is shared by every task on the loop, so one capture's id
+lands in another's log lines; a context variable is per task. It carries cross-cutting context —
 a correlation id, a tenant — never business parameters smuggled past the signature. A lock held
 across an external `await` you do not control makes every task that needs it wait for the network.
 
 **Example:**
 ```python
-# WRONG — one global for the whole loop: concurrent requests overwrite each other's id
-_current_request_id = ""
+# WRONG — one global for the whole loop: concurrent captures overwrite each other's id
+_current_capture_id = ""
 
 
-async def handle(request: Request, *, handler: Handler) -> Response:
-    global _current_request_id  # noqa: PLW0603  # the bug this example shows
-    _current_request_id = request.headers.get("x-request-id", "")
-    return await handler(request)
+async def process_capture(capture: Capture, *, pipeline: CapturePipeline) -> None:
+    global _current_capture_id  # noqa: PLW0603  # the bug this example shows
+    _current_capture_id = capture.capture_id
+    await pipeline.run(capture)
 
 
 # CORRECT — each task sees the value set in its own context
-_REQUEST_ID: Final = contextvars.ContextVar[str]("request_id", default="")
+_CAPTURE_ID: Final = contextvars.ContextVar[str]("capture_id", default="")
 
 
-async def handle(request: Request, *, handler: Handler) -> Response:
-    _REQUEST_ID.set(request.headers.get("x-request-id", ""))
-    return await handler(request)
+async def process_capture(capture: Capture, *, pipeline: CapturePipeline) -> None:
+    _CAPTURE_ID.set(capture.capture_id)
+    await pipeline.run(capture)
 ```
 
 ## Threads and the Loop
 
 **Before handing work from a coroutine to a thread or a process pool, sharing state between threads
 and tasks, or calling into the loop from a thread, read [threads.md](threads.md)** — `contextvars`
-through `run_in_executor`, `run_coroutine_threadsafe`, `asyncio.Lock` against `threading.Lock`.
-Which workload needs threads or processes, the pools themselves and locks between threads are
-`python-sync`.
+through `run_in_executor`, `call_soon_threadsafe`, `asyncio.Lock` against `threading.Lock`.
 
 ## Shutdown
 
 **Before handling `SIGTERM` or `SIGINT` or writing the stop path of a service, read
 [shutdown.md](shutdown.md)** — a signal that sets an event, drain with a deadline, signals in the
-main thread only; a thread's stop event is `python-sync`.
+main thread only.

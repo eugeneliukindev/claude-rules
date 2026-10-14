@@ -1,26 +1,26 @@
-# Threads
+# Threads and the Loop
 
-The pools, locks between threads and process pools themselves are `python-sync`; this file is the
-seam between them and the loop.
+The seam between a loop and a thread; the pools themselves are `python-sync`, and the correlation
+id the context carries is `python-observability`.
 
 ### Work submitted to an executor carries the caller's context explicitly
 
 **Why:** `asyncio.to_thread` copies the caller's `contextvars` into the thread; `run_in_executor`
-does not, and every log line the thread writes loses its correlation id (`python-observability`).
+does not, and every log line the thread writes loses its correlation id.
 
 **Example:**
 ```python
-# WRONG — the thread sees the variable's default: the report's log lines carry no request id
-async def render_in_pool(report_ids: Sequence[ReportId], *, executor: Executor) -> bytes:
+# WRONG — the thread sees the variable's default: the stitching's log lines carry no capture id
+async def build_mosaic(tile_ids: Sequence[TileId], *, executor: Executor) -> bytes:
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(executor, render_report, report_ids)
+    return await loop.run_in_executor(executor, stitch_tiles, tile_ids)
 
 
 # CORRECT — the caller's context travels with the call
-async def render_in_pool(report_ids: Sequence[ReportId], *, executor: Executor) -> bytes:
+async def build_mosaic(tile_ids: Sequence[TileId], *, executor: Executor) -> bytes:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
-        executor, functools.partial(contextvars.copy_context().run, render_report, report_ids)
+        executor, functools.partial(contextvars.copy_context().run, stitch_tiles, tile_ids)
     )
 ```
 
@@ -32,48 +32,52 @@ corrupts the loop's state quietly or never wakes it.
 
 **Example:**
 ```python
-# WRONG — a callback thread puts straight into an asyncio.Queue the loop is reading
-def on_sensor_reading(reading: Reading, *, readings: asyncio.Queue[Reading]) -> None:
-    readings.put_nowait(reading)
+# WRONG — a receiver thread puts straight into an asyncio.Queue the loop is reading
+def on_telemetry_frame(
+    frame: TelemetryFrame, *, frames: asyncio.Queue[TelemetryFrame]
+) -> None:
+    frames.put_nowait(frame)
 
 
 # CORRECT — the put is scheduled on the loop that owns the queue
-def on_sensor_reading(
-    reading: Reading, *, readings: asyncio.Queue[Reading], loop: asyncio.AbstractEventLoop
+def on_telemetry_frame(
+    frame: TelemetryFrame,
+    *,
+    frames: asyncio.Queue[TelemetryFrame],
+    loop: asyncio.AbstractEventLoop,
 ) -> None:
-    loop.call_soon_threadsafe(readings.put_nowait, reading)
+    loop.call_soon_threadsafe(frames.put_nowait, frame)
 ```
 
 ### `asyncio.Lock` only orders tasks; state a thread also touches takes a `threading.Lock`
 
 **Why:** `asyncio.Lock` is not thread-safe — measured, a coroutine waiting on it from a loop in
 another thread hung forever in one run and acquired it in the next. A `threading.Lock` is never held
-across an `await`:
-it blocks every other task that needs it, and a thread waiting on it from the loop's own thread
-stalls the loop.
+across an `await`: it blocks every other task that needs it, and a thread waiting on it from the
+loop's own thread stalls the loop.
 
 **Example:**
 ```python
 # WRONG — an asyncio.Lock guards a dict the executor's threads also write
 @final
-class RenderedReports:
+class StitchedMosaics:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._report_by_id: dict[ReportId, bytes] = {}
+        self._mosaic_by_id: dict[MosaicId, bytes] = {}
 
-    async def remember(self, report_id: ReportId, report: bytes) -> None:
+    async def remember(self, mosaic_id: MosaicId, mosaic: bytes) -> None:
         async with self._lock:
-            self._report_by_id[report_id] = report
+            self._mosaic_by_id[mosaic_id] = mosaic
 
 
 # CORRECT — a threading.Lock, held only for the lines that touch the dict
 @final
-class RenderedReports:
+class StitchedMosaics:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._report_by_id: dict[ReportId, bytes] = {}
+        self._mosaic_by_id: dict[MosaicId, bytes] = {}
 
-    def remember(self, report_id: ReportId, report: bytes) -> None:
+    def remember(self, mosaic_id: MosaicId, mosaic: bytes) -> None:
         with self._lock:
-            self._report_by_id[report_id] = report
+            self._mosaic_by_id[mosaic_id] = mosaic
 ```
