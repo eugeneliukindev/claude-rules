@@ -1,7 +1,5 @@
 # Time
 
-How asyncpg stores a naive `datetime` is in `python-asyncpg`.
-
 ### A datetime is timezone-aware UTC; local time exists only at the presentation edge
 
 **Why:** a naive `datetime.now()` shifts with the server's zone and cannot be ordered against an

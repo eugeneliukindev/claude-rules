@@ -1,7 +1,7 @@
 # Serialization
 
 What a payload may publish — every field named, never a serialized domain object — is in
-`SKILL.md`; protobuf and gRPC are `python-grpc`.
+`SKILL.md`.
 
 ### A serialized type round-trips, and a test says so
 

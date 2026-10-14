@@ -1,11 +1,10 @@
 ---
 name: python-boundaries
 description: >-
-  Designs what crosses a process boundary: validation at the edge, timeouts, retries and
-  idempotency, serialization, files other processes read, time, money and identifiers. Use when
-  code calls HTTP, a queue, a cache, a database or a file, writes a payload for another process,
-  or handles datetimes, Decimal amounts or UUIDs. Not for niquests or httpx calls
-  (python-niquests).
+  Designs what crosses a process boundary: validation at the edge, timeouts, retries, idempotency,
+  serialization, files other processes read, time, money, identifiers. ALWAYS invoke this skill when
+  code calls HTTP, a queue, a cache or a database, writes a file or payload another process reads,
+  or handles datetimes, Decimal amounts or UUIDs. Do not write boundary code directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -13,9 +12,8 @@ paths:
 
 # Boundaries
 
-The library mechanics behind these rules: a validating model in pydantic is `python-pydantic`, a
-retry policy's numbers are `python-tenacity`, a gRPC channel's retries `python-grpc`, a consumer
-that absorbs a redelivered message `python-workers`.
+The design, whatever library carries it; a library's own API and traps come from its current
+documentation.
 
 ## Boundary Models and Domain Objects
 
