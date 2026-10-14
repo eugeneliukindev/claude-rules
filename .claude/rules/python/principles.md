@@ -79,8 +79,8 @@ async def fetch_statements(
 
 ### A new case is data or a new file, never a new branch in something that works
 
-**Why:** the next person is you, without the context: a branch added to working code is a change to
-code that worked; one actor per module, and deleting must be as easy as adding.
+**Why:** a branch added to working code is a change to code that worked; kind in, implementation
+out through a mapping the root builds — adding a kind is one entry, deleting one as easy.
 
 **Example:**
 ```python
@@ -101,11 +101,11 @@ def notify(
 
 ## YAGNI, KISS, DRY
 
-### Build what today's requirement needs
+### Build what today's requirement needs, with the simplest construction that solves it
 
-**Why:** a speculative feature costs everything that must keep it working, and a generalisation
-built for one case is a guess about the second; an option nobody sets is a branch never known to
-work — a test client's flag did nothing for two majors.
+**Why:** a speculative option or a pluggable format with one implementation is a branch never known
+to work, and a generalisation built for one case is a guess about the second; the boring mechanism —
+a function over a class, a dict over a registry — is the one the next reader understands.
 
 **Example:**
 ```python
@@ -123,57 +123,8 @@ def export_responses_csv(responses: Sequence[SurveyResponse]) -> bytes:
     return render_csv(responses)
 ```
 
-### The simplest construction that fully solves the problem, judged where it is used
-
-**Why:** the boring mechanism — a function over a class, a dict over a registry — is the one the
-next reader understands; simplest is not shortest.
-
-**Example:**
-```python
-# WRONG — a registry class with decorators for four fixed tax rates
-@final
-class TaxRateRegistry:
-    def __init__(self) -> None:
-        self._rate_by_country: dict[Country, Decimal] = {}
-
-    def register(self, country: Country, rate: Decimal) -> None:
-        self._rate_by_country[country] = rate
-
-    def rate(self, country: Country) -> Decimal:
-        return self._rate_by_country[country]
-
-
-# CORRECT — a mapping, readable in one place
-_VAT_RATE_BY_COUNTRY: Final = MappingProxyType({
-    Country.DE: Decimal("0.19"),
-    Country.FR: Decimal("0.20"),
-})
-```
-
 ### DRY is about knowledge, not text, and waits for the third occurrence
 
 **Why:** identical fragments answering to different actors are not duplication — merged, the next
-change arrives as a parameter, then a flag, then a branch; fragments that must change together are
-duplication however different they look — a limit in a validator and in a schema. A shared
-constant often cures it.
-
-**Example:**
-```python
-# WRONG — one limit, written twice: change one and the published schema and the check disagree
-INVOICE_SCHEMA: Final = {"type": "object", "properties": {"lines": {"maxItems": 100}}}
-
-
-def check_invoice(invoice: Invoice) -> None:
-    if len(invoice.lines) > 100:
-        raise InvoiceTooLongError(invoice.number)
-
-
-# CORRECT — one fact, one constant, read by both
-MAX_INVOICE_LINES: Final = 100
-INVOICE_SCHEMA: Final = {"type": "object", "properties": {"lines": {"maxItems": MAX_INVOICE_LINES}}}
-
-
-def check_invoice(invoice: Invoice, *, max_lines: int = MAX_INVOICE_LINES) -> None:
-    if len(invoice.lines) > max_lines:
-        raise InvoiceTooLongError(invoice.number)
-```
+change arrives as a flag; fragments that must change together are duplication however different
+they look — a limit in a validator and in a schema is one constant both read.
