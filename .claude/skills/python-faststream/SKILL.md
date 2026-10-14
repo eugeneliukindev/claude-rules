@@ -168,11 +168,16 @@ dead-lettered after that many deploys (measured).
 or `after_startup` hook, read [app-and-cli.md](app-and-cli.md)** — the settings read by the entry
 point and the app built from them, resources opened in `lifespan`, what each hook is not for.
 
+- The entry point builds the settings and runs the app; the app's `lifespan` opens the resources
+
 ## Testing
 
 **Before writing a test with `TestRabbitBroker` or against a real RabbitMQ, read
 [testing.md](testing.md)** — what the in-memory broker checks and what it cannot, reading a
 dead-lettered message back with `get_one`.
+
+- `TestRabbitBroker` checks the wiring, and nothing the broker does
+- A dead-letter test publishes to a real RabbitMQ and reads the message back with `get_one`
 
 ## With Other Libraries
 
