@@ -1,20 +1,20 @@
 # Subscriptions
 
-A subscription gets a bounded queue per subscriber, releases what it holds on disconnect, ends after
-a maximum lifetime, fans out between workers through a channel contract, and checks `Origin` (why
-and how: `python-streaming`). Strawberry's part is below.
+Queue bounds, maximum lifetime, fan-out between workers and the `Origin` check are the streaming
+design's; strawberry's part is below.
 
 ### A subscription is an async generator that releases what it holds, through `aclosing`
 
 **Why:** on the client's `complete` or a disconnect strawberry closes the generator, and its
-`finally` runs; a generator it iterates is closed only if it is entered with `aclosing`
-(`python-async`) — measured, both released. Exception handlers do not apply to subscription fields:
+`finally` runs; a generator it iterates is closed only if it is entered with `aclosing` —
+measured, both released. Exception handlers do not apply to subscription fields:
 an exception out of the generator is sent as one `errors` payload, masked like any other, followed
 by `complete` — the subscription is over, and the client subscribes again.
 
 **Example:**
 ```python
-# WRONG — on disconnect this generator is closed, but the feed's generator is left suspended
+# CORRECT — aclosing closes the feed's generator however the subscription ends; without it the
+# feed's generator is left suspended on disconnect
 @strawberry.type
 class Subscription:
     @strawberry.subscription
@@ -22,21 +22,7 @@ class Subscription:
         self, info: GraphQLInfo, claim_id: UUID
     ) -> AsyncGenerator[ClaimStatusChanged]:
         events = follow_claim(
-            ClaimId(claim_id), feed=info.context.claim_feed, lifetime_seconds=_LIFETIME_SECONDS
-        )
-        async for event in events:
-            yield ClaimStatusChanged.from_domain(event)
-
-
-# CORRECT — aclosing closes the feed's generator however the subscription ends
-@strawberry.type
-class Subscription:
-    @strawberry.subscription
-    async def claim_status(
-        self, info: GraphQLInfo, claim_id: UUID
-    ) -> AsyncGenerator[ClaimStatusChanged]:
-        events = follow_claim(
-            ClaimId(claim_id), feed=info.context.claim_feed, lifetime_seconds=_LIFETIME_SECONDS
+            ClaimId(claim_id), feed=info.context.claim_feed, expires_after=_FOLLOW_CLAIM_FOR
         )
         async with aclosing(events) as claim_events:
             async for event in claim_events:
