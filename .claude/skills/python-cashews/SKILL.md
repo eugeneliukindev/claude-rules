@@ -189,17 +189,32 @@ worth it, the failure-counting middleware, explicit key templates, `condition=NO
 TTL, no `jwt` key filter, single-flight without a shield, the shapes that need pickle, `failover`
 and `circuit_breaker` options.
 
+- Decorators use a module-level `cashews.Cache` the root sets up, with a counting middleware
+- Every decorator has an explicit key template with the namespace, the version and every input
+- `condition=NOT_NONE` unless absence is cached on purpose, and `ttl` is never `None`
+- A key never uses `{token:jwt(claim)}`
+- `protected=True`, the default, has no shield; `early`, `soft` and `hit` need pickle
+- `@cache.failover` names the transient errors it answers with the last good value
+- `@cache.circuit_breaker` sets `min_calls`, so one failure does not open it
+
 ## Locks and Invalidation
 
 **Before using `@cache.locked`, `@cache.invalidate`, tags or `client_side=True`, read
 [locks-and-invalidation.md](locks-and-invalidation.md)** — a lock that spins, `wait=False`,
 invalidation after the function returns, what tags and the client-side cache cost.
 
+- `@cache.locked` is given `wait=False`, and a `ttl`
+- `@cache.invalidate` decorates the method whose return means committed
+
 ## Testing
 
 **Before testing code that uses cashews, read [testing.md](testing.md)** — the adapter against
 redis with the production options, why `mem://` proves nothing about serialization, `disabling()`,
 and the deprecated `close()` under warnings as errors.
+
+- The adapter is tested against real redis, set up with the production options
+- A decorator is proven against redis, never by `mem://` alone
+- Warnings stay errors, with the one deprecated `close()` message ignored by name
 
 ## With Other Libraries
 
