@@ -2,10 +2,9 @@
 name: python-faststream
 description: >-
   FastStream on RabbitMQ mechanics behind the consumer design: routers from the root's
-  dependencies, AckPolicy, delivery limits and dead letters, message ids, validation mode,
-  prefetch, shutdown, tests. Use when code imports faststream, defines a RabbitBroker,
-  RabbitRouter, RabbitQueue or subscriber, or runs faststream. Not for consumer design
-  (python-workers).
+  dependencies, AckPolicy, delivery limits and dead letters, message ids, prefetch, graceful
+  shutdown, tests. Use when code imports faststream, defines a RabbitBroker, RabbitRouter,
+  RabbitQueue or subscriber, or runs faststream. Not for consumer design (python-workers).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -13,70 +12,48 @@ paths:
 
 # FastStream
 
-Checked against FastStream 0.7 on RabbitMQ 4.3. The consumer's design — the handler as a plain
-function, idempotency, when to acknowledge, dead-lettering, one retry layer, deadlines, shutdown —
-is in `python-workers`. Every number marked measured came from a handler that always raises, on a
-real broker. `RabbitBroker` lives behind the `faststream[rabbit]` extra (`aio-pika`), the CLI behind
-`faststream[cli]`.
+Checked against FastStream 0.7 on RabbitMQ 4.3; `AckPolicy` exists since 0.6. The consumer's
+design — idempotency, when to acknowledge, one retry layer, deadlines — is `python-workers`. Every
+number marked measured came from a handler that always raises, on a real broker. `RabbitBroker`
+lives behind the `faststream[rabbit]` extra (`aio-pika`), the CLI behind `faststream[cli]`.
 
 ## The Subscriber
 
 ### Subscribers are registered on a router that a function builds from the root's dependencies
 
-**Why:** the subscriber is FastStream's wrapper around the plain handler: it takes the raw
-`RabbitMessage` and passes `message.body` on. A module-level broker with a module-level session
-beside it is the global singleton `python-wiring` forbids, and `context.set_global` is a service
-locator. `main()` builds the broker, the resources and the router, and owns every lifetime.
+**Why:** `@broker.subscriber` on a module-level broker needs every collaborator the handler uses at
+import too, and `context.set_global` hands them out as a service locator. A function that takes the
+collaborators returns a `RabbitRouter`; the subscriber on it takes the `RabbitMessage` and passes
+`message.body` to a plain function, which tests call without a broker.
 
 **Example:**
 ```python
-# WRONG — importing the module reads the environment and builds the broker and the client
-_settings = WorkerSettings()
-broker = RabbitBroker(_settings.amqp_url)
-inventory = HttpRoomInventory(open_http_client(base_url=_settings.inventory_url))
+# WRONG — the decorator binds to a module-level broker, the handler to a module-level scheduler
+broker = RabbitBroker()
 
 
-# CORRECT — the router is built from what main() hands it, and main() owns every lifetime
-def build_booking_router(*, inventory: RoomInventory) -> RabbitRouter:
+@broker.subscriber(_DOOR_FAULTS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+async def on_door_fault_message(message: RabbitMessage) -> None:
+    await record_door_fault(message.body, scheduler=_INSPECTION_SCHEDULER)
+
+
+# CORRECT — the router is built from what the root hands it
+def build_telemetry_router(*, scheduler: InspectionScheduler) -> RabbitRouter:
     router = RabbitRouter()
 
-    @router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-    async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-        await on_booking_confirmed(message.body, inventory=inventory)
+    @router.subscriber(_DOOR_FAULTS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+    async def on_door_fault_message(message: RabbitMessage) -> None:
+        await record_door_fault(message.body, scheduler=scheduler)
 
     return router
-
-
-async def main() -> None:
-    settings = WorkerSettings()
-    async with managed_inventory_session(settings.inventory_url) as session:
-        broker = RabbitBroker(settings.amqp_url, graceful_timeout=_GRACEFUL_TIMEOUT_SECONDS)
-        broker.include_router(build_booking_router(inventory=HttpRoomInventory(session)))
-        await FastStream(broker).run()
 ```
 
-### `message_id` is never the idempotency key
+### A message published without a `message_id` gets a fresh one on every delivery
 
-**Why:** it is whatever the publisher set, and **when the publisher set none, FastStream invents a
-fresh one on every delivery** — measured with a message published without one: three deliveries,
-three ids. A publisher on aio-pika stamps one per publish, so a relay that republishes still gives
-the copy a new one; `correlation_id` behaves the same way. The key is the event's own id, from the
-payload (`python-workers`).
-
-**Example:**
-```python
-# WRONG — a new id on each delivery: every redelivery holds the room again
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    event = parse_booking_confirmed(message.body)
-    await inventory.hold(event.booking_id, idempotency_key=message.message_id)
-
-
-# CORRECT — the event's id, from the body, is the same on every delivery
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
-```
+**Why:** FastStream's publisher sets no `message_id` unless asked, and the subscriber fills a
+missing one with a new uuid each time the message arrives — measured: three deliveries, three ids;
+`correlation_id` is minted per publish, so a republished copy gets a new one. Neither identifies the
+event across deliveries; the key comes from the payload.
 
 ## Acknowledgement and Dead Letters
 
@@ -107,50 +84,50 @@ different arguments is refused.
 
 **Example:**
 ```python
-# WRONG — no dead-letter exchange: REJECT_ON_ERROR drops a failing booking without a trace
-_BOOKINGS_QUEUE: Final = RabbitQueue(_BOOKINGS_QUEUE_NAME)
+# WRONG — no dead-letter exchange: REJECT_ON_ERROR drops a failing door fault without a trace
+_DOOR_FAULTS_QUEUE: Final = RabbitQueue(_DOOR_FAULTS_QUEUE_NAME)
 
 
 # CORRECT — bounded deliveries, and every failure kept where someone can read and replay it
-_BOOKINGS_QUEUE: Final = RabbitQueue(
-    _BOOKINGS_QUEUE_NAME,
+_DOOR_FAULTS_QUEUE: Final = RabbitQueue(
+    _DOOR_FAULTS_QUEUE_NAME,
     queue_type=QueueType.QUORUM,
     arguments={
         "x-delivery-limit": _MAX_DELIVERIES,
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": _BOOKINGS_DEAD_LETTER_QUEUE_NAME,
+        "x-dead-letter-routing-key": _DOOR_FAULTS_DEAD_LETTER_QUEUE_NAME,
     },
 )
 ```
 
-### A failure is not requeued; the client's retry policy is the only retry
+### A failure is never requeued from the subscriber
 
-**Why:** a requeue is the broker retrying at once, with no backoff, on top of a client that already
-retries (`python-workers`). On RabbitMQ 4.3 a requeueing nack does not count toward the delivery
-limit and a requeueing reject does (measured): `NACK_ON_ERROR` loops forever even on a quorum
-queue, and `RejectMessage(requeue=True)` spends the whole limit at once.
+**Why:** a requeue is the broker retrying at once, with no backoff, on top of whatever retries the
+adapter already makes. On RabbitMQ 4.3 a requeueing nack does not count toward the delivery limit
+and a requeueing reject does (measured): `NACK_ON_ERROR` loops forever even on a quorum queue, and
+`RejectMessage(requeue=True)` spends the whole limit at once.
 
 **Example:**
 ```python
-# WRONG — the inventory client already retries; requeueing on top multiplies its attempts
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
+# WRONG — the scheduler's adapter already retries; requeueing on top multiplies its attempts
+@router.subscriber(_DOOR_FAULTS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+async def on_door_fault_message(message: RabbitMessage) -> None:
     try:
-        await on_booking_confirmed(message.body, inventory=inventory)
-    except InventoryError as error:
+        await record_door_fault(message.body, scheduler=scheduler)
+    except InspectionSchedulingError as error:
         raise RejectMessage(requeue=True) from error
 
 
-# CORRECT — the client's policy is the only retry; once it is spent the booking is dead-lettered
-@router.subscriber(_BOOKINGS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
-async def on_booking_confirmed_message(message: RabbitMessage) -> None:
-    await on_booking_confirmed(message.body, inventory=inventory)
+# CORRECT — the error escapes; REJECT_ON_ERROR dead-letters the fault once
+@router.subscriber(_DOOR_FAULTS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+async def on_door_fault_message(message: RabbitMessage) -> None:
+    await record_door_fault(message.body, scheduler=scheduler)
 ```
 
 ## Deadlines and Shutdown
 
-FastStream has no handler timeout of its own — the handler's `asyncio.timeout` is the deadline
-(`python-workers`).
+FastStream has no handler timeout of its own: the plain function's `asyncio.timeout` is the
+deadline.
 
 ### The subscriber sets a prefetch
 
@@ -158,26 +135,44 @@ FastStream has no handler timeout of its own — the handler's `asyncio.timeout`
 at all (`helpers/channel_manager.py` sets it only when the count is given): RabbitMQ pushes the
 queue into the first worker, and every delivery's ack deadline starts running at once.
 
+**Example:**
+```python
+# WRONG — no prefetch: one worker takes the whole queue, and every ack deadline starts now
+@router.subscriber(_DOOR_FAULTS_QUEUE, ack_policy=AckPolicy.REJECT_ON_ERROR)
+async def on_door_fault_message(message: RabbitMessage) -> None:
+    await record_door_fault(message.body, scheduler=scheduler)
+
+
+# CORRECT — the worker holds at most _DOOR_FAULTS_PREFETCH unacknowledged deliveries
+@router.subscriber(
+    _DOOR_FAULTS_QUEUE,
+    channel=Channel(prefetch_count=_DOOR_FAULTS_PREFETCH),
+    ack_policy=AckPolicy.REJECT_ON_ERROR,
+)
+async def on_door_fault_message(message: RabbitMessage) -> None:
+    await record_door_fault(message.body, scheduler=scheduler)
+```
+
 ### `graceful_timeout` is named, and fits inside the orchestrator's grace period
 
-**Why:** `FastStream.run()` handles `SIGTERM` and `SIGINT`, and `graceful_timeout` bounds the wait
-for handlers in flight: **15 seconds by default, and `None` is not "wait forever" but no wait at
-all** — measured: `stop()` returned at once and the running handler never finished. What is still
-running when the drain ends is cancelled and abandoned unacknowledged, and the redelivery counts
-toward `x-delivery-limit`: a handler that cannot finish inside the drain is dead-lettered after that
-many deploys (measured).
+**Why:** `FastStream.run()` handles `SIGTERM` and `SIGINT`, and the broker's `graceful_timeout`
+bounds the wait for handlers in flight: **15 seconds by default, and `None` is not "wait forever"
+but no wait at all** — measured: `stop()` returned at once and the running handler never finished.
+What is still running when the drain ends is cancelled and abandoned unacknowledged, and the
+redelivery counts toward `x-delivery-limit`: a handler that cannot finish inside the drain is
+dead-lettered after that many deploys (measured).
 
-## The CLI and the App's Lifespan
+## The Entry Point and the App's Lifespan
 
-**Before writing the worker's entry point, a `lifespan`, or an `on_startup` or `after_startup` hook,
-read [app-and-cli.md](app-and-cli.md)** — the settings read by the entry point and the app built
-from them, resources opened in `lifespan`, what each hook is not for.
+**Before writing the worker's entry point, `FastStream(broker)`, a `lifespan`, or an `on_startup`
+or `after_startup` hook, read [app-and-cli.md](app-and-cli.md)** — the settings read by the entry
+point and the app built from them, resources opened in `lifespan`, what each hook is not for.
 
 ## Testing
 
 **Before writing a test with `TestRabbitBroker` or against a real RabbitMQ, read
-[testing.md](testing.md)** — what the in-memory broker checks and what it cannot, one dead-letter
-test per queue on testcontainers.
+[testing.md](testing.md)** — what the in-memory broker checks and what it cannot, reading a
+dead-lettered message back with `get_one`.
 
 ## With Other Libraries
 

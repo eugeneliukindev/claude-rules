@@ -1,6 +1,6 @@
 # Testing FastStream
 
-The handler's unit tests call the plain function with a fake (`python-workers`). FastStream adds two
+The handler's own tests call the plain function with a fake and need no broker. FastStream adds two
 levels above it.
 
 ### `TestRabbitBroker` checks the wiring, and nothing the broker does
@@ -13,58 +13,59 @@ passes on a configuration that drops every failing message.
 **Example:**
 ```python
 # WRONG — asserts a dead-letter path the in-memory broker does not have
-async def test_booking_router_malformed_message_is_dead_lettered() -> None:
+async def test_telemetry_router_malformed_fault_is_dead_lettered() -> None:
     broker = RabbitBroker()
-    broker.include_router(build_booking_router(inventory=InMemoryRoomInventory()))
+    broker.include_router(build_telemetry_router(scheduler=RecordingInspectionScheduler()))
 
-    async with TestRabbitBroker(broker) as test_broker:
+    async with TestRabbitBroker(broker) as in_memory_broker:
         with pytest.raises(ValidationError):
-            await test_broker.publish({"version": 99}, _BOOKINGS_QUEUE_NAME)
+            await in_memory_broker.publish({"version": 99}, _DOOR_FAULTS_QUEUE_NAME)
 
 
-# CORRECT — the wiring: a valid message reaches the handler and holds the room
-async def test_booking_router_valid_message_holds_room() -> None:
-    inventory = InMemoryRoomInventory()
+# CORRECT — the wiring: a valid fault reaches the handler and books an inspection
+async def test_telemetry_router_door_fault_schedules_inspection() -> None:
+    scheduler = RecordingInspectionScheduler()
     broker = RabbitBroker()
-    broker.include_router(build_booking_router(inventory=inventory))
-    message = make_booking_confirmed_v1()
+    broker.include_router(build_telemetry_router(scheduler=scheduler))
+    fault = build_door_fault_v1()
 
-    async with TestRabbitBroker(broker) as test_broker:
-        await test_broker.publish(message.to_json(), _BOOKINGS_QUEUE_NAME)
+    async with TestRabbitBroker(broker) as in_memory_broker:
+        await in_memory_broker.publish(fault.to_json(), _DOOR_FAULTS_QUEUE_NAME)
 
-    assert inventory.held_booking_ids == [BookingId(message.booking_id)]
+    assert scheduler.inspected_car_ids == [CarId(fault.car_id)]
 ```
 
-### Each queue has one test against a real RabbitMQ that a rejected message is dead-lettered
+### A dead-letter test publishes to a real RabbitMQ and reads the message back with `get_one`
 
-**Why:** acknowledgement, the delivery limit and dead-lettering exist only in the broker.
-`RabbitMqContainer` from `testcontainers.community.rabbitmq` (`python-pytest`) provides it; the
-test publishes a message the handler rejects and reads it back from the dead-letter queue, which a
-subscriber on that queue declares.
+**Why:** acknowledgement, the delivery limit and dead-lettering exist only in the broker, so the
+test runs against one — `RabbitMqContainer` from `testcontainers.community.rabbitmq`. A subscriber
+with no handler, declared on the dead-letter queue, is read with `get_one(timeout=...)` after
+`broker.start()`; a test that only publishes passes whether the message was dead-lettered or
+dropped.
 
 **Example:**
 ```python
 # WRONG — the message is published and nothing is read back: a drop and a dead-letter both pass
-async def test_booking_router_malformed_message_is_dead_lettered(amqp_url: str) -> None:
+async def test_telemetry_router_malformed_fault_is_dead_lettered(amqp_url: str) -> None:
     broker = RabbitBroker(amqp_url)
-    broker.include_router(build_booking_router(inventory=InMemoryRoomInventory()))
+    broker.include_router(build_telemetry_router(scheduler=RecordingInspectionScheduler()))
 
     async with broker:
         await broker.start()
-        await broker.publish({"version": 99}, _BOOKINGS_QUEUE_NAME)
+        await broker.publish({"version": 99}, _DOOR_FAULTS_QUEUE_NAME)
 
 
 # CORRECT — the rejected message is read back from the dead-letter queue
-async def test_booking_router_malformed_message_is_dead_lettered(amqp_url: str) -> None:
+async def test_telemetry_router_malformed_fault_is_dead_lettered(amqp_url: str) -> None:
     broker = RabbitBroker(amqp_url)
-    broker.include_router(build_booking_router(inventory=InMemoryRoomInventory()))
+    broker.include_router(build_telemetry_router(scheduler=RecordingInspectionScheduler()))
     dead_letters = broker.subscriber(
-        RabbitQueue(_BOOKINGS_DEAD_LETTER_QUEUE_NAME, queue_type=QueueType.QUORUM)
+        RabbitQueue(_DOOR_FAULTS_DEAD_LETTER_QUEUE_NAME, queue_type=QueueType.QUORUM)
     )
 
     async with broker:
         await broker.start()
-        await broker.publish({"version": 99}, _BOOKINGS_QUEUE_NAME)
+        await broker.publish({"version": 99}, _DOOR_FAULTS_QUEUE_NAME)
         dead_letter = await dead_letters.get_one(timeout=_DEAD_LETTER_WAIT_SECONDS)
 
     assert dead_letter is not None
