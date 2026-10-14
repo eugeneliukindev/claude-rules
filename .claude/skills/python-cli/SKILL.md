@@ -160,3 +160,6 @@ def test_run_writes_cues_shifted_by_the_offset() -> None:
 **Before writing `main()` for a command that runs long or whose output is piped, read
 [interrupts-and-pipes.md](interrupts-and-pipes.md)** — Ctrl-C caught once with exit code 130, a
 closed pipe treated as a reader that left.
+
+- Ctrl-C is caught once, in `main()`, after cleanup, without a traceback
+- A closed pipe is a reader that left, not an error
