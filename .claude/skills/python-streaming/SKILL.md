@@ -17,8 +17,8 @@ A response that lives for minutes instead of milliseconds, whatever serves it; t
 Python 3.13+ (`asyncio.Queue.shutdown`). Structured concurrency and cancellation are
 `python-async`. Serving a stream from FastAPI — the response classes, Starlette's WebSocket,
 uvicorn's flags, the test clients — is `python-fastapi`; GraphQL subscriptions are
-`python-strawberry`, gRPC server streams `python-grpc`, and the redis channel behind fan-out
-`python-redis`. A script does not serve connections, so none of this applies there.
+`python-strawberry`, gRPC server streams `python-grpc`, and redis pub/sub, which can carry
+fan-out between processes, `python-redis`. A script does not serve connections, so none of this applies there.
 
 **The mechanism follows who talks.** The server only — SSE: plain HTTP, and the browser reconnects
 and resumes by itself. Both sides — a WebSocket. A finite body too large to build in memory — a
@@ -30,102 +30,65 @@ streamed download.
 
 **Why:** when the client goes, the server cancels the generator where it awaits, or the next send
 fails — either way the code after the loop never runs, and whatever it was meant to release stays
-held.
+held. The disconnect arrives as `CancelledError`; caught to carry on, the stream outlives its
+client and keeps its subscription forever.
 
 **Example:**
 ```python
 # WRONG — on disconnect the generator is cancelled inside get(), and the queue stays registered
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed
-) -> AsyncGenerator[ParcelEvent]:
-    events = feed.add_subscriber(tracking_number)
+async def follow_lot(lot_id: LotId, *, feed: BidFeed) -> AsyncGenerator[Bid]:
+    bids = feed.add_subscriber(lot_id)
     while True:
         try:
-            event = await events.get()
+            bid = await bids.get()
         except asyncio.QueueShutDown:
             break
-        yield event
-    feed.remove_subscriber(tracking_number, events)
+        yield bid
+    feed.remove_subscriber(lot_id, bids)
 
 
 # CORRECT — the context manager removes the queue however the stream ends
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed
-) -> AsyncGenerator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
+async def follow_lot(lot_id: LotId, *, feed: BidFeed) -> AsyncGenerator[Bid]:
+    async with feed.subscribe(lot_id) as bids:
         while True:
             try:
-                event = await events.get()
+                bid = await bids.get()
             except asyncio.QueueShutDown:
                 return
-            yield event
-```
-
-### `CancelledError` is the disconnect, and it is never caught to carry on
-
-**Why:** caught and continued, the stream outlives its client and keeps its subscription forever
-(`python-async`).
-
-**Example:**
-```python
-# WRONG — the cancellation is swallowed, and the loop waits for the next event for nobody
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed
-) -> AsyncGenerator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
-        while True:
-            try:
-                event = await events.get()
-            except asyncio.CancelledError:
-                logger.info("tracking client left", extra={"tracking_number": tracking_number})
-                continue
-            yield event
-
-
-# CORRECT — cancellation propagates, and async with releases the subscription
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed
-) -> AsyncGenerator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
-        while True:
-            try:
-                event = await events.get()
-            except asyncio.QueueShutDown:
-                return
-            yield event
+            yield bid
 ```
 
 ### Release on disconnect is tested on the generator itself
 
 **Why:** closing the generator runs the same `finally` a cancellation runs, without a server or a
-client: take one event, `aclose()`, and assert the feed has no subscriber left.
+client: take one bid, `aclose()`, and assert the feed has no subscriber left.
 
 **Example:**
 ```python
-# WRONG — asserts the event and never the release, so a leaked subscription passes
-async def test_follow_parcel_yields_published_event() -> None:
-    feed = ParcelFeed()
-    events = follow_parcel(_TRACKING_NUMBER, feed=feed)
-    first_event = asyncio.create_task(anext(events))
-    await _wait_for_subscriber(feed, _TRACKING_NUMBER)
+# WRONG — asserts the bid and never the release, so a leaked subscription passes
+async def test_follow_lot_yields_placed_bid() -> None:
+    feed = BidFeed()
+    bids = follow_lot(_LOT_ID, feed=feed)
+    first_bid = asyncio.create_task(anext(bids))
+    await _wait_until_subscribed(feed, _LOT_ID)
 
-    feed.publish(_OUT_FOR_DELIVERY)
+    feed.publish(_OPENING_BID)
 
-    assert await first_event == _OUT_FOR_DELIVERY
+    assert await first_bid == _OPENING_BID
 
 
 # CORRECT — the stream is closed, and the subscription is asserted gone
-async def test_follow_parcel_releases_subscription_when_closed() -> None:
-    feed = ParcelFeed()
-    events = follow_parcel(_TRACKING_NUMBER, feed=feed)
-    first_event = asyncio.create_task(anext(events))
-    await _wait_for_subscriber(feed, _TRACKING_NUMBER)
-    feed.publish(_OUT_FOR_DELIVERY)
-    await first_event
+async def test_follow_lot_releases_subscription_when_closed() -> None:
+    feed = BidFeed()
+    bids = follow_lot(_LOT_ID, feed=feed)
+    first_bid = asyncio.create_task(anext(bids))
+    await _wait_until_subscribed(feed, _LOT_ID)
+    feed.publish(_OPENING_BID)
+    await first_bid
 
-    await events.aclose()
+    await bids.aclose()
 
-    assert feed.subscriber_count(_TRACKING_NUMBER) == 0
+    assert feed.subscriber_count(_LOT_ID) == 0
 ```
 
 ## A Slow Client Is Cut Off, Not Buffered
@@ -133,48 +96,48 @@ async def test_follow_parcel_releases_subscription_when_closed() -> None:
 ### Every connection has a bounded queue, and the publisher never waits on one
 
 **Why:** an unbounded queue turns one stalled phone into the worker's memory; an awaited `put`
-stalls every other subscriber behind it. `put_nowait`; on `QueueFull` the subscriber is shut down
-and removed in the same step — `put_nowait` on a shut-down queue raises `QueueShutDown` — its
-stream ends, and the client reconnects and resumes from its last id.
+stalls every other bidder behind it. `put_nowait`; on `QueueFull` the subscriber is shut down and
+removed in the same step — `put_nowait` on a shut-down queue raises `QueueShutDown` — its stream
+ends, and the client reconnects and resumes from its last id.
 
 **Example:**
 ```python
 # WRONG — an unbounded queue per subscriber: a client that stops reading grows it without limit
 @final
-class ParcelFeed:
+class BidFeed:
     def __init__(self) -> None:
-        self._queues_by_parcel: dict[TrackingNumber, set[asyncio.Queue[ParcelEvent]]] = {}
+        self._queues_by_lot: dict[LotId, set[asyncio.Queue[Bid]]] = {}
 
-    def _add_queue(self, tracking_number: TrackingNumber) -> asyncio.Queue[ParcelEvent]:
-        events = asyncio.Queue[ParcelEvent]()
-        self._queues_by_parcel.setdefault(tracking_number, set()).add(events)
-        return events
+    def _add_queue(self, lot_id: LotId) -> asyncio.Queue[Bid]:
+        bids = asyncio.Queue[Bid]()
+        self._queues_by_lot.setdefault(lot_id, set()).add(bids)
+        return bids
 
-    def publish(self, event: ParcelEvent) -> None:
-        for events in self._queues_by_parcel.get(event.tracking_number, set()):
-            events.put_nowait(event)
+    def publish(self, bid: Bid) -> None:
+        for bids in self._queues_by_lot.get(bid.lot_id, set()):
+            bids.put_nowait(bid)
 
 
 # CORRECT — each queue is bounded; a subscriber that falls behind is shut down and removed
 @final
-class ParcelFeed:
-    def __init__(self, *, max_pending_events: int = _MAX_PENDING_EVENTS) -> None:
-        self._max_pending_events = max_pending_events
-        self._queues_by_parcel: dict[TrackingNumber, set[asyncio.Queue[ParcelEvent]]] = {}
+class BidFeed:
+    def __init__(self, *, max_pending_bids: int = _MAX_PENDING_BIDS) -> None:
+        self._max_pending_bids = max_pending_bids
+        self._queues_by_lot: dict[LotId, set[asyncio.Queue[Bid]]] = {}
 
-    def _add_queue(self, tracking_number: TrackingNumber) -> asyncio.Queue[ParcelEvent]:
-        events = asyncio.Queue[ParcelEvent](maxsize=self._max_pending_events)
-        self._queues_by_parcel.setdefault(tracking_number, set()).add(events)
-        return events
+    def _add_queue(self, lot_id: LotId) -> asyncio.Queue[Bid]:
+        bids = asyncio.Queue[Bid](maxsize=self._max_pending_bids)
+        self._queues_by_lot.setdefault(lot_id, set()).add(bids)
+        return bids
 
-    def publish(self, event: ParcelEvent) -> None:
-        subscribers = self._queues_by_parcel.get(event.tracking_number, set())
-        for events in tuple(subscribers):
+    def publish(self, bid: Bid) -> None:
+        subscribers = self._queues_by_lot.get(bid.lot_id, set())
+        for bids in tuple(subscribers):
             try:
-                events.put_nowait(event)
+                bids.put_nowait(bid)
             except asyncio.QueueFull:
-                events.shutdown(immediate=True)
-                subscribers.discard(events)
+                bids.shutdown(immediate=True)
+                subscribers.discard(bids)
 ```
 
 ### The send itself has a deadline
@@ -186,22 +149,23 @@ skill.
 **Example:**
 ```python
 # WRONG — a client that stops reading parks this task on send forever
-async def push_events(
-    events: asyncio.Queue[ParcelEvent], *, send: Callable[[str], Awaitable[None]]
-) -> None:
+async def push_bids(bids: asyncio.Queue[Bid], *, send: Callable[[str], Awaitable[None]]) -> None:
     while True:
-        event = await events.get()
-        await send(event.to_json())
+        bid = await bids.get()
+        await send(bid.to_json())
 
 
 # CORRECT — a send that cannot complete in time ends the connection
-async def push_events(
-    events: asyncio.Queue[ParcelEvent], *, send: Callable[[str], Awaitable[None]]
+async def push_bids(
+    bids: asyncio.Queue[Bid],
+    *,
+    send: Callable[[str], Awaitable[None]],
+    send_timeout_seconds: float = _SEND_TIMEOUT_SECONDS,
 ) -> None:
     while True:
-        event = await events.get()
-        async with asyncio.timeout(_SEND_TIMEOUT_SECONDS):
-            await send(event.to_json())
+        bid = await bids.get()
+        async with asyncio.timeout(send_timeout_seconds):
+            await send(bid.to_json())
 ```
 
 ## A Connection Has a Deadline
@@ -219,62 +183,62 @@ generator — measured: the response task was cancelled from outside, and the ge
 **Example:**
 ```python
 # WRONG — the scope spans the yield: at the deadline it cancels the response, not this loop
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed, lifetime_seconds: float
-) -> AsyncGenerator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
+async def follow_lot(
+    lot_id: LotId, *, feed: BidFeed, max_open_seconds: float
+) -> AsyncGenerator[Bid]:
+    async with feed.subscribe(lot_id) as bids:
         try:
-            async with asyncio.timeout(lifetime_seconds):
+            async with asyncio.timeout(max_open_seconds):
                 while True:
-                    yield await events.get()
+                    yield await bids.get()
         except (TimeoutError, asyncio.QueueShutDown):
             return
 
 
-# CORRECT — one deadline, and each wait for an event runs under it; the yield is outside
-async def follow_parcel(
-    tracking_number: TrackingNumber, *, feed: ParcelFeed, lifetime_seconds: float
-) -> AsyncGenerator[ParcelEvent]:
-    deadline = asyncio.get_running_loop().time() + lifetime_seconds
-    async with feed.subscribe(tracking_number) as events:
+# CORRECT — one deadline, and each wait for a bid runs under it; the yield is outside
+async def follow_lot(
+    lot_id: LotId, *, feed: BidFeed, max_open_seconds: float
+) -> AsyncGenerator[Bid]:
+    deadline = asyncio.get_running_loop().time() + max_open_seconds
+    async with feed.subscribe(lot_id) as bids:
         while True:
             try:
                 async with asyncio.timeout_at(deadline):
-                    event = await events.get()
+                    bid = await bids.get()
             except (TimeoutError, asyncio.QueueShutDown):
                 return
-            yield event
+            yield bid
 ```
 
 ### A stream never holds a transaction or a pooled connection while it waits
 
-**Why:** a transaction held for a stream's life holds a pooled connection, and ten idle listeners
-drain a pool of ten. The replay is its own short read (`python-persistence`); the live part reads
-the feed, not the database. A framework that keeps a dependency open until the response finishes
-holds it the same way.
+**Why:** a transaction held for a stream's life holds a pooled connection, and ten idle bidders
+drain a pool of ten. The replay is its own short read; the live part reads the feed, not the
+database. A framework that keeps a dependency open until the response finishes holds it the same
+way.
 
 **Example:**
 ```python
-# WRONG — the history reader, and its connection, stay open until the client leaves
-async def stream_parcel(
-    tracking_number: TrackingNumber, *, history: ParcelHistory, feed: ParcelFeed
-) -> AsyncIterator[ParcelEvent]:
-    async with history.reader() as reader, feed.subscribe(tracking_number) as events:
-        for event in await reader.events_for(tracking_number):
-            yield event
+# WRONG — the history reader, and its connection, stay open until the bidder leaves
+async def watch_lot(
+    lot_id: LotId, *, history: BidHistory, feed: BidFeed
+) -> AsyncGenerator[Bid]:
+    async with history.reader() as reader, feed.subscribe(lot_id) as bids:
+        for bid in await reader.bids_for(lot_id):
+            yield bid
         while True:
-            yield await events.get()
+            yield await bids.get()
 
 
 # CORRECT — the replay is one short read, finished before the live part begins
-async def stream_parcel(
-    tracking_number: TrackingNumber, *, history: ParcelHistory, feed: ParcelFeed
-) -> AsyncIterator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
-        for event in await history.events_for(tracking_number):
-            yield event
+async def watch_lot(
+    lot_id: LotId, *, history: BidHistory, feed: BidFeed
+) -> AsyncGenerator[Bid]:
+    async with feed.subscribe(lot_id) as bids:
+        for bid in await history.bids_for(lot_id):
+            yield bid
         while True:
-            yield await events.get()
+            yield await bids.get()
 ```
 
 ## WebSockets

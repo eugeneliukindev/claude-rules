@@ -12,22 +12,22 @@ cursor is acceptable only under the stream's deadline, on a pool of its own.
 **Example:**
 ```python
 # WRONG — one cursor for the whole download, at the client's pace
-async def stream_entries(*, audit_log: AuditLog) -> AsyncIterator[AuditEntry]:
-    async with audit_log.cursor() as entries:
-        async for entry in entries:
-            yield entry
+async def export_hammer_sales(*, sales: HammerSaleArchive) -> AsyncGenerator[HammerSale]:
+    async with sales.cursor() as cursor:
+        async for sale in cursor:
+            yield sale
 
 
 # CORRECT — each page is a short read; nothing is held while the client downloads
-async def stream_entries(
-    *, audit_log: AuditLog, page_size: int = _PAGE_SIZE
-) -> AsyncIterator[AuditEntry]:
-    after_id = 0
+async def export_hammer_sales(
+    *, sales: HammerSaleArchive, sales_per_page: int = _SALES_PER_PAGE
+) -> AsyncGenerator[HammerSale]:
+    after_sale_id = 0
     while True:
-        page = await audit_log.page_after(after_id, limit=page_size)
+        page = await sales.page_after(after_sale_id, limit=sales_per_page)
         if not page:
             return
-        for entry in page:
-            yield entry
-        after_id = page[-1].entry_id
+        for sale in page:
+            yield sale
+        after_sale_id = page[-1].sale_id
 ```

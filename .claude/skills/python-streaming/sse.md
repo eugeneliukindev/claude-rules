@@ -22,80 +22,79 @@ delivers the events in one late burst.
 
 **Example:**
 ```python
-# WRONG — a quiet parcel sends nothing, and the proxy closes the stream after a minute
-async def sse_frames(events: AsyncIterator[ParcelEvent]) -> AsyncIterator[str]:
-    async for event in events:
-        yield f"id: {event.sequence}\ndata: {event.to_json()}\n\n"
+# WRONG — a lot nobody bids on sends nothing, and the proxy closes the stream after a minute
+async def bid_frames(bids: AsyncIterator[Bid]) -> AsyncGenerator[str]:
+    async for bid in bids:
+        yield f"id: {bid.sequence}\ndata: {bid.to_json()}\n\n"
 
 
 # CORRECT — a comment whenever the stream has been quiet for the heartbeat interval
-async def sse_frames(
-    events: AsyncIterator[ParcelEvent], *, heartbeat_seconds: float = _HEARTBEAT_SECONDS
-) -> AsyncIterator[str]:
+async def bid_frames(
+    bids: AsyncIterator[Bid], *, heartbeat_seconds: float = _HEARTBEAT_SECONDS
+) -> AsyncGenerator[str]:
     while True:
         try:
             async with asyncio.timeout(heartbeat_seconds):
-                event = await anext(events)
+                bid = await anext(bids)
         except TimeoutError:
             yield ": ping\n\n"
             continue
         except StopAsyncIteration:
             return
-        yield f"id: {event.sequence}\ndata: {event.to_json()}\n\n"
+        yield f"id: {bid.sequence}\ndata: {bid.to_json()}\n\n"
 ```
 
 ### An event `id` is a position in a durable log, never a counter in memory
 
 **Why:** on reconnect the browser sends the last id back as `Last-Event-ID`, possibly to another
-worker, where a process counter means nothing. The id is the event's sequence in the database or
-the broker, and a malformed `Last-Event-ID` is refused as bad input. `retry:` (milliseconds) is
-sent once, in the first event — after a restart every client returns at once, so it is not set low.
+worker, where a process counter means nothing. The id is the bid's sequence in the database or the
+broker, and a malformed `Last-Event-ID` is refused as bad input. `retry:` (milliseconds) is sent
+once, in the first event — after a restart every client returns at once, so it is not set low.
 
 **Example:**
 ```python
-# WRONG — a per-process counter: after a reconnect to another worker, id 3 is a different event
-async def sse_frames(events: AsyncIterator[ParcelEvent]) -> AsyncIterator[str]:
+# WRONG — a per-process counter: after a reconnect to another worker, id 3 is a different bid
+async def bid_frames(bids: AsyncIterator[Bid]) -> AsyncGenerator[str]:
     position = 0
-    async for event in events:
+    async for bid in bids:
         position += 1
-        yield f"id: {position}\ndata: {event.to_json()}\n\n"
+        yield f"id: {position}\ndata: {bid.to_json()}\n\n"
 
 
-# CORRECT — the id is the event's sequence in the log, the same on every worker
-async def sse_frames(events: AsyncIterator[ParcelEvent]) -> AsyncIterator[str]:
-    async for event in events:
-        yield f"id: {event.sequence}\ndata: {event.to_json()}\n\n"
+# CORRECT — the id is the bid's sequence in the log, the same on every worker
+async def bid_frames(bids: AsyncIterator[Bid]) -> AsyncGenerator[str]:
+    async for bid in bids:
+        yield f"id: {bid.sequence}\ndata: {bid.to_json()}\n\n"
 ```
 
 ### A resumed stream subscribes first, then replays, then follows live, skipping what it replayed
 
-**Why:** replay first, and an event published between the query and the subscription is lost for
-good; subscribed first, it waits in the queue and is skipped only if the replay already sent it.
+**Why:** replay first, and a bid placed between the query and the subscription is lost for good;
+subscribed first, it waits in the queue and is skipped only if the replay already sent it.
 
 **Example:**
 ```python
-# WRONG — an event published during the history query falls between replay and subscription
-async def stream_parcel(
-    tracking_number: TrackingNumber, *, after: int, history: ParcelHistory, feed: ParcelFeed
-) -> AsyncIterator[ParcelEvent]:
-    for event in await history.events_after(tracking_number, after):
-        yield event
-    async with feed.subscribe(tracking_number) as events:
+# WRONG — a bid placed during the history query falls between replay and subscription
+async def resume_lot(
+    lot_id: LotId, *, after_sequence: int, history: BidHistory, feed: BidFeed
+) -> AsyncGenerator[Bid]:
+    for bid in await history.bids_after(lot_id, after_sequence):
+        yield bid
+    async with feed.subscribe(lot_id) as bids:
         while True:
-            yield await events.get()
+            yield await bids.get()
 
 
-# CORRECT — subscribed before the query, so nothing published meanwhile is missed
-async def stream_parcel(
-    tracking_number: TrackingNumber, *, after: int, history: ParcelHistory, feed: ParcelFeed
-) -> AsyncIterator[ParcelEvent]:
-    async with feed.subscribe(tracking_number) as events:
-        last_sent = after
-        for event in await history.events_after(tracking_number, after):
-            last_sent = event.sequence
-            yield event
+# CORRECT — subscribed before the query, so nothing placed meanwhile is missed
+async def resume_lot(
+    lot_id: LotId, *, after_sequence: int, history: BidHistory, feed: BidFeed
+) -> AsyncGenerator[Bid]:
+    async with feed.subscribe(lot_id) as bids:
+        last_sent = after_sequence
+        for bid in await history.bids_after(lot_id, after_sequence):
+            last_sent = bid.sequence
+            yield bid
         while True:
-            event = await events.get()
-            if event.sequence > last_sent:
-                yield event
-```
+            bid = await bids.get()
+            if bid.sequence > last_sent:
+                yield bid

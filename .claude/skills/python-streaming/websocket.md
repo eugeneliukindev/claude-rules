@@ -8,7 +8,8 @@
 - Every message validated; the frame size bounded
 
 The protocol and the connection's structure, whatever serves it; Starlette's `WebSocket`, its
-disconnect exception, router dependencies and the test client are in `python-fastapi`.
+disconnect exception, router dependencies and the test client are in `python-fastapi`, and
+verifying the credential is `python-auth`.
 
 ### The pusher and the reader run in one `TaskGroup`
 
@@ -20,31 +21,31 @@ nobody would fill.
 **Example:**
 ```python
 # WRONG — a clean close cancels the pusher; any other error out of the reader leaves it behind
-async def serve_connection(
-    events: asyncio.Queue[ParcelEvent],
+async def serve_bidder(
+    bids: asyncio.Queue[Bid],
     *,
     send: Callable[[str], Awaitable[None]],
     receive: Callable[[], Awaitable[str]],
-    tracking: TrackingService,
+    floor: AuctionFloor,
 ) -> None:
-    pusher = asyncio.create_task(push_events(events, send=send))
+    pusher = asyncio.create_task(push_bids(bids, send=send))
     try:
-        await read_client_messages(receive=receive, tracking=tracking)
-    except ClientGoneError:
+        await read_bidder_messages(receive=receive, floor=floor)
+    except BidderGoneError:
         pusher.cancel()
 
 
 # CORRECT — the first task to fail cancels the other; nothing outlives the connection
-async def serve_connection(
-    events: asyncio.Queue[ParcelEvent],
+async def serve_bidder(
+    bids: asyncio.Queue[Bid],
     *,
     send: Callable[[str], Awaitable[None]],
     receive: Callable[[], Awaitable[str]],
-    tracking: TrackingService,
+    floor: AuctionFloor,
 ) -> None:
     async with asyncio.TaskGroup() as group:
-        group.create_task(push_events(events, send=send))
-        group.create_task(read_client_messages(receive=receive, tracking=tracking))
+        group.create_task(push_bids(bids, send=send))
+        group.create_task(read_bidder_messages(receive=receive, floor=floor))
 ```
 
 ### Each way a connection ends closes it with the code the client acts on
@@ -56,7 +57,7 @@ client guessing whether to come back.
 
 **Example:**
 ```python
-# WRONG — every ending looks the same to the client
+# WRONG — every ending looks the same to the bidder
 def close_code_for(ending: BaseException) -> int:
     return _NORMAL_CLOSURE
 
@@ -68,7 +69,7 @@ def close_code_for(ending: BaseException) -> int:
             return _GOING_AWAY
         case asyncio.QueueShutDown():
             return _TRY_AGAIN_LATER
-        case MalformedClientMessageError():
+        case MalformedBidderMessageError():
             return _UNSUPPORTED_DATA
         case _:
             return _INTERNAL_ERROR
@@ -78,48 +79,46 @@ def close_code_for(ending: BaseException) -> int:
 
 **Why:** a browser cannot set `Authorization` on a WebSocket: the credential is the session cookie,
 or a short-lived single-use ticket in the query string minted over authenticated HTTP — a URL is
-logged, so nothing longer-lived goes in one; verifying it is `python-auth`. A cookie-authenticated
-socket without an `Origin` check accepts a connection opened by any page the user visits —
-cross-site WebSocket hijacking — and CORS does not apply to the WebSocket handshake. Both checks
-refuse with 1008 before the connection is accepted.
+logged, so nothing longer-lived goes in one. A cookie-authenticated socket without an `Origin`
+check accepts a connection opened by any page the user visits — cross-site WebSocket hijacking —
+and CORS does not apply to the WebSocket handshake. Both checks refuse with 1008 before the
+connection is accepted.
 
 **Example:**
 ```python
-# WRONG — any origin is accepted: a page on another site connects with the user's cookie
-def is_allowed_handshake(headers: Mapping[str, str], *, sessions: SessionStore) -> bool:
-    return sessions.is_valid(headers.get("cookie", ""))
+# WRONG — any origin is accepted: a page on another site connects with the bidder's cookie
+def is_allowed_handshake(headers: Mapping[str, str], *, bidders: BidderSessions) -> bool:
+    return bidders.is_valid(headers.get("cookie", ""))
 
 
 # CORRECT — the origin is on the allowlist, and only then the session counts
 def is_allowed_handshake(
-    headers: Mapping[str, str], *, sessions: SessionStore, allowed_origins: frozenset[str]
+    headers: Mapping[str, str], *, bidders: BidderSessions, allowed_origins: frozenset[str]
 ) -> bool:
-    return headers.get("origin") in allowed_origins and sessions.is_valid(headers.get("cookie", ""))
+    return headers.get("origin") in allowed_origins and bidders.is_valid(headers.get("cookie", ""))
 ```
 
 ### Every incoming message is validated at the edge, and the frame size is bounded
 
-**Why:** a frame decoded into a dict and passed inward is the unvalidated payload
-`python-boundaries` forbids. Each frame becomes a member of a strict discriminated union built once;
-a frame that fails closes the socket with 1003. The server bounds the frame size to what the
-protocol needs, and a client that sends too often is limited per connection like any other input
-(`python-security`).
+**Why:** a frame decoded into a dict and passed inward is an unvalidated payload in the domain.
+Each frame becomes a member of a strict discriminated union; a frame that fails closes the socket
+with 1003. The server bounds the frame size to what the protocol needs, and a client that sends
+too often is rate-limited per connection like any other input.
 
 **Example:**
 ```python
-# WRONG — whatever JSON arrives is handed to the service as a dict
-async def read_client_messages(
-    *, receive: Callable[[], Awaitable[str]], tracking: TrackingService
+# WRONG — whatever JSON arrives is handed to the floor as a dict
+async def read_bidder_messages(
+    *, receive: Callable[[], Awaitable[str]], floor: AuctionFloor
 ) -> None:
     while True:
-        await tracking.apply_client_message(json.loads(await receive()))
+        await floor.apply(json.loads(await receive()))
 
 
 # CORRECT — each frame becomes a typed message or a validation error, here
-async def read_client_messages(
-    *, receive: Callable[[], Awaitable[str]], tracking: TrackingService
+async def read_bidder_messages(
+    *, receive: Callable[[], Awaitable[str]], floor: AuctionFloor
 ) -> None:
     while True:
-        message = _CLIENT_MESSAGE.validate_json(await receive())
-        await tracking.apply_client_message(message.to_domain())
-```
+        message = parse_bidder_message(await receive())
+        await floor.apply(message.to_domain())

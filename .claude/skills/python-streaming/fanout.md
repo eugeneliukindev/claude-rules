@@ -9,178 +9,161 @@
 - A room is a key of the feed
 - The whole example: layout, relay, wiring, the fake and the contract suite
 
-The redis implementation and how redis-py shows a gap are in `python-redis`; the lifespan that
-builds the channel and runs the relay in a FastAPI service is in `python-fastapi`.
+Redis pub/sub and how redis-py shows a gap are in `python-redis`; the lifespan that builds the
+channel and runs the relay in a FastAPI service is in `python-fastapi`.
 
 ### Each worker subscribes once to a channel between processes, and publishes to the channel
 
 **Why:** an in-process subscriber set reaches only the connections on the same process — with two
-workers or two replicas, an event published on one never arrives at clients of the other. Each
-worker subscribes **once** and fans out locally through the bounded queues of `SKILL.md`; one
+workers or two replicas, a bid placed on one never arrives at bidders of the other. Each worker
+subscribes **once** and fans out locally through the bounded queues of `SKILL.md`; one
 subscription per connection multiplies the broker's load by the connection count. A request
 handler publishes to the channel, never to the feed. The durable log behind `Last-Event-ID` is
 separate: a pub/sub channel forgets what nobody was listening for.
 
 **Example:**
 ```python
-# WRONG — the scan reaches only the clients connected to this worker
+# WRONG — the bid reaches only the bidders connected to this worker
 @final
-class ParcelScanning:
-    def __init__(self, *, feed: ParcelFeed, history: ParcelHistory) -> None:
+class BidDesk:
+    def __init__(self, *, feed: BidFeed, history: BidHistory) -> None:
         self._feed = feed
         self._history = history
 
-    async def record_scan(self, scan: Scan) -> None:
-        event = await self._history.append(scan)
-        self._feed.publish(event)
+    async def place(self, offer: BidOffer) -> None:
+        bid = await self._history.append(offer)
+        self._feed.publish(bid)
 
 
 # CORRECT — every worker's relay receives it and fans it out to its own connections
 @final
-class ParcelScanning:
-    def __init__(self, *, parcel_events: ParcelEventChannel, history: ParcelHistory) -> None:
-        self._parcel_events = parcel_events
+class BidDesk:
+    def __init__(self, *, bid_channel: BidChannel, history: BidHistory) -> None:
+        self._bid_channel = bid_channel
         self._history = history
 
-    async def record_scan(self, scan: Scan) -> None:
-        event = await self._history.append(scan)
-        await self._parcel_events.publish(event)
+    async def place(self, offer: BidOffer) -> None:
+        bid = await self._history.append(offer)
+        await self._bid_channel.publish(bid)
 ```
 
 ### The channel is a contract that states at-most-once delivery and raises on a gap
 
 **Why:** Redis pub/sub, a NATS subject and PostgreSQL `LISTEN` are implementations of one
-capability (`python-contracts`), and every client library hides a dropped subscription differently
-— some reconnect and resubscribe without raising, and the event published in between is never
-delivered. The relay's correctness rests on two things the contract therefore states: delivery is
-at most once, and **a subscription that may have missed an event raises while iterating** — not
-only on leaving the `async with`, where the relay's loop would never see it.
+capability, and every client library hides a dropped subscription differently — some reconnect
+and resubscribe without raising, and the bid placed in between is never delivered. The relay's
+correctness rests on two things the contract therefore states: delivery is at most once, and **a
+subscription that may have missed a bid raises while iterating** — not only on leaving the
+`async with`, where the relay's loop would never see it.
 
 **Example:**
 ```python
 # WRONG — nothing says what a dropped subscription does, so each implementation decides
-class ParcelEventChannel(ABC):
+class BidChannel(ABC):
     @abstractmethod
-    async def publish(self, event: ParcelEvent) -> None: ...
+    async def publish(self, bid: Bid) -> None: ...
 
     @abstractmethod
-    def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[ParcelEvent]]: ...
+    def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[Bid]]: ...
 
 
 # CORRECT — the gap is part of the contract, with its own error
-class ParcelEventChannelLostError(TrackingError):
-    """The subscription ended, and an event published meanwhile may never arrive."""
+class BidChannelLostError(AuctionError):
+    """The subscription ended, and a bid placed meanwhile may never arrive."""
 
 
-class ParcelEventChannel(ABC):
-    """Carries parcel events between worker processes, each event at most once."""
-
-    @abstractmethod
-    async def publish(self, event: ParcelEvent) -> None: ...
+class BidChannel(ABC):
+    """Carries bids between worker processes, each bid at most once."""
 
     @abstractmethod
-    def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[ParcelEvent]]:
-        """Enter once live; iterating raises ParcelEventChannelLostError if an event is lost."""
+    async def publish(self, bid: Bid) -> None: ...
+
+    @abstractmethod
+    def subscribe(self) -> AbstractAsyncContextManager[AsyncIterator[Bid]]:
+        """Enter once live; iterating raises BidChannelLostError if a bid is lost."""
 ```
 
 ### Every time a subscription goes live, the relay ends the worker's streams
 
 **Why:** a stream opened while the channel was down replayed from the log, then followed a feed
-nothing was filling; one open across the drop missed what was published during it. Ended, each
+nothing was filling; one open across the drop missed what was placed during it. Ended, each
 reconnects — SSE with `Last-Event-ID`, a WebSocket after 1013 — and replays from its own id.
 
 **Example:**
 ```python
-# WRONG — the relay resubscribes and carries on: a stream that missed events never learns it
+# WRONG — the relay resubscribes and carries on: a stream that missed bids never learns it
 @final
-class ParcelEventRelay:
-    def __init__(self, *, channel: ParcelEventChannel, feed: ParcelFeed) -> None:
+class BidRelay:
+    def __init__(self, *, channel: BidChannel, feed: BidFeed) -> None:
         self._channel = channel
         self._feed = feed
 
     async def _follow_channel(self) -> None:
-        async with self._channel.subscribe() as events:
-            async for event in events:
-                self._feed.publish(event)
+        async with self._channel.subscribe() as bids:
+            async for bid in bids:
+                self._feed.publish(bid)
 
 
 # CORRECT — the subscription is live: every stream from before it resumes from its own id
 @final
-class ParcelEventRelay:
-    def __init__(self, *, channel: ParcelEventChannel, feed: ParcelFeed) -> None:
+class BidRelay:
+    def __init__(self, *, channel: BidChannel, feed: BidFeed) -> None:
         self._channel = channel
         self._feed = feed
 
     async def _follow_channel(self) -> None:
-        async with self._channel.subscribe() as events:
+        async with self._channel.subscribe() as bids:
             self._feed.end_all_streams()
-            async for event in events:
-                self._feed.publish(event)
+            async for bid in bids:
+                self._feed.publish(bid)
 ```
 
 ### The relay only queues; it never awaits a socket
 
-**Why:** sending to each connection in turn lets one client that stops reading stall its room, then
-the subscription behind it, until the broker drops a subscriber that does not read. `feed.publish`
-is `put_nowait` into the bounded queues, and each connection's own push task does the sending.
+**Why:** sending to each connection in turn lets one bidder who stops reading stall the room, then
+the subscription behind it, until the broker drops a subscriber that does not read.
+`feed.publish` is `put_nowait` into the bounded queues, and each connection's own push task does
+the sending — the `CORRECT` relay above.
 
 **Example:**
 ```python
-# WRONG — the relay awaits every socket in the room: one client that stops reading stalls them all
+# WRONG — the relay awaits every bidder in the room: one that stops reading stalls them all
 @final
-class ParcelEventRelay:
+class BidRelay:
     def __init__(
-        self,
-        *,
-        channel: ParcelEventChannel,
-        sockets_by_parcel: Mapping[TrackingNumber, set[WebSocket]],
+        self, *, channel: BidChannel, connections_by_lot: Mapping[LotId, set[BidderConnection]]
     ) -> None:
         self._channel = channel
-        self._sockets_by_parcel = sockets_by_parcel
+        self._connections_by_lot = connections_by_lot
 
     async def _follow_channel(self) -> None:
-        async with self._channel.subscribe() as events:
-            async for event in events:
-                for websocket in tuple(self._sockets_by_parcel.get(event.tracking_number, set())):
-                    await websocket.send_text(event.to_json())
-
-
-# CORRECT — the relay queues; a lagging connection is cut off by the feed, never waited for
-@final
-class ParcelEventRelay:
-    def __init__(self, *, channel: ParcelEventChannel, feed: ParcelFeed) -> None:
-        self._channel = channel
-        self._feed = feed
-
-    async def _follow_channel(self) -> None:
-        async with self._channel.subscribe() as events:
-            self._feed.end_all_streams()
-            async for event in events:
-                self._feed.publish(event)
+        async with self._channel.subscribe() as bids:
+            async for bid in bids:
+                for connection in tuple(self._connections_by_lot.get(bid.lot_id, set())):
+                    await connection.send(bid.to_json())
 ```
 
 ### A room is a key of the feed, carried in a versioned payload — not a channel of its own
 
-**Why:** a channel per parcel is a subscription per parcel on every worker. One channel per kind of
-event, the room — here the tracking number — in the payload, a versioned wire model validated on
-arrival like any queued message (`python-boundaries`), because during a deploy two versions
-publish to the same channel.
+**Why:** a channel per lot is a subscription per lot on every worker. One channel per kind of
+event, the room — here the lot — in the payload, a versioned wire model validated on arrival like
+any queued message, because during a deploy two versions publish to the same channel.
 
 **Example:**
 ```python
-# WRONG — a channel name per parcel: every worker subscribes to every parcel anyone follows
-def _channel_name(tracking_number: TrackingNumber) -> str:
-    return f"parcel-events:{tracking_number}"
+# WRONG — a channel name per lot: every worker subscribes to every lot anyone follows
+def _lot_channel_name(lot_id: LotId) -> str:
+    return f"bids:{lot_id}"
 
 
-# CORRECT — one channel; the parcel and the shape's version travel in the message
+# CORRECT — one channel; the lot and the shape's version travel in the message
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ParcelEventMessage:
+class BidMessage:
     version: Literal[1]
-    tracking_number: str
+    lot_id: str
     sequence: int
-    status: ParcelStatus
+    amount_minor_units: int
 ```
 
 ## The Whole Example
@@ -188,12 +171,12 @@ class ParcelEventMessage:
 Checked with `mypy --strict`, and the contract suite run against the fake and against a broker.
 
 ```text
-parcel_events/
-    base.py           # ParcelEventChannel(ABC), ParcelEventChannelLostError
-    redis_pubsub.py   # RedisParcelEventChannel — the only file that imports redis
+bid_channels/
+    base.py           # BidChannel(ABC), BidChannelLostError
+    redis_pubsub.py   # RedisBidChannel — the only file that imports redis
     __init__.py       # the contract, its error and the implementations
-relay.py              # ParcelEventRelay — beside the feed, knows only the contract
-tests/fakes.py        # InMemoryParcelEventChannel
+relay.py              # BidRelay — beside the feed, knows only the contract
+tests/fakes.py        # InMemoryBidChannel
 ```
 
 Each implementation is a module named for its mechanism — `redis_pubsub.py`, `nats.py`,
@@ -201,12 +184,12 @@ Each implementation is a module named for its mechanism — `redis_pubsub.py`, `
 
 ```python
 @final
-class ParcelEventRelay:
+class BidRelay:
     def __init__(
         self,
         *,
-        channel: ParcelEventChannel,
-        feed: ParcelFeed,
+        channel: BidChannel,
+        feed: BidFeed,
         resubscribe_delay_seconds: float = _RESUBSCRIBE_DELAY_SECONDS,
     ) -> None:
         self._channel = channel
@@ -216,12 +199,12 @@ class ParcelEventRelay:
     async def run(self) -> None:
         while True:
             try:
-                async with self._channel.subscribe() as events:
+                async with self._channel.subscribe() as bids:
                     self._feed.end_all_streams()
-                    async for event in events:
-                        self._feed.publish(event)
-            except ParcelEventChannelLostError:
-                logger.warning("parcel event subscription lost", exc_info=True)
+                    async for bid in bids:
+                        self._feed.publish(bid)
+            except BidChannelLostError:
+                logger.warning("bid subscription lost", exc_info=True)
             await asyncio.sleep(self._resubscribe_delay_seconds)
 ```
 
@@ -229,55 +212,55 @@ The composition root builds the channel and the feed once, runs the relay in its
 cancels it at shutdown; request handlers are handed the channel, never the feed.
 
 The fake drops its subscriptions on demand, which the relay's own unit test needs; it lives in
-`tests/fakes.py` and passes the same suite as every broker implementation (`python-contracts`):
+`tests/fakes.py` and passes the same suite as every broker implementation:
 
 ```python
 @final
-class InMemoryParcelEventChannel(ParcelEventChannel):
+class InMemoryBidChannel(BidChannel):
     def __init__(self) -> None:
-        self._subscriptions: set[asyncio.Queue[ParcelEvent]] = set()
+        self._subscriptions: set[asyncio.Queue[Bid]] = set()
 
     @override
-    async def publish(self, event: ParcelEvent) -> None:
-        for events in self._subscriptions:
-            events.put_nowait(event)
+    async def publish(self, bid: Bid) -> None:
+        for bids in self._subscriptions:
+            bids.put_nowait(bid)
 
     @override
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[AsyncIterator[ParcelEvent]]:
-        events = asyncio.Queue[ParcelEvent]()
-        self._subscriptions.add(events)
+    async def subscribe(self) -> AsyncIterator[AsyncIterator[Bid]]:
+        bids = asyncio.Queue[Bid]()
+        self._subscriptions.add(bids)
         try:
-            yield _drain(events)
+            yield _drain(bids)
         finally:
-            self._subscriptions.discard(events)
+            self._subscriptions.discard(bids)
 
     def drop_subscriptions(self) -> None:
-        for events in self._subscriptions:
-            events.shutdown()
+        for bids in self._subscriptions:
+            bids.shutdown()
         self._subscriptions.clear()
 
 
-async def _drain(events: asyncio.Queue[ParcelEvent]) -> AsyncIterator[ParcelEvent]:
+async def _drain(bids: asyncio.Queue[Bid]) -> AsyncIterator[Bid]:
     while True:
         try:
-            yield await events.get()
+            yield await bids.get()
         except asyncio.QueueShutDown as error:
-            raise ParcelEventChannelLostError("dropped by the test") from error
+            raise BidChannelLostError("dropped by the test") from error
 ```
 
 The `channel` fixture parametrizes over the fake and every real implementation; the tests are
 written once against the contract. The loss case is the same test with the subscription dropped in
 the middle — `drop_subscriptions()` on the fake, the broker's own way of cutting a subscriber for a
-real one — and `pytest.raises(ParcelEventChannelLostError)` around the next `anext`:
+real one — and `pytest.raises(BidChannelLostError)` around the next `anext`:
 
 ```python
-async def test_published_event_reaches_a_live_subscription(channel: ParcelEventChannel) -> None:
-    async with channel.subscribe() as events:
-        await channel.publish(_OUT_FOR_DELIVERY)
+async def test_published_bid_reaches_a_live_subscription(channel: BidChannel) -> None:
+    async with channel.subscribe() as bids:
+        await channel.publish(_OPENING_BID)
 
         async with asyncio.timeout(_DELIVERY_TIMEOUT_SECONDS):
-            received = await anext(events)
+            received = await anext(bids)
 
-    assert received == _OUT_FOR_DELIVERY
+    assert received == _OPENING_BID
 ```
