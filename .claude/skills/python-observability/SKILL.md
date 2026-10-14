@@ -1,10 +1,10 @@
 ---
 name: python-observability
 description: >-
-  Chooses and wires signals: logs, metrics and traces, bounded attributes, a correlation id in a
-  contextvar, OpenTelemetry names at module level with the SDK in the entry point, JSON logs. Use
-  when code adds a metric, counter, histogram, span or request id, imports opentelemetry or
-  prometheus_client, or configures logging.
+  Chooses and wires metrics and traces beyond the logging rules: bounded attributes, histograms in
+  seconds, OpenTelemetry names at module level with the SDK in the entry point, a correlation id in
+  a contextvar, JSON log output. Use when code adds a metric, counter, histogram, span or request
+  id, imports opentelemetry or prometheus_client, or configures logging.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -12,40 +12,30 @@ paths:
 
 # Observability
 
-How to write a log line — levels, messages, `extra=`, no secrets — is `logging.md`; below is what is
-a log at all, and what is a metric or a trace instead.
-
-## One Question, One Signal
-
-### An event gets the one signal its question needs
-
-**Why:** a log is an event someone will read — an error, a decision, a state change — the most
-expensive signal per event and the only one carrying a sentence. A metric is counted or measured,
-aggregated before it leaves the process, so it is recorded on every request and alerted on; a
-duration in a log line is a metric someone recovers with a regular expression. A trace follows one
-request across processes. "How many transcodes failed per minute" is a counter; "why did video 42
-fail" is a log line, once, at the boundary that handled it.
+How to write a log line, and that timing and counting are metrics, are `logging.md`; a trace is what
+follows one request across processes. Below: which metric, where the tracer and the meter live, and
+how log output is configured.
 
 ## Metrics
 
 ### A metric's attributes have bounded cardinality
 
 **Why:** every distinct combination of attribute values is a separate time series, held in memory
-and billed: a status class, a route template, a codec — never a user id, a video id, a raw URL path
-or an error message. A request metric labelled by raw path turned every id in a URL into a new
-series until the route template became the default label. Span attributes follow the same rule, and
-carry no personal data.
+and billed: a status class, a route template, a service tier — never a customer id, a bag id, a raw
+URL path or an error message. A request metric labelled by raw path turned every id in a URL into a
+new series until the route template became the default label. Span attributes follow the same rule,
+and carry no personal data.
 
 **Example:**
 ```python
 # WRONG — the message carries ids, so every failure starts a time series of its own
-def count_upload_failure(error: Exception) -> None:
-    _UPLOAD_FAILURES.add(1, {"error": str(error)})
+def count_pickup_failure(error: Exception) -> None:
+    _PICKUP_FAILURES.add(1, {"error": str(error)})
 
 
 # CORRECT — the exception's type: a short list, known in advance
-def count_upload_failure(error: Exception) -> None:
-    _UPLOAD_FAILURES.add(1, {"error.type": type(error).__name__})
+def count_pickup_failure(error: Exception) -> None:
+    _PICKUP_FAILURES.add(1, {"error.type": type(error).__name__})
 ```
 
 ### A duration is a histogram in seconds, and an outcome is an attribute of one counter
@@ -57,73 +47,74 @@ drift apart; one counter with an `outcome` attribute makes it a ratio of one met
 **Example:**
 ```python
 # WRONG — two metrics: the failure rate is a join across series that drift apart
-_TRANSCODES_SUCCEEDED: Final = _METER.create_counter("transcodes.succeeded")
-_TRANSCODES_FAILED: Final = _METER.create_counter("transcodes.failed")
+_WASH_CYCLES_SUCCEEDED: Final = _METER.create_counter("wash_cycles.succeeded")
+_WASH_CYCLES_FAILED: Final = _METER.create_counter("wash_cycles.failed")
 
 
 # CORRECT — one counter, and the outcome is an attribute of each event
-_TRANSCODES_FINISHED: Final = _METER.create_counter("transcodes.finished")
+_WASH_CYCLES_FINISHED: Final = _METER.create_counter("wash_cycles.finished")
 
 
-def count_transcode(outcome: Outcome) -> None:
-    _TRANSCODES_FINISHED.add(1, {"outcome": outcome.value})
+def count_wash_cycle(outcome: CycleOutcome) -> None:
+    _WASH_CYCLES_FINISHED.add(1, {"outcome": outcome.value})
 ```
 
-## Module-Level Names
+## Tracer and Meter
 
-### The tracer, the meter and its instruments are module-level names, like the logger
+### The tracer, the meter and its instruments are created once, at module level
 
-**Why:** `python-wiring` allows constants and the logger at module level, and these are the same
-kind of thing: a name the module records under, harmless until the entry point configures where
-the records go, and no dependency to inject. Created per call, an instrument is a lookup at best and
-a new series at worst.
+**Why:** they are names the module records under, harmless until the entry point configures where
+the records go (`modules.md`), and no dependency to inject. Created per call, an instrument is a
+lookup at best and a new series at worst.
 
 **Example:**
 ```python
 # WRONG — the meter and the instrument are looked up again on every call
-def close_transcode(job: TranscodeJob, *, elapsed_seconds: float) -> None:
+def record_pickup_duration(pickup: Pickup, *, elapsed_seconds: float) -> None:
     meter = metrics.get_meter(__name__)
-    meter.create_histogram("transcode.duration", unit="s").record(elapsed_seconds)
+    meter.create_histogram("pickup.duration", unit="s").record(elapsed_seconds)
 
 
 # CORRECT — built once, recorded into on every call
 _METER: Final = metrics.get_meter(__name__)
-_TRANSCODE_DURATION: Final = _METER.create_histogram("transcode.duration", unit="s")
+_PICKUP_DURATION: Final = _METER.create_histogram("pickup.duration", unit="s")
 
 
-def close_transcode(job: TranscodeJob, *, elapsed_seconds: float) -> None:
-    _TRANSCODE_DURATION.record(elapsed_seconds, {"codec": job.codec.value})
+def record_pickup_duration(pickup: Pickup, *, elapsed_seconds: float) -> None:
+    _PICKUP_DURATION.record(elapsed_seconds, {"service": pickup.service.value})
 ```
 
 ### Library and service code depend on `opentelemetry-api`; the SDK is configured in the entry point
 
 **Why:** without configuration the API is a no-op, which is what a library's caller must be able to
-choose; a module that installs a provider on import refuses the application's own. The SDK, its
-exporters and sampling are set up once in `main()`, like logging — never in a library, on import,
-or in a test helper. Frameworks and clients are instrumented with their instrumentation packages
-before spans are written by hand; a manual span earns its place around a unit no library sees.
+choose; a module that installs a provider refuses the application's own, and a second
+`set_tracer_provider` is ignored with a warning. The SDK, its exporters and sampling are set up once
+in `main()`, like logging — never in a library or a test helper. Frameworks and clients are
+instrumented with their instrumentation packages before spans are written by hand; a manual span
+earns its place around a unit no library sees.
 
 ### Recording a signal never fails the work it observes
 
-**Why:** a log line, a metric or a span that raises — a body that will not serialise, an exporter
-that is down — is caught and dropped inside the instrumentation, the way
+**Why:** a log line, a metric or a span whose value cannot be computed — a header that is not a
+number, an exporter that is down — is caught and dropped inside the instrumentation, the way
 `logging.Handler.handleError` does. A logging middleware that let a malformed request body escape
 turned it into a 500 for a request that was otherwise served.
 
 **Example:**
 ```python
-# WRONG — a body that is not JSON makes the logging fail the request it was only describing
-def log_request_body(body: bytes) -> None:
-    logger.debug("request body", extra={"body": json.loads(body)})
+# WRONG — a bag count the driver app sent as text makes the span fail the pickup it describes
+def annotate_pickup_span(span: trace.Span, *, bag_count_header: str) -> None:
+    span.set_attribute("pickup.bag_count", int(bag_count_header))
 
 
-# CORRECT — an unreadable body is described as such, and the request goes on
-def log_request_body(body: bytes) -> None:
+# CORRECT — an unreadable count is recorded as such, and the pickup goes on
+def annotate_pickup_span(span: trace.Span, *, bag_count_header: str) -> None:
     try:
-        parsed: object = json.loads(body)
+        bag_count = int(bag_count_header)
     except ValueError:
-        parsed = f"<{len(body)} bytes, not JSON>"
-    logger.debug("request body", extra={"body": parsed})
+        span.set_attribute("pickup.bag_count_unreadable", True)
+        return
+    span.set_attribute("pickup.bag_count", bag_count)
 ```
 
 ## Correlation Ids
@@ -135,5 +126,5 @@ stamps it, the trace id as the id.
 ## Log Output
 
 **Before configuring logging — `basicConfig`, a handler, a formatter — read
-[log-output.md](log-output.md)** — once, in the entry point and never on import, JSON lines with
-every `extra=` field, the filter attached to the handler.
+[log-output.md](log-output.md)** — once, in the entry point, JSON lines with every `extra=` field,
+the filter attached to the handler.
