@@ -1,13 +1,14 @@
 ---
 name: python-scripts
 description: >-
-  Says which rules relax for one-off scripts, notebooks and data fixes and which never do; PEP 723
-  metadata, dry-run by default, the point a script stops being one. Use when writing a standalone
-  script, a notebook, a backfill script or a data fix, or a file with a '# /// script' block. Not
-  for a command others run (python-cli).
+  Says which rules relax for one-off scripts, notebooks and data fixes and which never do: PEP 723
+  metadata, dry-run by default, the point a script stops being one. ALWAYS invoke this skill when a
+  task asks for a one-off, a script run once or by hand, a backfill, a data fix, a notebook, or a
+  file with a '# /// script' block. Do not write the script directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
+  - "**/*.ipynb"
 ---
 
 # Scripts
@@ -15,10 +16,9 @@ paths:
 The rules in this directory were written for code that lives — a service, a library, a worker — and
 models over-apply them: a forty-line script that renames files once does not improve by growing a
 contract, a fake and a composition root. A script is a file run by hand or by one person's one-off
-job, imported by nothing, read by its author — a data fix, a report, a backfill, a notebook. Where
-it uses a library, that library's skill still holds: a token it acts on is verified as
-`python-pyjwt` says, a call to a gRPC service is made as `python-grpc` says. How a backfill is
-batched and bounded against a live table is `python-migrations`; this skill is the script around it.
+job, imported by nothing, read by its author — a data fix, a report, a backfill, a notebook. A
+token it acts on is still verified, and a backfill against a live table is still batched and
+bounded; this skill is the script around them.
 
 ### A file stops being a script once it is imported, scheduled, run by others, or outgrows a screen
 
