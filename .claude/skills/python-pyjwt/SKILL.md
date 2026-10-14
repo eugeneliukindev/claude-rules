@@ -177,8 +177,14 @@ def build_member_signing_keys(
 **Before signing tokens with `jwt.encode`, read [issuing.md](issuing.md)** — the `kid` header,
 aware datetimes from an injected clock.
 
+- A token is signed with its `kid` in the header, and its times come from the injected clock
+
 ## Testing
 
 **Before testing the JWT verifier, read [testing.md](testing.md)** — a generated key and a local key
 set, the rejections as one parametrized test, the unknown `kid` and the unreachable key set on their
 own, forged tokens built by hand.
+
+- The key is generated once, its public half served as a key set the verifier fetches
+- PyJWT's rejections are one parametrized test; the unknown `kid` and the outage stand apart
+- A forged token is built by hand, because `jwt.encode` refuses to forge one
