@@ -110,6 +110,11 @@ library's `__init__.py`, or making a facade import its submodules on first acces
 [init.md](init.md)** — `_internal/` with the underscore and an empty `__init__.py`, one prefix
 choice for the area, what a library facade may hold, `TYPE_CHECKING` plus `__getattr__`.
 
+- The private area is `_internal/`, with the underscore, and its `__init__.py` is empty
+- Whether the modules inside repeat the underscore is decided once for the whole area
+- A library facade holds a version guard, a deprecation shim and lazy exports, nothing more
+- A facade over many or heavy submodules imports them on first access, declared for the checker
+
 ## Families of Names
 
 The shapes worth copying when a public name has siblings of the same kind (`naming.md`):
@@ -129,12 +134,23 @@ exception, emitting a deprecation warning, or shipping an experimental or previo
 read [deprecation.md](deprecation.md)** — what counts as breaking, `@deprecated` and `stacklevel`,
 renames as aliases, tombstones, a tier as a package.
 
+- A breaking change ships only in a major, and a new keyword-only parameter is not one
+- A name is deprecated with a warning, a checker mark, its replacement and its versions
+- A renamed name lives on as a deprecated alias of the new one, never a copy
+- A removed module leaves a tombstone that names its replacement
+- A stability tier is a package, so the import line states the terms
+
 ## Optional Dependencies
 
 **Before importing a library only one implementation needs, adding an optional extra, or exporting
 implementations that need different extras from one facade, read
 [optional-dependencies.md](optional-dependencies.md)** — the library imported only in its
 implementation, local builders in the factory, the package's own error naming the extra.
+
+- A library one implementation needs is imported only in that implementation's module
+- The factory's builders import their library themselves
+- A missing extra is the package's own error, naming the extra, raised where it is needed
+- An implementation's tests skip when its library is absent, and the refusal is tested on purpose
 
 ## A Module Named Like the Standard Library
 
