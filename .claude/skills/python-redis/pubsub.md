@@ -1,4 +1,4 @@
-# Pub/Sub: `RedisParcelEventChannel`
+# Pub/Sub: `RedisBayChangeChannel`
 
 ## Contents
 
@@ -6,13 +6,15 @@
 - A `ConnectionError` while listening is a gap too
 - The subscription is live before `subscribe` yields
 - What is not a gap, and what redis drops
-- The root that builds the channel
 
-The channel contract, the relay and the fake are in `python-streaming`; the contract's promise is
-that **a subscription that may have missed an event raises `ParcelEventChannelLostError` while
-iterating** — not only on leaving the `async with`, where the relay's loop would never see it.
-`RedisConnectionError` is `redis.exceptions.ConnectionError`, imported under that name so it does
-not shadow the builtin.
+Pub/sub delivers to whoever listens at that moment and keeps nothing, so a subscriber that was
+disconnected has missed events and must say so. The channel here carries bay changes of a car park
+and promises that **a subscription that may have missed an event raises `BayChangesLostError`
+while iterating** — not only on leaving the `async with`, where a loop reading it would never see
+it — so the reader can reload the occupancy from the database. The payload is the application's
+own — `encode_bay_change` and `decode_bay_change`, versioned, raising `UndecodableBayChangeError`
+for one they refuse — so the channel carries bytes and knows no schema. `RedisConnectionError` is
+`redis.exceptions.ConnectionError`, imported under that name so it does not shadow the builtin.
 
 **What a dropped connection looks like depends on how the client was built** (*measured*, with
 `CLIENT KILL TYPE pubsub` from a second client). Through the constructor's retry,
@@ -20,154 +22,125 @@ not shadow the builtin.
 never delivered, and the only sign is a second `subscribe` confirmation. Through `from_url`, or
 with `retries=0`, `listen()` raises `ConnectionError`.
 
-### A second `subscribe` confirmation is a gap, raised as the contract's error
+### A second `subscribe` confirmation is a gap, raised as the channel's error
 
 **Why:** after a silent resubscribe the only trace of the drop is the confirmation; read past, the
-relay follows a subscription that missed events and never ends the streams that depend on it.
+reader follows a subscription that missed events and shows a stale count forever.
 
 **Example:**
 ```python
 # WRONG — only messages are read: after a silent resubscribe nobody learns what was missed
-async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEvent]:
+async def _decode_bay_changes(messages: AsyncIterator[Any]) -> AsyncIterator[BayChange]:
     async for received in messages:
         match received:
             case {"type": "message", "data": bytes() as payload}:
-                yield decode_parcel_event(payload)
+                yield decode_bay_change(payload)
             case _:
-                continue  # unsubscribe confirmations and pattern messages carry no event
+                continue  # unsubscribe confirmations and pattern messages carry no change
 
 
-# CORRECT — a second confirmation is a gap, and the contract says so
-async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEvent]:
+# CORRECT — a second confirmation is a gap, and the channel says so
+async def _decode_bay_changes(messages: AsyncIterator[Any]) -> AsyncIterator[BayChange]:
     async for received in messages:
         match received:
             case {"type": "subscribe"}:
-                raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
+                raise BayChangesLostError(_BAY_CHANGES_CHANNEL)
             case {"type": "message", "data": bytes() as payload}:
-                yield decode_parcel_event(payload)
+                yield decode_bay_change(payload)
             case _:
-                continue  # unsubscribe confirmations and pattern messages carry no event
+                continue  # unsubscribe confirmations and pattern messages carry no change
 ```
 
-### A `ConnectionError` while listening is the contract's error too, and a bad payload is skipped
+### A `ConnectionError` while listening is the channel's error too, and a bad payload is skipped
 
 **Why:** a client without retries raises instead of resubscribing; uncaught, the redis error
-escapes a relay that only catches the contract's. A payload that fails validation is logged and
-skipped — it is one bad message, never a reason to drop the subscription — and the wire model is a
-queued payload, so it ignores fields a newer worker adds.
+escapes a reader that only catches the channel's. A payload that fails to decode is logged and
+skipped — it is one bad message, never a reason to drop the subscription — and the decoder ignores
+fields a newer publisher adds.
 
 **Example:**
 ```python
 # WRONG — the redis error escapes, and one malformed payload ends the subscription
-async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEvent]:
+async def _decode_bay_changes(messages: AsyncIterator[Any]) -> AsyncIterator[BayChange]:
     async for received in messages:
         match received:
             case {"type": "subscribe"}:
-                raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
+                raise BayChangesLostError(_BAY_CHANGES_CHANNEL)
             case {"type": "message", "data": bytes() as payload}:
-                yield decode_parcel_event(payload)
+                yield decode_bay_change(payload)
             case _:
-                continue  # unsubscribe confirmations and pattern messages carry no event
+                continue  # unsubscribe confirmations and pattern messages carry no change
 
 
-# CORRECT — both kinds of gap are the contract's error; a bad payload is counted and skipped
-async def _decode_events(messages: AsyncIterator[Any]) -> AsyncIterator[ParcelEvent]:
+# CORRECT — both kinds of gap are the channel's error; a bad payload is logged and skipped
+async def _decode_bay_changes(messages: AsyncIterator[Any]) -> AsyncIterator[BayChange]:
     try:
         async for received in messages:
             match received:
                 case {"type": "subscribe"}:
-                    raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL)
+                    raise BayChangesLostError(_BAY_CHANGES_CHANNEL)
                 case {"type": "message", "data": bytes() as payload}:
                     try:
-                        event = decode_parcel_event(payload)
-                    except UndecodableEventError:
-                        logger.warning("parcel event dropped", extra={"payload_size": len(payload)})
+                        change = decode_bay_change(payload)
+                    except UndecodableBayChangeError:
+                        logger.warning("bay change dropped", extra={"payload_size": len(payload)})
                         continue
-                    yield event
+                    yield change
                 case _:
-                    continue  # unsubscribe confirmations and pattern messages carry no event
+                    continue  # unsubscribe confirmations and pattern messages carry no change
     except RedisConnectionError as error:
-        raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL) from error
+        raise BayChangesLostError(_BAY_CHANGES_CHANNEL) from error
 ```
 
 ### `subscribe` reads the first confirmation before it yields
 
-**Why:** the relay ends its streams once the subscription is live (`python-streaming`); yielded
-before the confirmation, an event published in that moment is lost after the streams were already
-told to resume.
+**Why:** the reader reloads the occupancy once the subscription is live; yielded before the
+confirmation, a change published in that moment is in neither the reload nor the subscription.
 
 **Example:**
 ```python
 # WRONG — yields before redis has confirmed: "live" is a guess
 @final
-class RedisParcelEventChannel(ParcelEventChannel):
-    def __init__(self, *, redis: Redis) -> None:
-        self._redis = redis
+class RedisBayChangeChannel:
+    def __init__(self, *, client: Redis) -> None:
+        self._client = client
 
-    @override
-    async def publish(self, event: ParcelEvent) -> None:
-        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, encode_parcel_event(event))
+    async def publish(self, change: BayChange) -> None:
+        await self._client.publish(_BAY_CHANGES_CHANNEL, encode_bay_change(change))
 
-    @override
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[AsyncIterator[ParcelEvent]]:
-        async with self._redis.pubsub() as pubsub:
-            await pubsub.subscribe(_PARCEL_EVENTS_CHANNEL)
-            yield _decode_events(pubsub.listen())
+    async def subscribe(self) -> AsyncIterator[AsyncIterator[BayChange]]:
+        async with self._client.pubsub() as pubsub:
+            await pubsub.subscribe(_BAY_CHANGES_CHANNEL)
+            yield _decode_bay_changes(pubsub.listen())
 
 
-# CORRECT — the confirmation is read first, and a failure to subscribe is the contract's error
+# CORRECT — the confirmation is read first, and a failure to subscribe is the channel's error
 @final
-class RedisParcelEventChannel(ParcelEventChannel):
-    def __init__(self, *, redis: Redis) -> None:
-        self._redis = redis
+class RedisBayChangeChannel:
+    def __init__(self, *, client: Redis) -> None:
+        self._client = client
 
-    @override
-    async def publish(self, event: ParcelEvent) -> None:
-        await self._redis.publish(_PARCEL_EVENTS_CHANNEL, encode_parcel_event(event))
+    async def publish(self, change: BayChange) -> None:
+        await self._client.publish(_BAY_CHANGES_CHANNEL, encode_bay_change(change))
 
-    @override
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[AsyncIterator[ParcelEvent]]:
-        async with self._redis.pubsub() as pubsub:
+    async def subscribe(self) -> AsyncIterator[AsyncIterator[BayChange]]:
+        async with self._client.pubsub() as pubsub:
             messages = pubsub.listen()
             try:
-                await pubsub.subscribe(_PARCEL_EVENTS_CHANNEL)
+                await pubsub.subscribe(_BAY_CHANGES_CHANNEL)
                 await anext(messages)  # the confirmation: the subscription is live from here
             except RedisConnectionError as error:
-                raise ParcelEventChannelLostError(_PARCEL_EVENTS_CHANNEL) from error
-            yield _decode_events(messages)
+                raise BayChangesLostError(_BAY_CHANGES_CHANNEL) from error
+            yield _decode_bay_changes(messages)
 ```
 
 ## What Is Not a Gap, and What redis Drops
 
 - **A subscription idle past `socket_timeout` is not a gap**: *measured*, `listen()` kept waiting
-  through three times a 0.3-second timeout and then delivered, so the root's shared client, with
-  its short cache timeouts, serves the subscription too.
+  through three times a 0.3-second timeout and then delivered, so the process's one client, with
+  its short timeouts, serves the subscription too.
 - **redis drops a subscriber that stops reading**: the default `client-output-buffer-limit pubsub
   32mb 8mb 60` disconnects one whose unread output passes 32 MiB, or 8 MiB for a minute — which
-  the implementation reports as a gap. A relay that never awaits a socket keeps it reading.
-
-## The Root
-
-The wire format is the application's own — `encode_parcel_event` and `decode_parcel_event`,
-versioned, raising `UndecodableEventError` for a payload they refuse — so the channel carries bytes
-and knows no schema. `RedisParcelEventChannel` and `_decode_events` are the last `CORRECT`s above.
-The composition root builds the client once and both implementations on it, runs the relay in its
-task group and cancels it at shutdown:
-
-```python
-@asynccontextmanager
-async def tracking_resources(
-    *, redis_url: str, redis_timeout_seconds: float
-) -> AsyncIterator[TrackingResources]:
-    async with (
-        managed_redis(url=redis_url, timeout_seconds=redis_timeout_seconds) as redis,
-        asyncio.TaskGroup() as tasks,
-    ):
-        feed = ParcelFeed()
-        parcel_events = RedisParcelEventChannel(redis=redis)
-        relay = tasks.create_task(ParcelEventRelay(channel=parcel_events, feed=feed).run())
-        yield TrackingResources(cache=RedisCache(redis), feed=feed, parcel_events=parcel_events)
-        relay.cancel()
-```
+  the channel reports as a gap. A reader that never blocks on anything else keeps it reading.
