@@ -69,7 +69,9 @@ is not obvious.
    tenant or environment; no concrete rule lives in two places (`naming.md`).
 6. **Types** — no `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on
    every override, `Final` on every constant, `@final` where a class is not designed for
-   subclassing (`types.md`).
+   subclassing (`types.md`); a setting a function or a method reads is a keyword parameter
+   defaulted to its module constant, outside the root, tests, framework-parsed signatures and
+   scripts (`functions.md`).
 7. **Errors** — every conversion keeps its cause with `raise … from`; nothing returns `None`,
    `False` or `-1` to signal an error; every `except` is as narrow as the lines it guards; errors
    are logged once, at the boundary, with no secrets or PII (`errors.md`, `logging.md`).
