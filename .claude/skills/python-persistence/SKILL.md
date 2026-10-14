@@ -274,18 +274,26 @@ class ApiaryRoster:
 read [upserts.md](upserts.md)** — one `INSERT … ON CONFLICT` on the unique key, `DO NOTHING
 RETURNING` to tell a repeat apart.
 
+- An idempotent insert is one `INSERT … ON CONFLICT` on the unique key
+
 ## A Table Used as a Queue
 
 **Before claiming rows from a table that several workers poll, read
 [queue-tables.md](queue-tables.md)** — `FOR UPDATE SKIP LOCKED`.
+
+- Rows are claimed with `FOR UPDATE SKIP LOCKED`
 
 ## Pagination
 
 **Before paginating a query, read [pagination.md](pagination.md)** — keyset from the last key seen,
 with a unique tiebreaker and a matching index; offset only for a small bounded list.
 
+- Pages are keyset, from the last key the caller saw
+
 ## Lost Updates
 
 **Before writing a read-modify-write that spans a user's think time or concurrent requests, read
 [optimistic-locking.md](optimistic-locking.md)** — a version column, zero rows updated as a
 conflict, re-read instead of retried.
+
+- A read-modify-write is guarded by a version column, and zero rows updated is a conflict
