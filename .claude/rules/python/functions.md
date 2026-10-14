@@ -39,14 +39,16 @@ is whether the branches share a body.
 
 ### A setting is a keyword parameter defaulted to its constant — never the settings object
 
-**Why:** a timeout, a limit, a TTL, a size, a retry count, a path read in the body can be changed
-only by patching the module; defaulted in the signature, a caller passes nothing and a test passes
-what it needs. A function taking `settings: Settings` hides what it reads and makes a test build the
-whole tree; the entry point reads the settings and unpacks them into plain values, or a frozen
-config dataclass for a group that travels together. A constructor keeps each in a field.
+**Why:** a timeout, a limit, a TTL, a size, a width, a duration, a retry count, the set of statuses
+worth retrying, a path — read in the body, it can be changed only by patching the module; defaulted
+in the signature, a caller passes nothing and a test passes what it needs. A function taking
+`settings: Settings` hides what it reads and makes a test build the whole tree; the entry point
+reads the settings and unpacks them into plain values, or a frozen config dataclass for a group that
+travels together. A constructor keeps each in a field.
 **Except:** the root (`main`, `run`, `lifespan`), a test, a fixture and a signature a framework
 parses — a route, a subscriber, a resolver, where a defaulted parameter is an input the client
-sets — read the constant where they stand; a value a format or a protocol fixes is not a setting.
+sets — read the constant where they stand. A value a format or a protocol fixes, a query, a
+dispatch table and a security allowlist are code, not settings, and stay in the body.
 
 **Example:**
 ```python
