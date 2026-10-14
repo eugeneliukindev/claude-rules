@@ -2,61 +2,22 @@
 
 ## Contents
 
-- A fake verifier for the unit tests
-- One contract suite, a harness per implementation
+- A fake verifier, and one contract suite with a harness per implementation
 - Authorization tested at the service, with another pupil
 
 A verifier's fake is held to the contract suite like any other; what follows is what that suite
 needs on top.
 
-### The unit tests take a fake verifier that issues opaque tokens and can lose its signing keys
+### A fake verifier issues opaque tokens and can lose its signing keys, and every implementation hands the one contract suite a harness that does both
 
-**Why:** a real verifier needs keys, a clock and a key set server; the fake maps the tokens it
-issued back to their callers, and stops answering when its keys are cut off, so both failures of
-the contract are reachable from a unit test.
-
-**Example:**
-```python
-# WRONG — every token is accepted, so no test ever reaches a rejection
-@final
-class InMemoryAccessTokenVerifier(AccessTokenVerifier):
-    def __init__(self, *, caller: PortalCaller) -> None:
-        self._caller = caller
-
-    @override
-    def verify(self, token: str) -> PortalCaller:
-        return self._caller
-
-
-# CORRECT — tokens are issued and checked, and the signing keys can go away
-@final
-class InMemoryAccessTokenVerifier(AccessTokenVerifier):
-    def __init__(self) -> None:
-        self._caller_by_token: dict[str, PortalCaller] = {}
-        self.are_signing_keys_reachable = True
-
-    def issue(self, caller: PortalCaller) -> str:
-        token = secrets.token_urlsafe(_TOKEN_BYTES)
-        self._caller_by_token[token] = caller
-        return token
-
-    @override
-    def verify(self, token: str) -> PortalCaller:
-        if not self.are_signing_keys_reachable:
-            raise SigningKeysUnreachableError(_KEY_SET_URL)
-        caller = self._caller_by_token.get(token)
-        if caller is None:
-            raise RejectedCredentialsError("unknown token")
-        return caller
-```
-
-### Each implementation hands the contract suite a harness that issues a token and cuts off its keys
-
-**Why:** issuing a token and making the signing keys unreachable differ per implementation — a dict
-for the fake, a generated key and a local key set server for a JWT verifier — so each fixture hands
-the tests a harness with both, and the tests are written once. A third contract test sends a token
-nobody issued and expects `RejectedCredentialsError`; rejections only one implementation can
-produce — an expired JWT, `alg` `none` — are that implementation's own tests.
+**Why:** a real verifier needs keys, a clock and a key set server; a fake that accepts every token
+lets no test reach a rejection. The fake maps the tokens it issued back to their callers and stops
+answering when its keys are cut off, so both failures of the contract are reachable from a unit
+test. Issuing a token and cutting off the keys differ per implementation — a dict for the fake, a
+generated key and a local key set server for a JWT verifier — so each fixture hands the tests a
+harness with both, and the tests are written once. A third contract test sends a token nobody
+issued and expects `RejectedCredentialsError`; rejections only one implementation can produce — an
+expired JWT, `alg` `none` — are that implementation's own tests.
 
 **Example:**
 ```python

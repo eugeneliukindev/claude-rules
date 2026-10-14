@@ -135,8 +135,7 @@ extraction filter.
 **Before fetching a URL a user supplied, read [ssrf.md](ssrf.md)** — an allowlist checked against
 the resolved addresses, and every redirect checked before it is followed.
 
-- The check is on the addresses the name resolves to, not on the name
-- Redirects are followed by hand, and every hop is checked before it is requested
+- Every hop is checked on the addresses its name resolves to, and redirects are followed by hand
 
 ## Authentication and Authorization
 
@@ -144,12 +143,10 @@ the resolved addresses, and every redirect checked before it is followed.
 permission, or decides who may see a resource, read [auth.md](auth.md)** — a token verified into a
 frozen caller, the check in the service beside the load, 401 against 403, the session cookie.
 
-- The application verifies tokens through one contract that returns a frozen caller
+- The application verifies tokens through one contract that returns a frozen caller, and a service takes that caller, never the token or the claims
 - Nothing in a token is believed before its signature, and its claims model ignores extra claims
-- A service takes the caller, never the token or the claims
-- Whether this caller may touch this resource is checked in the service, next to the load
+- Whether this caller may touch this resource is checked in the service — next to the load for one, in the query for a list
 - A caller who may see a resource but not act on it gets a permission error
-- A list is authorized by its query, never by filtering the result
 - No valid credentials is 401, a valid caller refused is 403, unreachable signing keys are 503
 - A token travels in a header, and the access log records an allowlist of headers
 - A session cookie is `Secure`, `HttpOnly`, `SameSite` and `__Host-`-prefixed
@@ -182,6 +179,5 @@ reused.
 fake verifier, one contract suite with a harness per implementation, authorization tested at the
 service with the owner and another pupil.
 
-- The unit tests take a fake verifier that issues opaque tokens and can lose its signing keys
-- Each implementation hands the contract suite a harness that issues a token and cuts off its keys
+- A fake verifier issues opaque tokens and can lose its signing keys, and every implementation hands the one contract suite a harness that does both
 - Authorization is tested at the service, with the owner and another pupil

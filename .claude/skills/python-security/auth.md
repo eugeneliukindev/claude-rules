@@ -4,13 +4,16 @@ How a token becomes an identity, and where that identity is checked, whatever th
 
 ## A Token Becomes a Caller
 
-### The application verifies tokens through one contract that returns a frozen caller
+### The application verifies tokens through one contract that returns a frozen caller, and a service takes that caller, never the token or the claims
 
 **Why:** the application never sees a token library. `verify(token)` returns who the token speaks
 for, or raises one of two errors: rejected credentials — malformed, forged, expired, another
 audience, an unknown key: the client's mistake — or unreachable signing keys: the service's
 failure. Every library exception is translated inside the implementation, and both fail closed.
-Each implementation is the only module importing its library, and the unit tests take a fake.
+Each implementation is the only module importing its library, and the unit tests take a fake. A
+service handed the token decodes it again with its own idea of the algorithms; one handed the
+claims trusts whatever dict it was given, from a test or a queue message alike; with the caller, a
+worker or a test builds it directly.
 
 **Example:**
 ```python
@@ -82,15 +85,9 @@ def read_portal_claims(claims: Mapping[str, object]) -> PortalClaims:
     )
 ```
 
-### A service takes the caller, never the token or the claims
-
-**Why:** a service handed the token decodes it again with its own idea of the algorithms; one handed
-the claims trusts whatever dict it was given, from a test or a queue message alike. With a
-`PortalCaller`, a worker or a test builds the caller directly.
-
 ## Authorization
 
-### Whether this caller may touch this resource is checked in the service, next to the load
+### Whether this caller may touch this resource is checked in the service — next to the load for one, in the query for a list
 
 **Why:** the edge establishes who is calling, once for every route, with the public routes as the
 reviewed exception; it has not loaded the resource, so it cannot know whether the caller may touch
@@ -98,7 +95,9 @@ it. A route guarded by "is logged in" or by a role lets every pupil read every s
 they can guess or enumerate — IDOR, the most common access-control flaw. Opaque ids make guessing
 harder; they do not make the check optional. Where the resource's existence is itself the secret,
 someone else's submission is answered exactly like a missing one; a 403 would confirm the id is
-real.
+real. A list filtered after the query lets pagination, counts and totals see rows the caller may
+not — page one holds three submissions of fifty, and the total gives away the rest — so the
+repository takes the pupil.
 
 **Example:**
 ```python
@@ -157,40 +156,6 @@ class SubmissionDesk:
         if submission.pupil_id != caller.person_id:
             raise SubmissionPermissionError(submission_id, action="withdraw")
         await self._submissions.remove(submission.submission_id)
-```
-
-### A list is authorized by its query, never by filtering the result
-
-**Why:** filtering after the query lets pagination, counts and totals see rows the caller may not —
-page one holds three submissions of fifty, and the total gives away the rest. The repository takes
-the pupil.
-
-**Example:**
-```python
-# WRONG — the page and its total are computed over every pupil's submissions
-@final
-class SubmissionDesk:
-    def __init__(self, *, submissions: SubmissionStore) -> None:
-        self._submissions = submissions
-
-    async def list_submissions(
-        self, caller: PortalCaller, *, page: PageRequest
-    ) -> SubmissionPage:
-        everyone = await self._submissions.page(page)
-        visible = [found for found in everyone.items if _can_read_submission(caller, found)]
-        return SubmissionPage(items=visible, total=everyone.total)
-
-
-# CORRECT — the query itself is scoped to the caller
-@final
-class SubmissionDesk:
-    def __init__(self, *, submissions: SubmissionStore) -> None:
-        self._submissions = submissions
-
-    async def list_submissions(
-        self, caller: PortalCaller, *, page: PageRequest
-    ) -> SubmissionPage:
-        return await self._submissions.page_for_pupil(caller.person_id, page)
 ```
 
 ## Rejections
