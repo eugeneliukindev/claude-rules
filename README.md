@@ -1,18 +1,18 @@
 # claude-rules
 
-Правила и скилы для Claude Code: как писать Python и Go. Всё лежит в `.claude/` и
+Правила и скилы для Claude Code: как писать Python. Всё лежит в `.claude/` и
 устанавливается в `~/.claude/`, откуда Claude Code читает их в каждом проекте.
 
 ## Что где
 
 | Путь | Когда загружается |
 |---|---|
-| `.claude/rules/python/*.md`, `.claude/rules/go/*.md` | при первом чтении `.py` / `.go` файла: у каждого файла `paths:` во front matter |
+| `.claude/rules/python/*.md` | при первом чтении `.py` файла: у каждого файла `paths:` во front matter |
 | `.claude/rules/*/new-files.md` | в каждой сессии — единственные файлы без front matter: закрывают случай, когда проект создаётся в пустой папке и читать ещё нечего |
-| `.claude/skills/python-*/`, `.claude/skills/go-*/` | описание попадает в список, когда прочитан или записан файл из `paths:` скила; сам скил загружается, когда работа совпала с описанием, или по `/имя` |
+| `.claude/skills/python-*/` | описание попадает в список, когда прочитан или записан файл из `paths:` скила; сам скил загружается, когда работа совпала с описанием, или по `/имя` |
 
 Карта Python-скилов — таблица в `.claude/rules/python/core.md`. Как писать и проверять правила —
-скил `python-rules-authoring` (для Go — `go-rules-authoring`, который ссылается на общие разделы).
+скил `python-rules-authoring`.
 
 ## Установка
 
@@ -20,9 +20,7 @@
 папки, так что удалённые в репозитории файлы исчезают и там; ничего вне этих папок не трогается.
 
 ```bash
-for lang in python go; do
-  rsync -a --delete --exclude __pycache__ .claude/rules/$lang/ ~/.claude/rules/$lang/
-done
+rsync -a --delete --exclude __pycache__ .claude/rules/python/ ~/.claude/rules/python/
 for skill in .claude/skills/*/; do
   rsync -a --delete --exclude __pycache__ "$skill" ~/.claude/skills/"$(basename "$skill")"/
 done
