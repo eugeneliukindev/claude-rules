@@ -262,8 +262,14 @@ async def process_capture(capture: Capture, *, pipeline: CapturePipeline) -> Non
 and tasks, or calling into the loop from a thread, read [threads.md](threads.md)** — `contextvars`
 through `run_in_executor`, `call_soon_threadsafe`, `asyncio.Lock` against `threading.Lock`.
 
+- Work submitted to an executor carries the caller's context explicitly
+- A thread reaches the loop only through `run_coroutine_threadsafe` or `call_soon_threadsafe`
+- `asyncio.Lock` only orders tasks; state a thread also touches takes a `threading.Lock`
+
 ## Shutdown
 
 **Before handling `SIGTERM` or `SIGINT` or writing the stop path of a service, read
 [shutdown.md](shutdown.md)** — a signal that sets an event, drain with a deadline, signals in the
 main thread only.
+
+- A signal sets an event; the application stops taking work, drains with a deadline, and closes
