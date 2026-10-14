@@ -30,27 +30,28 @@ annotations, in runtime checks instead of `hasattr`, and instead of hand-rolled 
 | a real number, `int` included | `float` (accepts `int`, PEP 484) | `numbers.Real` |
 
 Import them from `collections.abc`; the `typing` aliases are deprecated. A return is concrete —
-`-> list[User]` — unless it deliberately hides the container: `-> Iterator[Row]` for a generator,
-`-> Mapping[...]` for a read-only view. Attributes and dataclass fields follow the same rule:
-`items: Sequence[Item]` when read-only, `list[Item]` only when the class itself mutates it.
+`-> list[Exposure]` — unless it deliberately hides the container: `-> Iterator[Frame]` for a
+generator, `-> Mapping[...]` for a read-only view. Attributes and dataclass fields follow the same
+rule: `exposures: Sequence[Exposure]` when read-only, `list[Exposure]` only when the class itself
+mutates it.
 
 ### `Sequence[str]` also accepts a bare `str`, so a function that means "several" guards it
 
 **Why:** a `str` is a `Sequence[str]` to the checker, and a single tag passed where a list of tags
-was meant iterates as characters — `"urgent"` becomes six one-letter tags.
+was meant iterates as characters — `"cloudy"` becomes six one-letter tags.
 
 **Example:**
 ```python
-# WRONG — label_issue(issue, "urgent") type-checks and adds six labels
-def label_issue(issue: Issue, labels: Sequence[str]) -> Issue:
-    return replace(issue, labels=(*issue.labels, *labels))
+# WRONG — tag_frame(frame, "cloudy") type-checks and adds six tags
+def tag_frame(frame: Frame, tags: Sequence[str]) -> Frame:
+    return replace(frame, tags=(*frame.tags, *tags))
 
 
 # CORRECT — a bare string is refused where several were meant
-def label_issue(issue: Issue, labels: Sequence[str]) -> Issue:
-    if isinstance(labels, str):
-        raise TypeError("labels must be a sequence of strings, not one string")
-    return replace(issue, labels=(*issue.labels, *labels))
+def tag_frame(frame: Frame, tags: Sequence[str]) -> Frame:
+    if isinstance(tags, str):
+        raise TypeError("tags must be a sequence of strings, not one string")
+    return replace(frame, tags=(*frame.tags, *tags))
 ```
 
 ### `numbers.Real` and `numbers.Integral` stay out of annotations
@@ -72,22 +73,22 @@ guard comes before an `Iterable` or `Sequence` check, since both are sequences; 
 
 **Example:**
 ```python
-# WRONG — a read-only MappingProxyType of headers is treated as a list of pairs
-def normalise_headers(headers: object) -> dict[str, str]:
-    if isinstance(headers, dict):
-        return {str(key).lower(): str(value) for key, value in headers.items()}
-    if isinstance(headers, Iterable):
-        return {str(key).lower(): str(value) for key, value in headers}
-    raise TypeError(f"headers must be a mapping or pairs, not {type(headers).__name__}")
+# WRONG — a read-only MappingProxyType of keywords is treated as a list of pairs
+def normalise_fits_keywords(keywords: object) -> dict[str, str]:
+    if isinstance(keywords, dict):
+        return {str(key).upper(): str(value) for key, value in keywords.items()}
+    if isinstance(keywords, Iterable):
+        return {str(key).upper(): str(value) for key, value in keywords}
+    raise TypeError(f"keywords must be a mapping or pairs, not {type(keywords).__name__}")
 
 
 # CORRECT — any mapping passes as a mapping
-def normalise_headers(headers: object) -> dict[str, str]:
-    if isinstance(headers, Mapping):
-        return {str(key).lower(): str(value) for key, value in headers.items()}
-    if isinstance(headers, Iterable):
-        return {str(key).lower(): str(value) for key, value in headers}
-    raise TypeError(f"headers must be a mapping or pairs, not {type(headers).__name__}")
+def normalise_fits_keywords(keywords: object) -> dict[str, str]:
+    if isinstance(keywords, Mapping):
+        return {str(key).upper(): str(value) for key, value in keywords.items()}
+    if isinstance(keywords, Iterable):
+        return {str(key).upper(): str(value) for key, value in keywords}
+    raise TypeError(f"keywords must be a mapping or pairs, not {type(keywords).__name__}")
 ```
 
 ### A number from elsewhere is checked against `numbers.Real`; one you parsed, `int` and `float`
@@ -109,49 +110,48 @@ the ones you implement: `MutableMapping` needs `__getitem__`, `__setitem__`, `__
 `__contains__`, `__iter__` and `__len__` and gives the set algebra. `collections.UserDict` is the
 other way out.
 **Except:** a metaclass `__prepare__` namespace — the class body stores every name with
-`STORE_NAME`, which does call an overridden `__setitem__`, so a `dict` subclass is correct there
-(`python-metaclasses`).
+`STORE_NAME`, which does call an overridden `__setitem__`, so a `dict` subclass is correct there.
 
 **Example:**
 ```python
-# WRONG — update() and the constructor skip __setitem__, so a mixed-case key passed in stays
-# mixed-case and the lowercased lookup misses it
+# WRONG — update() and the constructor skip __setitem__, so a lower-case keyword passed in
+# stays lower-case and the upper-cased lookup misses it
 @final
-class CaseInsensitiveDict(dict[str, str]):
+class FitsHeader(dict[str, str]):
     @override
-    def __getitem__(self, key: str) -> str:
-        return super().__getitem__(key.lower())
+    def __getitem__(self, keyword: str) -> str:
+        return super().__getitem__(keyword.upper())
 
     @override
-    def __setitem__(self, key: str, value: str) -> None:
-        super().__setitem__(key.lower(), value)
+    def __setitem__(self, keyword: str, value: str) -> None:
+        super().__setitem__(keyword.upper(), value)
 
 
 # CORRECT — every mixin method of MutableMapping goes through the five implemented here
 @final
-class CaseInsensitiveDict(MutableMapping[str, str]):
+class FitsHeader(MutableMapping[str, str]):
     def __init__(self) -> None:
-        self._value_by_key: dict[str, str] = {}
+        self._value_by_keyword: dict[str, str] = {}
 
     @override
-    def __getitem__(self, key: str) -> str:
-        return self._value_by_key[key.lower()]
+    def __getitem__(self, keyword: str) -> str:
+        return self._value_by_keyword[keyword.upper()]
 
     @override
-    def __setitem__(self, key: str, value: str) -> None:
-        self._value_by_key[key.lower()] = value
+    def __setitem__(self, keyword: str, value: str) -> None:
+        self._value_by_keyword[keyword.upper()] = value
 
     @override
-    def __delitem__(self, key: str) -> None:
-        del self._value_by_key[key.lower()]
+    def __delitem__(self, keyword: str) -> None:
+        del self._value_by_keyword[keyword.upper()]
 
     @override
     def __iter__(self) -> Iterator[str]:
-        return iter(self._value_by_key)
+        return iter(self._value_by_keyword)
 
     @override
     def __len__(self) -> int:
-        return len(self._value_by_key)
+        return len(self._value_by_keyword)
 ```
 
 ## Beyond `collections.abc`

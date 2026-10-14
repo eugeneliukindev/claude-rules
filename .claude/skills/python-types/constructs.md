@@ -26,13 +26,15 @@ the annotation documents intent and checks nothing.
 **Example:**
 ```python
 # WRONG — any string, including one built from a request
-def execute_ddl(statement: str, *, connection: Connection) -> None:
-    connection.execute(statement)
+def query_catalogue(statement: str, *, catalogue: CatalogueDatabase) -> list[CatalogueStar]:
+    return catalogue.execute(statement)
 
 
-# CORRECT — pyright rejects execute_ddl(f"DROP TABLE {name}", ...); mypy lets it through
-def execute_ddl(statement: LiteralString, *, connection: Connection) -> None:
-    connection.execute(statement)
+# CORRECT — pyright rejects query_catalogue(f"... WHERE name = '{name}'", ...); mypy accepts it
+def query_catalogue(
+    statement: LiteralString, *, catalogue: CatalogueDatabase
+) -> list[CatalogueStar]:
+    return catalogue.execute(statement)
 ```
 
 ## Shapes
@@ -45,12 +47,12 @@ or a `TypedDict`. A `type` statement is evaluated lazily, so the recursion needs
 
 **Example:**
 ```python
-# WRONG — document["anything"]["at"]["all"] type-checks
-def count_leaves(document: Any) -> int:
-    if isinstance(document, dict):
-        return sum(count_leaves(value) for value in document.values())
-    if isinstance(document, list):
-        return sum(count_leaves(item) for item in document)
+# WRONG — metadata["anything"]["at"]["all"] type-checks
+def count_metadata_values(metadata: Any) -> int:
+    if isinstance(metadata, dict):
+        return sum(count_metadata_values(value) for value in metadata.values())
+    if isinstance(metadata, list):
+        return sum(count_metadata_values(item) for item in metadata)
     return 1
 
 
@@ -58,43 +60,45 @@ def count_leaves(document: Any) -> int:
 type Json = str | int | float | bool | None | list[Json] | dict[str, Json]
 
 
-def count_leaves(document: Json) -> int:
-    if isinstance(document, dict):
-        return sum(count_leaves(value) for value in document.values())
-    if isinstance(document, list):
-        return sum(count_leaves(item) for item in document)
+def count_metadata_values(metadata: Json) -> int:
+    if isinstance(metadata, dict):
+        return sum(count_metadata_values(value) for value in metadata.values())
+    if isinstance(metadata, list):
+        return sum(count_metadata_values(item) for item in metadata)
     return 1
 ```
 
 ### A callable with two or more parameters, or any keyword, is a calling protocol
 
-**Why:** `Callable[[str, int, datetime], None]` names nothing — the reader cannot tell which
+**Why:** `Callable[[str, float, datetime], None]` names nothing — the reader cannot tell which
 argument is which, and a keyword argument cannot be expressed at all. One parameter and an obvious
 return stay a `Callable`.
 
 **Example:**
 ```python
 # WRONG — which argument is which, and none can be passed by keyword
-def subscribe(handler: Callable[[str, int, datetime], None], *, bus: EventBus) -> None:
-    bus.add_handler(handler)
+def follow_transients(
+    handler: Callable[[str, float, datetime], None], *, alerts: AlertStream
+) -> None:
+    alerts.add_handler(handler)
 
 
 # CORRECT — a named calling protocol
-class DeliveryHandler(Protocol):
-    def __call__(self, event_name: str, attempt: int, *, received_at: datetime) -> None: ...
+class TransientHandler(Protocol):
+    def __call__(self, designation: str, magnitude: float, *, detected_at: datetime) -> None: ...
 
 
-def subscribe(handler: DeliveryHandler, *, bus: EventBus) -> None:
-    bus.add_handler(handler)
+def follow_transients(handler: TransientHandler, *, alerts: AlertStream) -> None:
+    alerts.add_handler(handler)
 ```
 
-### A quantity crossing a signature carries its unit in the type and in the name
+### A quantity crossing a signature carries its unit in the type as well as the name
 
-**Why:** with plain floats a distance passes where a duration is expected. A Mars orbiter was lost
-to exactly this: one program reported thruster impulse in pound-force seconds, the one consuming it
-read newton-seconds, and both sides were plain floats. Arithmetic on a `NewType` returns the base
-type, so the check holds at signatures, not inside expressions — and the reader of a call site still
-has only the name, so the unit stays in it.
+**Why:** with plain floats an angle in degrees passes where radians are expected. A Mars orbiter
+was lost to exactly this: one program reported thruster impulse in pound-force seconds, the one
+consuming it read newton-seconds, and both sides were plain floats. Arithmetic on a `NewType`
+returns the base type, so the check holds at signatures, not inside expressions — which is why the
+name keeps its unit too (`naming.md`).
 
 ### A returned `Iterator` is consumed once; anything read twice returns a collection
 
@@ -105,47 +109,55 @@ gets a `list`.
 **Example:**
 ```python
 # WRONG — typed as re-iterable, but the second pass over the result is silently empty
-def readings_above(readings: Iterable[Reading], *, threshold: float) -> Iterable[Reading]:
-    return (reading for reading in readings if reading.value > threshold)
+def detections_above(
+    detections: Iterable[Detection], *, min_signal_to_noise: float
+) -> Iterable[Detection]:
+    return (
+        detection for detection in detections if detection.signal_to_noise > min_signal_to_noise
+    )
 
 
 # CORRECT — the type says it can be read once
-def readings_above(readings: Iterable[Reading], *, threshold: float) -> Iterator[Reading]:
-    return (reading for reading in readings if reading.value > threshold)
+def detections_above(
+    detections: Iterable[Detection], *, min_signal_to_noise: float
+) -> Iterator[Detection]:
+    return (
+        detection for detection in detections if detection.signal_to_noise > min_signal_to_noise
+    )
 ```
 
 ## Checks and Markers
 
 ### `isinstance` against a runtime-checkable `Protocol` checks names, not signatures
 
-**Why:** a `close()` missing the protocol's parameter passes the check, and the call fails later.
-Where the check must mean it, narrow on the ABC the implementation inherits (`python-contracts`).
+**Why:** a `park()` missing the protocol's parameter passes the check, and the call fails later.
+Where the check must mean it, narrow on the ABC the implementation inherits.
 
 **Example:**
 ```python
-# WRONG — any object with a flush attribute passes, whatever its signature
+# WRONG — any object with a park attribute passes, whatever its signature
 @runtime_checkable
-class Flushable(Protocol):
-    def flush(self, *, timeout_seconds: float) -> None: ...
+class Parkable(Protocol):
+    def park(self, *, timeout_seconds: float) -> None: ...
 
 
-def flush_all(sinks: Iterable[object], *, timeout_seconds: float) -> None:
-    for sink in sinks:
-        if isinstance(sink, Flushable):
-            sink.flush(timeout_seconds=timeout_seconds)
+def park_instruments(instruments: Iterable[object], *, timeout_seconds: float) -> None:
+    for instrument in instruments:
+        if isinstance(instrument, Parkable):
+            instrument.park(timeout_seconds=timeout_seconds)
 
 
 # CORRECT — only an implementation of the contract passes
-def flush_all(sinks: Iterable[object], *, timeout_seconds: float) -> None:
-    for sink in sinks:
-        if isinstance(sink, MetricSink):
-            sink.flush(timeout_seconds=timeout_seconds)
+def park_instruments(instruments: Iterable[object], *, timeout_seconds: float) -> None:
+    for instrument in instruments:
+        if isinstance(instrument, TelescopeMount):
+            instrument.park(timeout_seconds=timeout_seconds)
 ```
 
 ### A public library API pins its inferred types with `assert_type` in its tests
 
 **Why:** a value test passes whatever type the function now returns, so a refactor that widens
-`Decimal` to `Decimal | None` ships to every user unnoticed. `reveal_type()` is for debugging and is
+`float` to `float | None` ships to every user unnoticed. `reveal_type()` is for debugging and is
 never committed.
 
 ## Absence and Failure
@@ -154,35 +166,40 @@ never committed.
 
 **Why:** in a PATCH-style update `None` cannot tell "not provided" from "explicitly cleared". JSON
 Merge Patch (RFC 7396) made that choice for a whole format: `null` there means "remove the key", so
-a merge patch can never set a value to null. mypy narrows `is UNSET` on an enum member in every
+a merge patch can never set a value to null. mypy narrows `is NOT_GIVEN` on an enum member in every
 branch, a plain-class instance only in the `if`. The sentinel's type is public, because a caller
 that forwards the parameter has to name it.
 
 **Example:**
 ```python
-# WRONG — None means both "leave the nickname" and "clear it"
-def update_profile(user_id: UserId, *, nickname: str | None = None, profiles: Profiles) -> None:
-    if nickname is not None:
-        profiles.set_nickname(user_id, nickname)
+# WRONG — None means both "leave the common name" and "clear it"
+def update_target(
+    target_id: TargetId, *, common_name: str | None = None, targets: TargetCatalogue
+) -> None:
+    if common_name is not None:
+        targets.set_common_name(target_id, common_name)
 
 
 # CORRECT — absence has its own value, and None keeps its one meaning
-class Unset(Enum):
-    UNSET = auto()
+class NotGiven(Enum):
+    NOT_GIVEN = auto()
 
 
-UNSET: Final = Unset.UNSET
+NOT_GIVEN: Final = NotGiven.NOT_GIVEN
 
 
-def update_profile(
-    user_id: UserId, *, nickname: str | None | Unset = UNSET, profiles: Profiles
+def update_target(
+    target_id: TargetId,
+    *,
+    common_name: str | None | NotGiven = NOT_GIVEN,
+    targets: TargetCatalogue,
 ) -> None:
-    if nickname is UNSET:
+    if common_name is NOT_GIVEN:
         return
-    if nickname is None:
-        profiles.clear_nickname(user_id)
+    if common_name is None:
+        targets.clear_common_name(target_id)
     else:
-        profiles.set_nickname(user_id, nickname)
+        targets.set_common_name(target_id, common_name)
 ```
 
 ### Failure is an exception; a batch whose normal output mixes outcomes returns tagged variants
@@ -195,47 +212,48 @@ not a general-purpose monad.
 **Example:**
 ```python
 # WRONG — a generic wrapper every caller has to unwrap
+@final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Result[T]:
+class Outcome[T]:
     value: T | None = None
     error: str | None = None
 
 
-def import_rows(rows: Iterable[CsvRow]) -> list[Result[Contact]]:
-    results: list[Result[Contact]] = []
-    for row in rows:
+def import_observing_log(lines: Iterable[LogLine]) -> list[Outcome[LogEntry]]:
+    outcomes: list[Outcome[LogEntry]] = []
+    for line in lines:
         try:
-            results.append(Result(value=parse_contact(row)))
-        except InvalidContactError as error:
-            results.append(Result(error=str(error)))
-    return results
+            outcomes.append(Outcome(value=parse_log_entry(line)))
+        except InvalidLogEntryError as error:
+            outcomes.append(Outcome(error=str(error)))
+    return outcomes
 
 
-# CORRECT — the batch says what each row became
+# CORRECT — the batch says what each line became
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Imported:
+class ParsedLogLine:
     line_number: int
-    contact: Contact
+    entry: LogEntry
 
 
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Rejected:
+class RejectedLogLine:
     line_number: int
     reason: str
 
 
-type ImportOutcome = Imported | Rejected
+type LogLineOutcome = ParsedLogLine | RejectedLogLine
 
 
-def import_rows(rows: Iterable[CsvRow]) -> list[ImportOutcome]:
-    outcomes: list[ImportOutcome] = []
-    for row in rows:
+def import_observing_log(lines: Iterable[LogLine]) -> list[LogLineOutcome]:
+    outcomes: list[LogLineOutcome] = []
+    for line in lines:
         try:
-            outcomes.append(Imported(line_number=row.line_number, contact=parse_contact(row)))
-        except InvalidContactError as error:
-            outcomes.append(Rejected(line_number=row.line_number, reason=str(error)))
+            outcomes.append(ParsedLogLine(line_number=line.number, entry=parse_log_entry(line)))
+        except InvalidLogEntryError as error:
+            outcomes.append(RejectedLogLine(line_number=line.number, reason=str(error)))
     return outcomes
 ```
 
