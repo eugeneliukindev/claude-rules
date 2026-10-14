@@ -34,14 +34,14 @@ destroys — the revisions around it stay reversible.
 **Example:**
 ```sql
 -- WRONG — one revision adds the new column and drops the old: its downgrade cannot restore the data
-ALTER TABLE accounts ADD COLUMN email_verified_at TIMESTAMPTZ;
-ALTER TABLE accounts DROP COLUMN is_email_verified;
+ALTER TABLE episodes ADD COLUMN duration_seconds INTEGER;
+ALTER TABLE episodes DROP COLUMN duration_text;
 
 -- CORRECT — the additive revision reverses cleanly; the drop is a later, separately named revision
 -- upgrade
-ALTER TABLE accounts ADD COLUMN email_verified_at TIMESTAMPTZ;
+ALTER TABLE episodes ADD COLUMN duration_seconds INTEGER;
 -- downgrade
-ALTER TABLE accounts DROP COLUMN email_verified_at;
+ALTER TABLE episodes DROP COLUMN duration_seconds;
 ```
 
 ### A backfill is not in a schema migration; it runs in bounded, idempotent batches
@@ -54,11 +54,11 @@ never the application's models, so a migration written today still runs after th
 **Example:**
 ```sql
 -- WRONG — one statement locks every row it touches until the last one is written
-UPDATE accounts SET currency = 'EUR' WHERE currency IS NULL;
+UPDATE episodes SET language = 'en' WHERE language IS NULL;
 
 -- CORRECT — one bounded batch per transaction, repeated until it updates nothing; a rerun resumes
-UPDATE accounts SET currency = 'EUR'
-WHERE id IN (SELECT id FROM accounts WHERE currency IS NULL ORDER BY id LIMIT 1000);
+UPDATE episodes SET language = 'en'
+WHERE id IN (SELECT id FROM episodes WHERE language IS NULL ORDER BY id LIMIT 1000);
 ```
 
 ### A migration is compatible with the code already deployed: expand, migrate, contract
@@ -69,13 +69,13 @@ breaks it is an outage. A rename becomes three releases, each survived by the co
 **Example:**
 ```sql
 -- WRONG — one release renames the column, and the code still running queries a name that is gone
-ALTER TABLE accounts RENAME COLUMN name TO display_name;
+ALTER TABLE shows RENAME COLUMN name TO display_title;
 
 -- CORRECT — expand, then a release that writes both and a batched backfill, then contract
-ALTER TABLE accounts ADD COLUMN display_name TEXT;
-UPDATE accounts SET display_name = name
-WHERE id IN (SELECT id FROM accounts WHERE display_name IS NULL ORDER BY id LIMIT 1000);
-ALTER TABLE accounts DROP COLUMN name;
+ALTER TABLE shows ADD COLUMN display_title TEXT;
+UPDATE shows SET display_title = name
+WHERE id IN (SELECT id FROM shows WHERE display_title IS NULL ORDER BY id LIMIT 1000);
+ALTER TABLE shows DROP COLUMN name;
 ```
 
 ### Migrations run once per deploy, by one process, never at application start

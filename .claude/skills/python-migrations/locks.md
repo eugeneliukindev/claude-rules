@@ -7,8 +7,7 @@
 - A constraint added `NOT VALID`, then validated
 - A volatile default, a type change, a new enum value
 
-Measured on PostgreSQL 17; other databases differ in the details, not in the danger. How a revision
-steps out of its transaction is in `python-alembic`.
+Measured on PostgreSQL 17; other databases differ in the details, not in the danger.
 
 ### Every DDL statement runs under `SET lock_timeout`
 
@@ -19,12 +18,12 @@ without one it takes the table down.
 
 **Example:**
 ```sql
--- WRONG — waits behind a long transaction, and every read of shipments queues behind the ALTER
-ALTER TABLE shipments ADD COLUMN note TEXT;
+-- WRONG — waits behind a long transaction, and every read of episodes queues behind the ALTER
+ALTER TABLE episodes ADD COLUMN transcript_url TEXT;
 
 -- CORRECT — gives up after two seconds instead of blocking the table; the deploy retries it
 SET lock_timeout = '2s';
-ALTER TABLE shipments ADD COLUMN note TEXT;
+ALTER TABLE episodes ADD COLUMN transcript_url TEXT;
 ```
 
 ### An index on a live table is built `CONCURRENTLY`, outside a transaction
@@ -34,11 +33,11 @@ them through, and cannot run inside a transaction block — so the revision step
 
 **Example:**
 ```sql
--- WRONG — writes to shipments wait until the index is built
-CREATE INDEX shipments_carrier_idx ON shipments (carrier);
+-- WRONG — writes to episodes wait until the index is built
+CREATE INDEX episodes_show_id_idx ON episodes (show_id);
 
 -- CORRECT — writes continue during the build; the statement runs outside a transaction
-CREATE INDEX CONCURRENTLY shipments_carrier_idx ON shipments (carrier);
+CREATE INDEX CONCURRENTLY episodes_show_id_idx ON episodes (show_id);
 ```
 
 ### A constraint on existing rows is added `NOT VALID`, then validated
@@ -50,13 +49,13 @@ its own full scan.
 **Example:**
 ```sql
 -- WRONG — scans every row under a lock that blocks all writes until the scan ends
-ALTER TABLE shipments ALTER COLUMN carrier SET NOT NULL;
+ALTER TABLE episodes ALTER COLUMN show_id SET NOT NULL;
 
 -- CORRECT — a quick NOT VALID constraint, a validation that lets writes through, then the flag
-ALTER TABLE shipments ADD CONSTRAINT shipments_carrier_not_null
-    CHECK (carrier IS NOT NULL) NOT VALID;
-ALTER TABLE shipments VALIDATE CONSTRAINT shipments_carrier_not_null;
-ALTER TABLE shipments ALTER COLUMN carrier SET NOT NULL;
+ALTER TABLE episodes ADD CONSTRAINT episodes_show_id_not_null
+    CHECK (show_id IS NOT NULL) NOT VALID;
+ALTER TABLE episodes VALIDATE CONSTRAINT episodes_show_id_not_null;
+ALTER TABLE episodes ALTER COLUMN show_id SET NOT NULL;
 ```
 
 ### A volatile default, a type change and a new enum value each take an extra step
@@ -71,11 +70,11 @@ revision.
 **Example:**
 ```sql
 -- WRONG — a volatile default rewrites the whole table under an exclusive lock
-ALTER TABLE shipments ADD COLUMN public_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE episodes ADD COLUMN public_id UUID NOT NULL DEFAULT gen_random_uuid();
 
 -- CORRECT — instant add, the default for new rows, then the old rows in batches
-ALTER TABLE shipments ADD COLUMN public_id UUID;
-ALTER TABLE shipments ALTER COLUMN public_id SET DEFAULT gen_random_uuid();
-UPDATE shipments SET public_id = gen_random_uuid()
-WHERE id IN (SELECT id FROM shipments WHERE public_id IS NULL ORDER BY id LIMIT 1000);
+ALTER TABLE episodes ADD COLUMN public_id UUID;
+ALTER TABLE episodes ALTER COLUMN public_id SET DEFAULT gen_random_uuid();
+UPDATE episodes SET public_id = gen_random_uuid()
+WHERE id IN (SELECT id FROM episodes WHERE public_id IS NULL ORDER BY id LIMIT 1000);
 ```
