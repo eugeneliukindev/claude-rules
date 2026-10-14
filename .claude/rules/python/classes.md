@@ -209,4 +209,3 @@ class SlackNotifier(Notifier):
     def send(self, recipient: UserId, message: Message) -> None:
         self._client.post_json(self._post_message_path, {"channel": recipient, "text": message})
 ```
-
