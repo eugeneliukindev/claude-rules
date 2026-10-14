@@ -63,9 +63,7 @@ _LIBRARY_API: Final[Mapping[str, re.Pattern[str]]] = MappingProxyType(
             r"\b(BaseModel|BaseSettings|ConfigDict|TypeAdapter|SecretStr|AwareDatetime|HttpUrl"
             r"|model_validate\w*|model_dump\w*|model_copy|model_fields\w*|model_json_schema)\b"
         ),
-        "fastapi": re.compile(
-            r"\b(FastAPI|APIRouter|HTTPException|JSONResponse)\b|Depends\("
-        ),
+        "fastapi": re.compile(r"\b(FastAPI|APIRouter|HTTPException|JSONResponse)\b|Depends\("),
         "niquests": re.compile(r"\b(niquests|httpx)\b"),
         "asyncpg": re.compile(r"\b(asyncpg|fetchrow|fetchval)\b"),
         "redis": re.compile(r"\bredis\.|\bRedis\b"),
@@ -91,7 +89,8 @@ _EXAMPLE_MARKER: Final = re.compile(r"^# (WRONG|CORRECT)\b")
 _CONSTANT_NAME: Final = re.compile(r"^_?[A-Z][A-Z0-9_]*[A-Z0-9]$")
 _SETTING_NAME: Final = re.compile(
     r"(SECONDS|TTL|_MAX_|^_?MAX_|LIMIT|SIZE|BYTES|WINDOW|INTERVAL|ATTEMPTS|DEADLINE|TIMEOUT"
-    r"|LIFETIME|MARGIN|CAPACITY|WORKERS|_PATH|PREFIX)"
+    r"|LIFETIME|MARGIN|CAPACITY|WORKERS|_PATH|PREFIX|WIDTH|LENGTH|HOURS|DAYS|DURATION|PERIOD"
+    r"|DELAY|COUNT|DEPTH|BATCH|THRESHOLD|PRECISION|RETRYABLE)"
 )
 _FACTORY_NAME: Final = re.compile(r"^(build_|create_|make_|open_)")
 _ROOT_NAMES: Final = frozenset({"main", "run", "lifespan"})
