@@ -235,15 +235,27 @@ classes that share a `.env` file.
 [fastapi-pydantic.md](../python-integrations/fastapi-pydantic.md)** — `input` dropped from the 422,
 the response built from the domain and named by the return annotation.
 
+- The validation error handler drops `input` from what it returns
+- A route's response is a model it builds from the domain object, named by the return annotation
+
 **Before typing a FastStream subscriber's message as a pydantic model, read
 [faststream-pydantic.md](../python-integrations/faststream-pydantic.md)** — the raw body to the
 handler, validated there in JSON mode.
+
+- The subscriber takes the raw message, and the handler validates its body as JSON
 
 **Before building a pydantic model from a SQLAlchemy row, read
 [pydantic-sqlalchemy.md](../python-integrations/pydantic-sqlalchemy.md)** — no `from_attributes` on
 an ORM row; the model is built from the domain object.
 
+- A model is never validated from an ORM row with `from_attributes`
+
 **Before using `strawberry.experimental.pydantic`, read
 [pydantic-strawberry.md](../python-integrations/pydantic-strawberry.md)** — for inputs whose
 boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and no
 `all_fields`.
+
+- It is for an input whose pydantic model already exists; output is built from the domain
+- Validation runs in `to_pydantic()`, so a resolver reads the converted model, never the input
+- A field annotated with a PEP 695 alias gets its GraphQL type written out
+- The GraphQL type lists each field it publishes; never `all_fields=True`
