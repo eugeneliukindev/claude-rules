@@ -2,7 +2,8 @@
 name: python-orjson
 description: >-
   orjson mechanics: bytes in and out, options for keys and ordering, a default= that raises, NaN
-  written as null. Use when code imports orjson or serializes a payload with it.
+  written as null, Decimal refused. Use when code imports orjson or serializes a payload with it.
+  Not for what a payload may contain (python-boundaries).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -18,25 +19,26 @@ may contain, and that a parsed one is still validated, is `python-boundaries`.
 
 **Why:** a reflexive `.decode()` that the next layer encodes again is a round trip that buys
 nothing; decoding happens only where a `str` is genuinely required — a response body, a database
-column, a log line.
+column, a log line. A frozen dataclass, its `datetime`, `UUID` and enum fields included, goes to
+`dumps` as it is.
 
 **Example:**
 ```python
-# WRONG — decoded to str only for the broker to encode it again, and decoded again to parse
-async def publish_shipped(event: ShipmentShipped, *, broker: Broker) -> None:
-    await broker.publish(_SHIPMENT_EVENTS_TOPIC, orjson.dumps(event.to_dict()).decode())
+# WRONG — decoded to str only for the feed to encode it again, and decoded again to parse
+def publish_logged_run(run: LoggedRun, *, feed: RunFeed) -> None:
+    feed.send(orjson.dumps(run).decode())
 
 
-def read_shipped(body: bytes) -> object:
+def read_logged_run(body: bytes) -> object:
     return orjson.loads(body.decode())
 
 
 # CORRECT — bytes out, bytes in
-async def publish_shipped(event: ShipmentShipped, *, broker: Broker) -> None:
-    await broker.publish(_SHIPMENT_EVENTS_TOPIC, orjson.dumps(event.to_dict()))
+def publish_logged_run(run: LoggedRun, *, feed: RunFeed) -> None:
+    feed.send(orjson.dumps(run))
 
 
-def read_shipped(body: bytes) -> object:
+def read_logged_run(body: bytes) -> object:
     return orjson.loads(body)
 ```
 
@@ -48,17 +50,17 @@ writes `NaN` — so a bad number ships as "no value" and the consumer cannot tel
 
 **Example:**
 ```python
-# WRONG — a "nan" in the sensor feed ships as null, and the consumer reads "no reading"
-def encode_reading(raw_celsius: str) -> bytes:
-    return orjson.dumps({"temperature_celsius": float(raw_celsius)})
+# WRONG — a "nan" in the watch export ships as null, and the consumer reads "no heart rate"
+def encode_lap(raw_heart_rate_bpm: str) -> bytes:
+    return orjson.dumps({"heart_rate_bpm": float(raw_heart_rate_bpm)})
 
 
 # CORRECT — the number is checked where it is parsed; orjson would not refuse it
-def encode_reading(raw_celsius: str) -> bytes:
-    temperature_celsius = float(raw_celsius)
-    if not math.isfinite(temperature_celsius):
-        raise InvalidReadingError(raw_celsius)
-    return orjson.dumps({"temperature_celsius": temperature_celsius})
+def encode_lap(raw_heart_rate_bpm: str) -> bytes:
+    heart_rate_bpm = float(raw_heart_rate_bpm)
+    if not math.isfinite(heart_rate_bpm):
+        raise InvalidLapError(raw_heart_rate_bpm)
+    return orjson.dumps({"heart_rate_bpm": heart_rate_bpm})
 ```
 
 ### Output that is compared, hashed or kept in a fixture sets `OPT_SORT_KEYS`
@@ -71,28 +73,28 @@ source.
 
 **Example:**
 ```python
-# WRONG — insertion order: equal payloads can produce different hashes
-def content_hash(payload: Mapping[str, object]) -> str:
-    return hashlib.sha256(orjson.dumps(payload)).hexdigest()
+# WRONG — insertion order: equal plans can produce different digests
+def training_plan_digest(plan: Mapping[str, object]) -> str:
+    return hashlib.sha256(orjson.dumps(plan)).hexdigest()
 
 
-# CORRECT — sorted keys, nested ones included: equal payloads give equal bytes
-def content_hash(payload: Mapping[str, object]) -> str:
-    return hashlib.sha256(orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)).hexdigest()
+# CORRECT — sorted keys, nested ones included: equal plans give equal bytes
+def training_plan_digest(plan: Mapping[str, object]) -> str:
+    return hashlib.sha256(orjson.dumps(plan, option=orjson.OPT_SORT_KEYS)).hexdigest()
 ```
 
 ### `default=` handles named types and raises `TypeError` for everything else
 
 **Why:** a `default=str` serializes a stray object as its `str()` instead of failing, and ships a
 bug. The escape hatch knows a few types — `Decimal` as a string — and raises for the rest; a type
-the codebase owns is made serializable at the boundary with a `to_dict()`, not taught to a `default`
-that grows to know every type.
+orjson does not know is converted where the payload is built, not taught to a `default` that grows
+to know every type.
 
 **Example:**
 ```python
 # WRONG — anything is accepted, so a stray object ships as its str() instead of failing
-def encode_invoice(payload: Mapping[str, object]) -> bytes:
-    return orjson.dumps(payload, default=str)
+def encode_shoe_mileage(mileage: Mapping[str, object]) -> bytes:
+    return orjson.dumps(mileage, default=str)
 
 
 # CORRECT — Decimal becomes a string; anything else still raises TypeError
@@ -102,6 +104,6 @@ def _encode_decimal(value: object) -> str:
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
-def encode_invoice(payload: Mapping[str, object]) -> bytes:
-    return orjson.dumps(payload, default=_encode_decimal)
+def encode_shoe_mileage(mileage: Mapping[str, object]) -> bytes:
+    return orjson.dumps(mileage, default=_encode_decimal)
 ```
