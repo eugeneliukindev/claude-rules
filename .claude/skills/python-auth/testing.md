@@ -4,119 +4,120 @@
 
 - A fake verifier for the unit tests
 - One contract suite, a harness per implementation
-- Authorization tested at the service, with a stranger
+- Authorization tested at the service, with another pupil
 
-The JWT implementation's harness — a generated key and a local key set server — is in
-`python-pyjwt`; testing the edge through the app is in `python-fastapi`.
+A verifier's fake is held to the contract suite like any other; what follows is what that suite
+needs on top.
 
-### The unit tests take a fake verifier that issues opaque tokens and can lose its key set
+### The unit tests take a fake verifier that issues opaque tokens and can lose its signing keys
 
 **Why:** a real verifier needs keys, a clock and a key set server; the fake maps the tokens it
-issued back to their principals, and stops answering when its key set is taken offline, so both
-failures of the contract are reachable from a unit test.
+issued back to their callers, and stops answering when its keys are cut off, so both failures of
+the contract are reachable from a unit test.
 
 **Example:**
 ```python
 # WRONG — every token is accepted, so no test ever reaches a rejection
 @final
-class InMemoryTokenVerifier(TokenVerifier):
-    def __init__(self, *, principal: Principal) -> None:
-        self._principal = principal
+class InMemoryAccessTokenVerifier(AccessTokenVerifier):
+    def __init__(self, *, caller: PortalCaller) -> None:
+        self._caller = caller
 
     @override
-    def verify(self, token: str) -> Principal:
-        return self._principal
+    def verify(self, token: str) -> PortalCaller:
+        return self._caller
 
 
-# CORRECT — tokens are issued and checked, and the key set can go away
+# CORRECT — tokens are issued and checked, and the signing keys can go away
 @final
-class InMemoryTokenVerifier(TokenVerifier):
+class InMemoryAccessTokenVerifier(AccessTokenVerifier):
     def __init__(self) -> None:
-        self._principal_by_token: dict[str, Principal] = {}
-        self.is_key_set_reachable = True
+        self._caller_by_token: dict[str, PortalCaller] = {}
+        self.are_signing_keys_reachable = True
 
-    def issue(self, principal: Principal) -> str:
+    def issue(self, caller: PortalCaller) -> str:
         token = secrets.token_urlsafe(_TOKEN_BYTES)
-        self._principal_by_token[token] = principal
+        self._caller_by_token[token] = caller
         return token
 
     @override
-    def verify(self, token: str) -> Principal:
-        if not self.is_key_set_reachable:
-            raise KeySetUnavailableError(_KEY_SET_URL)
-        principal = self._principal_by_token.get(token)
-        if principal is None:
-            raise InvalidCredentialsError("unknown token")
-        return principal
+    def verify(self, token: str) -> PortalCaller:
+        if not self.are_signing_keys_reachable:
+            raise SigningKeysUnreachableError(_KEY_SET_URL)
+        caller = self._caller_by_token.get(token)
+        if caller is None:
+            raise RejectedCredentialsError("unknown token")
+        return caller
 ```
 
-### The fake and every real verifier pass one contract suite, through a harness per implementation
+### Each implementation hands the contract suite a harness that issues a token and cuts off its keys
 
-**Why:** issuing a token and taking the key set offline differ per implementation, so each fixture
-hands the tests a harness with both, and the tests are written once (`python-contracts`). A third
-contract test sends a token nobody issued and expects `InvalidCredentialsError`; rejections only one
-implementation can produce — an expired JWT, `alg` `none` — are that implementation's own tests.
+**Why:** issuing a token and making the signing keys unreachable differ per implementation — a dict
+for the fake, a generated key and a local key set server for a JWT verifier — so each fixture hands
+the tests a harness with both, and the tests are written once. A third contract test sends a token
+nobody issued and expects `RejectedCredentialsError`; rejections only one implementation can
+produce — an expired JWT, `alg` `none` — are that implementation's own tests.
 
 **Example:**
 ```python
 # WRONG — the fake is tested by nothing, and the JWT verifier by its own separate tests
 def test_in_memory_verifier_accepts_issued_token() -> None:
-    verifier = InMemoryTokenVerifier()
-    token = verifier.issue(make_principal())
+    verifier = InMemoryAccessTokenVerifier()
+    token = verifier.issue(pupil_caller())
 
     verified = verifier.verify(token)
 
-    assert verified == make_principal()
+    assert verified == pupil_caller()
 
 
 # CORRECT — one suite, parametrized over every implementation's harness
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class TokenVerifierHarness:
-    verifier: TokenVerifier
-    issue_token: Callable[[Principal], str]
-    take_key_set_offline: Callable[[], None]
+class AccessTokenVerifierHarness:
+    verifier: AccessTokenVerifier
+    issue: Callable[[PortalCaller], str]
+    cut_off_signing_keys: Callable[[], None]
 
 
 @pytest.fixture(
     params=[
-        pytest.param("memory", id="memory"),
+        pytest.param("in_memory", id="in_memory"),
         pytest.param("jwt", id="jwt", marks=pytest.mark.integration),
     ]
 )
-def token_verifier_harness(request: pytest.FixtureRequest) -> TokenVerifierHarness:
-    harness: TokenVerifierHarness = request.getfixturevalue(
-        f"{request.param}_token_verifier_harness"
+def verifier_harness(request: pytest.FixtureRequest) -> AccessTokenVerifierHarness:
+    harness: AccessTokenVerifierHarness = request.getfixturevalue(
+        f"{request.param}_verifier_harness"
     )
     return harness
 
 
-def test_verify_reports_unreachable_key_set_as_unavailable(
-    token_verifier_harness: TokenVerifierHarness,
+def test_verify_reports_unreachable_signing_keys(
+    verifier_harness: AccessTokenVerifierHarness,
 ) -> None:
-    token = token_verifier_harness.issue_token(make_principal())
-    token_verifier_harness.take_key_set_offline()
+    token = verifier_harness.issue(pupil_caller())
+    verifier_harness.cut_off_signing_keys()
 
-    with pytest.raises(KeySetUnavailableError, match="could not be fetched"):
-        token_verifier_harness.verifier.verify(token)
+    with pytest.raises(SigningKeysUnreachableError, match="could not be fetched"):
+        verifier_harness.verifier.verify(token)
 ```
 
-### Authorization is tested at the service, with an owner and a stranger
+### Authorization is tested at the service, with the owner and another pupil
 
-**Why:** the test with a principal that does not own the resource is the one that catches IDOR; a
-test with only the owner passes a service that checks nothing.
+**Why:** the test with a caller who does not own the resource is the one that catches IDOR; a test
+with only the owner passes a service that checks nothing.
 
 **Example:**
 ```python
 # WRONG — only the owner asks, so a missing ownership check passes
-async def test_open_returns_document_to_its_owner(access: DocumentAccess) -> None:
-    document = await access.open(_OWNER, _DOCUMENT_ID)
+async def test_open_returns_submission_to_its_pupil(desk: SubmissionDesk) -> None:
+    submission = await desk.open(_PUPIL, _SUBMISSION_ID)
 
-    assert document.document_id == _DOCUMENT_ID
+    assert submission.submission_id == _SUBMISSION_ID
 
 
-# CORRECT — a stranger is answered exactly like a missing document
-async def test_open_hides_document_from_stranger(access: DocumentAccess) -> None:
-    with pytest.raises(DocumentNotFoundError):
-        await access.open(_STRANGER, _DOCUMENT_ID)
+# CORRECT — another pupil is answered exactly like a missing submission
+async def test_open_hides_submission_from_another_pupil(desk: SubmissionDesk) -> None:
+    with pytest.raises(SubmissionNotFoundError):
+        await desk.open(_OTHER_PUPIL, _SUBMISSION_ID)
 ```

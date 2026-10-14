@@ -8,33 +8,36 @@ service. The token's `aud` names the receiving service, which verifies it like a
 minted for one service and replayed against another is rejected. A user's token is not forwarded
 across a trust boundary: inside one, the next service verifies it with its own audience in the
 list or exchanges it; across one, the call uses the service's own credential. The client secret
-comes from the environment or a secret manager (`python-security`).
+comes from the environment or a secret manager.
 
 **Example:**
 ```python
 # WRONG — one shared key for every caller, sent as is
 @final
-class BillingClient:
-    def __init__(self, *, http: BillingHttpClient, shared_api_key: str) -> None:
-        self._http = http
+class TimetableClient:
+    def __init__(self, *, api: TimetableApi, shared_api_key: str) -> None:
+        self._api = api
         self._shared_api_key = shared_api_key
 
-    async def invoice(self, document_id: DocumentId) -> Invoice:
+    async def lessons_for(self, form_group_id: FormGroupId) -> tuple[Lesson, ...]:
         headers = {"X-Api-Key": self._shared_api_key}
-        return await self._http.get_invoice(document_id, headers=headers)
+        return await self._api.get_lessons(form_group_id, headers=headers)
 
 
-# CORRECT — this service's own token, minted for the billing audience
+# CORRECT — this service's own token, minted for the timetable audience
 @final
-class BillingClient:
-    def __init__(self, *, http: BillingHttpClient, tokens: ServiceTokenSource) -> None:
-        self._http = http
+class TimetableClient:
+    def __init__(
+        self, *, api: TimetableApi, tokens: OutboundTokens, audience: str = _TIMETABLE_AUDIENCE
+    ) -> None:
+        self._api = api
         self._tokens = tokens
+        self._audience = audience
 
-    async def invoice(self, document_id: DocumentId) -> Invoice:
-        token = await self._tokens.token_for(audience=_BILLING_AUDIENCE)
+    async def lessons_for(self, form_group_id: FormGroupId) -> tuple[Lesson, ...]:
+        token = await self._tokens.token_for(audience=self._audience)
         headers = {"Authorization": f"Bearer {token}"}
-        return await self._http.get_invoice(document_id, headers=headers)
+        return await self._api.get_lessons(form_group_id, headers=headers)
 ```
 
 ### An outbound token is fetched once and reused until shortly before its `exp`

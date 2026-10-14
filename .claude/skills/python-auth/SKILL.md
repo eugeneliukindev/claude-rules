@@ -2,7 +2,7 @@
 name: python-auth
 description: >-
   Designs authentication and authorization whatever the token library: a bearer token verified
-  into a principal, 401 against 403, object-level checks, session cookies, token lifetime, service
+  into a caller, 401 against 403, object-level checks, session cookies, token lifetime, service
   credentials. Use when code reads an Authorization header or a session cookie, checks a role,
   scope or permission, or decides who may see a resource. Not for PyJWT calls (python-pyjwt).
 paths:
@@ -13,64 +13,61 @@ paths:
 # Authentication and Authorization
 
 How a token becomes an identity, and where that identity is checked, whatever the token library.
-The primitives — `secrets` for capability-bearing values, Argon2, `hmac.compare_digest`, failing
-closed — are `python-security`. A JWT verified with PyJWT is `python-pyjwt`; the FastAPI dependency
-that calls the verifier and sets a cookie is `python-fastapi`; a GraphQL permission class is
+The primitives — `secrets`, Argon2, `hmac.compare_digest`, a permission check that fails closed —
+are `python-security`. A JWT verified with PyJWT is `python-pyjwt`; the FastAPI dependency that
+calls the verifier and sets a cookie is `python-fastapi`; a GraphQL permission class is
 `python-strawberry`; per-call credentials on a gRPC channel are `python-grpc`.
 
-## A Token Becomes a Principal
+## A Token Becomes a Caller
 
-### The application verifies tokens through a `TokenVerifier` contract that returns a `Principal`
+### The application verifies tokens through one contract that returns a frozen caller
 
-**Why:** the application never sees a token library. `TokenVerifier.verify(token)` returns who the
-token speaks for, or raises one of two errors: `InvalidCredentialsError` — malformed, forged,
-expired, another audience, an unknown key: the client's mistake — or `KeySetUnavailableError` —
-the keys cannot be had right now: the service's failure. Every library exception is translated
-inside the implementation, and both fail closed. The contract lives in `authentication/base.py`,
-each implementation beside it is the only file importing its library, and the unit tests take a
-fake (`python-contracts`).
+**Why:** the application never sees a token library. `verify(token)` returns who the token speaks
+for, or raises one of two errors: rejected credentials — malformed, forged, expired, another
+audience, an unknown key: the client's mistake — or unreachable signing keys: the service's
+failure. Every library exception is translated inside the implementation, and both fail closed.
+Each implementation is the only module importing its library, and the unit tests take a fake.
 
 **Example:**
 ```python
 # WRONG — the service decodes the token itself, with its own idea of the algorithms and errors
 @final
-class DocumentAccess:
-    def __init__(self, *, signing_key: str, documents: DocumentStore) -> None:
-        self._signing_key = signing_key
-        self._documents = documents
+class SubmissionDesk:
+    def __init__(self, *, submissions: SubmissionStore) -> None:
+        self._submissions = submissions
 
-    async def open(self, token: str, document_id: DocumentId) -> Document:
+    async def open(self, token: str, submission_id: SubmissionId) -> HomeworkSubmission:
         claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
-        return await self._documents.get_for_owner(document_id, owner_id=UserId(claims["sub"]))
+        return await self._submissions.get_for_pupil(submission_id, pupil_id=claims["sub"])
 
 
-# CORRECT — one contract, a frozen principal, two classified errors
+# CORRECT — one contract, a frozen caller, two classified errors
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Principal:
-    user_id: UserId
+class PortalCaller:
+    person_id: PersonId
     scopes: frozenset[str]
 
 
-class AuthenticationError(Exception):
-    """Root of the authentication package's errors."""
+class PortalAuthenticationError(Exception):
+    """Root of the portal authentication package's errors."""
 
 
-class InvalidCredentialsError(AuthenticationError):
+class RejectedCredentialsError(PortalAuthenticationError):
     def __init__(self, reason: str) -> None:
         super().__init__(f"credentials rejected: {reason}")
         self.reason = reason
 
 
-class KeySetUnavailableError(AuthenticationError):
+class SigningKeysUnreachableError(PortalAuthenticationError):
     def __init__(self, key_set_url: str) -> None:
-        super().__init__(f"key set {key_set_url} could not be fetched")
+        super().__init__(f"signing keys at {key_set_url} could not be fetched")
         self.key_set_url = key_set_url
 
 
-class TokenVerifier(ABC):
+class AccessTokenVerifier(ABC):
     @abstractmethod
-    def verify(self, token: str) -> Principal:
+    def verify(self, token: str) -> PortalCaller:
         """Return who the token speaks for, or raise one of this module's errors."""
 ```
 
@@ -78,152 +75,157 @@ class TokenVerifier(ABC):
 
 **Why:** not the algorithm its header names, not a key URL in it (`jku`, `x5u`), not its `sub`; a
 JWT implementation pins its algorithms and requires the audience, the issuer and an expiry. The
-decoded claims are a boundary payload validated into a model (`python-boundaries`), with one
-carve-out from strict models: the claim set is the identity provider's contract, which adds claims
-without telling you, so extra claims are ignored rather than refused.
+decoded claims are a boundary payload, with one carve-out from strict models: the claim set is the
+identity provider's contract, which adds claims without telling you, so extra claims are ignored
+rather than refused.
 
 **Example:**
 ```python
 # WRONG — the provider adds a "sid" claim one morning, and every token is rejected
-def parse_access_claims(claims: Mapping[str, object]) -> AccessClaims:
+def read_portal_claims(claims: Mapping[str, object]) -> PortalClaims:
     unexpected = claims.keys() - _READ_CLAIMS
     if unexpected:
-        raise InvalidCredentialsError(f"unexpected claims: {sorted(unexpected)}")
-    return AccessClaims(
-        subject=_string_claim(claims, "sub"), scope=_string_claim(claims, "scope", default="")
+        raise RejectedCredentialsError(f"unexpected claims: {sorted(unexpected)}")
+    return PortalClaims(
+        subject=_claim_text(claims, "sub"), scope=_claim_text(claims, "scope", default="")
     )
 
 
 # CORRECT — the claims this service reads are validated; the provider's additions pass by
-def parse_access_claims(claims: Mapping[str, object]) -> AccessClaims:
-    return AccessClaims(
-        subject=_string_claim(claims, "sub"), scope=_string_claim(claims, "scope", default="")
+def read_portal_claims(claims: Mapping[str, object]) -> PortalClaims:
+    return PortalClaims(
+        subject=_claim_text(claims, "sub"), scope=_claim_text(claims, "scope", default="")
     )
 ```
 
-### A service takes the `Principal`, never the token or the claims
+### A service takes the caller, never the token or the claims
 
 **Why:** a service handed the token decodes it again with its own idea of the algorithms; one handed
 the claims trusts whatever dict it was given, from a test or a queue message alike. With a
-`Principal`, a worker or a test builds the caller directly.
+`PortalCaller`, a worker or a test builds the caller directly.
 
 ## Authorization
 
 ### Whether this caller may touch this resource is checked in the service, next to the load
 
-**Why:** the edge establishes who is calling; it has not loaded the resource, so it cannot know
-whether the caller may touch it. A route guarded by "is logged in" or by a role lets every user read
-every document whose id they can guess or enumerate — IDOR, the most common access-control flaw.
-Opaque ids make guessing harder; they do not make the check optional. Where the resource's
-existence is itself the secret, someone else's document is answered exactly like a missing one; a
-403 would confirm the id is real.
+**Why:** the edge establishes who is calling, once for every route, with the public routes as the
+reviewed exception; it has not loaded the resource, so it cannot know whether the caller may touch
+it. A route guarded by "is logged in" or by a role lets every pupil read every submission whose id
+they can guess or enumerate — IDOR, the most common access-control flaw. Opaque ids make guessing
+harder; they do not make the check optional. Where the resource's existence is itself the secret,
+someone else's submission is answered exactly like a missing one; a 403 would confirm the id is
+real.
 
 **Example:**
 ```python
-# WRONG — any authenticated caller who knows an id gets the document
-async def _readable(
-    principal: Principal, document: Document | None, document_id: DocumentId
-) -> Document:
-    if document is None:
-        raise DocumentNotFoundError(document_id)
-    return document
+# WRONG — any signed-in caller who knows an id gets the submission
+def _readable_submission(
+    caller: PortalCaller, submission: HomeworkSubmission | None, submission_id: SubmissionId
+) -> HomeworkSubmission:
+    if submission is None:
+        raise SubmissionNotFoundError(submission_id)
+    return submission
 
 
-# CORRECT — someone else's document is answered exactly like a missing one
-async def _readable(
-    principal: Principal, document: Document | None, document_id: DocumentId
-) -> Document:
-    if document is None or not _can_read(principal, document):
-        raise DocumentNotFoundError(document_id)
-    return document
+# CORRECT — someone else's submission is answered exactly like a missing one
+def _readable_submission(
+    caller: PortalCaller, submission: HomeworkSubmission | None, submission_id: SubmissionId
+) -> HomeworkSubmission:
+    if submission is None or not _can_read_submission(caller, submission):
+        raise SubmissionNotFoundError(submission_id)
+    return submission
 
 
-def _can_read(principal: Principal, document: Document) -> bool:
-    return document.owner_id == principal.user_id or _READ_ANY_DOCUMENT_SCOPE in principal.scopes
+def _can_read_submission(caller: PortalCaller, submission: HomeworkSubmission) -> bool:
+    return submission.pupil_id == caller.person_id or _MARK_SUBMISSIONS_SCOPE in caller.scopes
 ```
 
 ### A caller who may see a resource but not act on it gets a permission error
 
-**Why:** not found or forbidden is chosen per resource. Where the caller may read a document but
-not delete it, its existence is no secret, and the service raises a permission error the edge maps
-to 403. A scope or a role is the coarse gate the edge may check first; ownership is the fine one
-the service always checks.
+**Why:** not found or forbidden is chosen per resource. Where a teacher may read a submission but
+not withdraw it, its existence is no secret, and the service raises a permission error the edge
+maps to 403. A scope or a role is the coarse gate the edge may check first; ownership is the fine
+one the service always checks.
 
 **Example:**
 ```python
-# WRONG — anyone who can read the document can delete it
+# WRONG — anyone who can read the submission can withdraw it
 @final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
+class SubmissionDesk:
+    def __init__(self, *, submissions: SubmissionStore) -> None:
+        self._submissions = submissions
 
-    async def delete(self, principal: Principal, document_id: DocumentId) -> None:
-        document = await _readable(principal, await self._documents.find(document_id), document_id)
-        await self._documents.delete(document.document_id)
+    async def withdraw(self, caller: PortalCaller, submission_id: SubmissionId) -> None:
+        found = await self._submissions.find(submission_id)
+        submission = _readable_submission(caller, found, submission_id)
+        await self._submissions.remove(submission.submission_id)
 
 
-# CORRECT — reading and deleting are different permissions
+# CORRECT — reading and withdrawing are different permissions
 @final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
+class SubmissionDesk:
+    def __init__(self, *, submissions: SubmissionStore) -> None:
+        self._submissions = submissions
 
-    async def delete(self, principal: Principal, document_id: DocumentId) -> None:
-        document = await _readable(principal, await self._documents.find(document_id), document_id)
-        if document.owner_id != principal.user_id:
-            raise DocumentPermissionError(document_id, action="delete")
-        await self._documents.delete(document.document_id)
+    async def withdraw(self, caller: PortalCaller, submission_id: SubmissionId) -> None:
+        found = await self._submissions.find(submission_id)
+        submission = _readable_submission(caller, found, submission_id)
+        if submission.pupil_id != caller.person_id:
+            raise SubmissionPermissionError(submission_id, action="withdraw")
+        await self._submissions.remove(submission.submission_id)
 ```
 
 ### A list is authorized by its query, never by filtering the result
 
 **Why:** filtering after the query lets pagination, counts and totals see rows the caller may not —
-page one holds three documents of fifty, and the total gives away the rest. The repository takes the
-owner.
+page one holds three submissions of fifty, and the total gives away the rest. The repository takes
+the pupil.
 
 **Example:**
 ```python
-# WRONG — the page and its total are computed over everyone's documents
+# WRONG — the page and its total are computed over every pupil's submissions
 @final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
+class SubmissionDesk:
+    def __init__(self, *, submissions: SubmissionStore) -> None:
+        self._submissions = submissions
 
-    async def list_documents(self, principal: Principal, *, page: PageRequest) -> DocumentPage:
-        documents = await self._documents.page(page)
-        visible = [document for document in documents.items if _can_read(principal, document)]
-        return DocumentPage(items=visible, total=documents.total)
+    async def list_submissions(
+        self, caller: PortalCaller, *, page: PageRequest
+    ) -> SubmissionPage:
+        everyone = await self._submissions.page(page)
+        visible = [found for found in everyone.items if _can_read_submission(caller, found)]
+        return SubmissionPage(items=visible, total=everyone.total)
 
 
 # CORRECT — the query itself is scoped to the caller
 @final
-class DocumentAccess:
-    def __init__(self, *, documents: DocumentStore) -> None:
-        self._documents = documents
+class SubmissionDesk:
+    def __init__(self, *, submissions: SubmissionStore) -> None:
+        self._submissions = submissions
 
-    async def list_documents(self, principal: Principal, *, page: PageRequest) -> DocumentPage:
-        return await self._documents.page_for_owner(principal.user_id, page)
+    async def list_submissions(
+        self, caller: PortalCaller, *, page: PageRequest
+    ) -> SubmissionPage:
+        return await self._submissions.page_for_pupil(caller.person_id, page)
 ```
 
 ## Rejections
 
-### No valid credentials is 401, a valid caller refused is 403, an unreachable key set is 503
+### No valid credentials is 401, a valid caller refused is 403, unreachable signing keys are 503
 
 **Why:** 401 carries `WWW-Authenticate: Bearer` and tells a client to authenticate again; 403 says
 the credentials are fine and the action is not. A key set that cannot be fetched answered as 401
-makes every client drop its session against an outage, and the alert says "users failing login".
-Every rejected token gets the same body: "Signature has expired" against "Invalid audience" tells
-someone probing with a stolen token which checks passed. The reason goes to the server's records —
-the chained cause, and a counter with a `reason` attribute (`python-observability`) — at `INFO` at
-most, since a rejected token is an expected client mistake.
+makes every client drop its session against an outage, and the alert says "pupils failing to sign
+in". Every rejected token gets the same body: "Signature has expired" against "Invalid audience"
+tells someone probing with a stolen token which checks passed. The reason goes to the server's
+records — the chained cause, and a counter with a `reason` attribute — at `INFO` at most, since a
+rejected token is an expected client mistake.
 
-### Tokens and cookies never reach a log, a span or a URL
+### A token travels in a header, and the access log records an allowlist of headers
 
-**Why:** a bearer token is a password with an expiry — whoever reads it from a log replays it until
-then. The access log records an allowlist of headers, never a denylist with `Authorization` and
-`Cookie` struck out; a token travels in a header, never the query string, which lands in proxy logs
-and browser history; the principal's id is logged, never the claims, which carry e-mail addresses
-and names.
+**Why:** a query string lands in proxy logs and browser history; a denylist with `Authorization`
+and `Cookie` struck out misses the next header that carries a credential. A span's attributes are
+a log too, and the caller's id goes there, never the claims (`logging.md`).
 
 ### A session cookie is `Secure`, `HttpOnly`, `SameSite` and `__Host-`-prefixed
 
@@ -235,9 +237,9 @@ state-changing requests. The `__Host-` prefix makes the browser refuse the cooki
 
 ## Issuing Tokens and Guarding Credentials
 
-**Before issuing access or refresh tokens, rotating signing keys, or writing a login, password-reset
-or token endpoint, read [issuing.md](issuing.md)** — short access tokens, rotated refresh tokens,
-key rotation through the key set, shared rate limits per account and per source.
+**Before issuing access or refresh tokens, rotating signing keys, or writing a sign-in,
+password-reset or token endpoint, read [issuing.md](issuing.md)** — short access tokens, rotated
+refresh tokens, key rotation through the key set, shared attempt limits per account and per source.
 
 ## Service-to-Service Credentials
 
@@ -248,5 +250,5 @@ no forwarded user tokens across a boundary, an outbound token fetched once and r
 ## Testing
 
 **Before testing authentication or authorization, read [testing.md](testing.md)** — a fake verifier,
-one contract suite with a harness per implementation, authorization tested at the service with an
-owner and a stranger.
+one contract suite with a harness per implementation, authorization tested at the service with the
+owner and another pupil.
