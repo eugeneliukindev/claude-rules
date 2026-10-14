@@ -7,12 +7,13 @@ paths:
 
 ## Raising
 
-### A failure is caught narrowly, translated with its cause, and never returned as `None`
+### A failure is caught narrowly where it can be handled, translated with its cause, logged once there, and never returned as `None`
 
 **Why:** a broad `except` swallows the bug along with the expected failure, a `try` around
 everything hides which line failed, a driver's error re-raised without `from` loses its cause, and
-`None`, `False` or `-1` for an error lets the caller carry on with nonsense. `-> User | None` is for
-a lookup where absence is normal.
+`None`, `False` or `-1` for an error lets the caller carry on with nonsense — `-> User | None` is for
+a lookup where absence is normal. Only the layer that retries, falls back, converts or reports
+catches; one that can only log and re-raise adds a second log line and handles nothing.
 
 **Example:**
 ```python
@@ -100,27 +101,4 @@ class ProductNotFoundError(CatalogError, KeyError): ...
 
 
 class AccessDeniedError(CatalogError): ...
-```
-
-## Handling
-
-### An error is caught where it can be handled, and logged once there
-
-**Why:** retry, fall back, convert or report — a layer that can only log and re-raise adds a second
-log line for the same failure and handles nothing.
-
-**Example:**
-```python
-# WRONG — logged here, re-raised, and logged again by whoever handles it
-def charge(invoice: Invoice, *, gateway: PaymentGateway) -> Receipt:
-    try:
-        return gateway.charge(invoice.number, invoice.total)
-    except PaymentDeclinedError:
-        logger.exception("charge failed", extra={"invoice_number": invoice.number})
-        raise
-
-
-# CORRECT — no try at all; the boundary that decides what to do logs it once
-def charge(invoice: Invoice, *, gateway: PaymentGateway) -> Receipt:
-    return gateway.charge(invoice.number, invoice.total)
 ```
