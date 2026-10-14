@@ -6,6 +6,7 @@
 - What applies to every edit carries `paths: "**/*.py"`
 - `new-files.md`, the one file with no front matter
 - Every skill carries `paths`
+- The skills hold design, and no skill is about a library
 - The always-loaded set: universal and behaviour-changing, with its examples
 - Tool configuration belongs to the repository
 - The budget, and ceilings raised only by argument
@@ -63,34 +64,44 @@ other files adds them, and `/name` works whatever `paths` says.
 **Example:**
 ```yaml
 # WRONG — no paths: listed in every session, in every language
-name: python-grpc
+name: python-scripts
 description: ...
 
-# CORRECT — listed once Python or a .proto file is touched
-name: python-grpc
+# CORRECT — listed once Python or a notebook is touched
+name: python-scripts
 description: ...
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
-  - "**/*.proto"
+  - "**/*.ipynb"
 ```
+
+### The skills hold design, and no skill is about a library
+
+**Why:** the always-loaded core holds what every edit needs, and eight skills hold the design
+decisions only some work reaches — types, contracts, wiring, boundaries, security, scripts, and the
+review and authoring procedures. Library skills — fifteen of them, with integration files for the
+pairs — went stale faster than they were checked: an API changes with every release, and a claim
+written from memory taught `orjson` serialising `Decimal`. A library's traps come from its current
+documentation, fetched at the time (context7), and from the tests that run against it; a design
+skill's example stays written against its own contracts, so it holds whatever library serves it.
 
 ### The always-loaded set holds what is universal and behaviour-changing, with its examples
 
 **Why:** every edit pays for an always-loaded rule, so it earns that by being universal — every
 Python file could break it — and behaviour-changing — without it the obvious default is wrong. A
-rule only some paths reach (async, migrations, a CLI) is a skill with a row in the map. But a skill
+rule only some paths reach (a boundary, an untrusted input, a script) is a skill with a row in the
+map. But a skill
 loads only when the work names its topic: with the examples for functions, classes, errors and
 comments moved into skills, the measured layout lost almost every run and none of those skills was
-opened. What moves to a skill is what a concrete signal in the task points at — a library,
-`async def`, a migration, an untrusted input.
+opened. What moves to a skill is what a concrete signal in the task points at — an outbound call,
+an entry point, an untrusted input, a one-off script.
 
 ### Tool configuration belongs to the repository; the rules hold what survives the choice of tool
 
 **Why:** which linters a project runs and how its hooks are wired changes from repository to
 repository, and its owner owns those files. What belongs here is the discipline around suppressions
-and limits and, where a checker can hold a rule, the name of the check. The exception is
-`python-project`, which writes the defaults for an empty directory where nobody has chosen yet.
+and limits and, where a checker can hold a rule, the name of the check.
 
 ### An addition displaces something, and a ceiling is raised only by an argument on record
 

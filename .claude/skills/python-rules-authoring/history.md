@@ -130,6 +130,23 @@ without `@override`.
 **An API claim from memory** is how a skill came to say `orjson` serialises `Decimal`; it raises
 `TypeError`.
 
+## The Skill Set
+
+**Forty skills became eight, by the user's decision.** The always-loaded core stays, and
+eight skills keep the design only some work reaches — types, contracts, wiring, boundaries,
+security with authentication folded in, scripts, review and this one. The fifteen library skills
+and `python-integrations/` were deleted, with the topic skills only their neighbours needed: a
+library's API moves with every release, faster than these files were checked, and the one claim
+written from memory that was caught — `orjson` and `Decimal` — had shipped. A library's traps now
+come from its current documentation, fetched at the time (context7), and from the tests run
+against it; the checker still keeps library APIs out of every example.
+
+**Descriptions moved from "Use when …" to "ALWAYS invoke this skill when …" at the same time.** A
+650-trial test of skill descriptions found the directive form — what the skill does, "ALWAYS invoke
+this skill when" the signals, "Do not … directly" — the one that activated every time
+([source](https://medium.com/@ivan.seleznov1/why-claude-code-skills-dont-activate-and-how-to-fix-it-86f679409af1));
+the checker's required clause changed with it.
+
 ## Reproducing the Measurements
 
 The runs above were made outside the repository, which keeps only what a user of the rules needs.

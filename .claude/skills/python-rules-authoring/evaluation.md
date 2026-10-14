@@ -23,8 +23,8 @@ reference files read, the code written.
 
 **Why:** the model follows what is in its context — the always-loaded rules and the body of the skill
 it invoked — and copies the example it sees. Deduplicated into a pointer to `principles.md`, the
-semaphore left `python-async`'s body and the bounded fan-out went from passing to one run in three;
-with the server's settings shown as one class in `python-fastapi`, the split in `python-wiring`'s
-reference file stopped arriving. A move, a merge or a cut runs the rule's case before and after, a
+semaphore left the async skill's body and the bounded fan-out went from passing to one run in
+three; with the server's settings shown as one class in the web framework's skill, the split in
+`python-wiring`'s reference file stopped arriving. A move, a merge or a cut runs the rule's case before and after, a
 few times each, against the commit the change starts from; a rule that loses there keeps a line and
 its `CORRECT` in the body it left.

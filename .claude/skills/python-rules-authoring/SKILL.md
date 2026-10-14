@@ -2,8 +2,8 @@
 name: python-rules-authoring
 description: >-
   Writes and audits these Python rules and skills: the rule format, examples, one home per rule,
-  layering, descriptions, what loads when, budgets. Use when editing, adding, splitting or
-  auditing a file under rules/python or a python-* skill.
+  descriptions, what loads when, budgets. ALWAYS invoke this skill when editing, adding, splitting
+  or auditing a file under rules/python or a python-* skill. Do not edit these rules directly.
 paths:
   - "**/rules/python/**"
   - "**/skills/python-*/**"
@@ -25,7 +25,7 @@ a linter documents a check. The heading is the rule, one sentence, `###` under t
 generalises from it, and a measured incident goes here in a clause. The `**Example:**` is the pair,
 `# WRONG` and `# CORRECT`; a carve-out is one more `# CORRECT`, or one `**Except:**` sentence before
 the example when it needs words. An example earns its place when the model gets the code wrong
-without it — a library's trap, a measured fact — when the shape of the code is not readable from the
+without it — a measured fact, a decision the model would not make — when the shape of the code is not readable from the
 heading — an actor split, a contract suite, guards first — or when its effect was measured. A rule
 whose heading already says what the code looks like — `Final` on a constant, the unit in a name —
 has none: every example is one more place another rule can contradict, and each is checked against
@@ -128,9 +128,8 @@ incident carries the lesson, its names carry none of it.
 repetition for the house pattern: the audit found about 130 shared names — `AppSettings` and
 `open_database_pool` in five skills, `RoomInventory` in both the broker and the consumer skill,
 `DocumentArchive` in a rule file and in a skill — each a domain leaking from one file into another.
-Every function, class and constant an example defines or calls is its skill's alone; an integration
-file shares names with the two skills it joins, and the names a framework or the language fixes —
-`main`, `lifespan`, `Settings`, a library's own API — are allowed everywhere. A clash is renamed in
+Every function, class and constant an example defines or calls is its skill's alone; the names a
+framework or the language fixes — `main`, `lifespan`, `Settings` — are allowed everywhere. A clash is renamed in
 the skill, and in a rule file only when the skill cannot.
 
 ### A rule leads with the positive, states its reason, and saves capitals for nothing
@@ -153,9 +152,8 @@ protects data, money or a credential joins the second.
 the always-loaded budgets and each `SKILL.md`'s 300 lines and 5,000 tokens; that every `python`
 block parses; that every skill and `.md` file a document names exists, and that `core.md` names
 every skill; every front matter — `name`, `paths`, a `description` of at most 400 characters with
-`Use when`; that a skill names another only in a file's introduction; that a library's API appears
-only in its skill or its pair's integration file, which both `SKILL.md` link; that no name an
-example defines or calls lives in a second skill or a rule file; and that every `CORRECT` keeps the
+`ALWAYS invoke`; that a skill names another only in a file's introduction; that no example is
+written in a library's API; that no name an example defines or calls lives in a second skill or a rule file; and that every `CORRECT` keeps the
 mechanical rules — `Final`, the dataclass flags, the modern typing spelling, no naive `now()`, no
 mutable default, no bare `except`, no settings object below the root, no setting read in a body
 instead of defaulted in the signature. Exit code 1 means a finding, printed as `path:line:
@@ -171,6 +169,7 @@ budget and the `SKILL.md` ceilings, a reference file per branch, and what holds 
 - What applies to every edit is a rule file with `paths: "**/*.py"`, one topic per file
 - `new-files.md` is the one file with no front matter, and the exception is measured
 - Every skill carries `paths`, so a session lists only the skills of its language
+- The skills hold design, and no skill is about a library
 - The always-loaded set holds what is universal and behaviour-changing, with its examples
 - Tool configuration belongs to the repository; the rules hold what survives the choice of tool
 - An addition displaces something, and a ceiling is raised only by an argument on record
@@ -179,23 +178,22 @@ budget and the `SKILL.md` ceilings, a reference file per branch, and what holds 
 
 ## One Rule, One Home
 
-**Before writing a rule another file already touches, naming another skill, or writing a library
-skill's example, read [layering.md](layering.md)** — one home per rule, a neighbour named only in
-the introduction, topic skills library-agnostic, a library skill's own adapter and the library's
-own context manager.
+**Before writing a rule another file already touches, naming another skill, or writing an example
+that opens a resource or calls a library, read [layering.md](layering.md)** — one home per rule, a
+neighbour named only in the introduction, the library's own context manager, examples against
+contracts of their own.
 
 - A rule is written in exactly one file, and a skill never restates a rule file
 - A skill names a neighbour only in its introduction, once, as a route
-- A topic skill is library-agnostic, and a library skill shows its own adapter
 - A library's lifetime is the library's own context manager
-- An example uses its own library and its own contracts, never another library's API
+- An example is written against its own contracts, never a library's API
 
 ## Descriptions
 
 **Before writing or changing a skill's `description`, read [descriptions.md](descriptions.md)** —
-what it does and `Use when` with the signals a task contains, told apart from its neighbours.
+what it does, `ALWAYS invoke this skill when` the signals a task contains, and `Do not … directly`.
 
-- A description is what the skill does, then `Use when` and the signals a task contains
+- A description is what the skill does, `ALWAYS invoke this skill when` and the signals, then `Do not … directly`
 - Neighbouring descriptions are told apart in their own words
 
 ## Evaluation
