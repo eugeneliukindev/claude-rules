@@ -2,10 +2,9 @@
 name: python-types
 description: >-
   Chooses how a Python value is typed: the ladder from a primitive to Literal, Enum, NewType,
-  TypedDict and value objects, narrowing, generics, collections.abc. Use when choosing a
-  representation for a value, replacing a dict[str, Any], writing a generic or a typed decorator,
-  narrowing an unknown value, or deciding an annotation. Not for a metaclass or a descriptor
-  (python-metaclasses).
+  TypedDict and value objects, narrowing, generics, collections.abc. ALWAYS invoke this skill when a
+  task gives dicts or strings a real type, replaces a dict[str, Any], fixes KeyErrors or key typos,
+  adds a value object, a generic or a typed decorator. Do not choose a representation directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -14,8 +13,7 @@ paths:
 # Types — Reference
 
 `types.md` carries the defaults and `naming.md` how an alias or a `NewType` is named; this skill
-carries the decisions behind them. Class-creation hooks — `__init_subclass__`, `__set_name__`, a
-metaclass — are in `python-metaclasses`.
+carries the decisions behind them.
 
 ## Choosing a Representation
 
