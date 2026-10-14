@@ -99,14 +99,28 @@ def package_segments(segments: queue.Queue[Segment], *, packager: SegmentPackage
 [locks.md](locks.md)** — `threading.Lock` because the GIL is not a lock, a lock held for the data
 and never for the slow call, `threading.local` for per-thread resources only.
 
+- State shared between threads is guarded by a `threading.Lock`; the GIL is not a lock
+- A lock covers the data, never the slow call that fills it
+- `threading.local` is for per-thread resources only, and thread-safety is documented
+
 ## Processes
 
 **Before creating a process pool, passing work to one or picking a `multiprocessing` start method,
 read [processes.md](processes.md)** — small picklable arguments to a module-level function, `spawn`
 or `forkserver` by name, the `__main__` guard, and a broken pool.
 
+- A process pool receives small picklable arguments and runs a module-level function
+- The `multiprocessing` start method is `spawn` or `forkserver`, named explicitly
+- A file run as a script that starts a pool calls `main()` under `if __name__ == "__main__"`
+- A `BrokenProcessPool` is not caught per task: the process exits and its supervisor restarts it
+
 ## Stopping
 
 **Before starting a thread that does work, handling `SIGTERM` or `SIGINT` without an event loop, or
 closing a pool, read [shutdown.md](shutdown.md)** — no daemon threads, a stop event waited on
 instead of `sleep`, a signal handler that only sets the event, and queued work cancelled on close.
+
+- A thread that does work is never a daemon; it watches a stop event and is joined with a deadline
+- A periodic thread waits on its stop event, never on `time.sleep`
+- A signal handler only sets an event; the main thread does the stopping
+- A pool closed on the way out cancels what it has not started
