@@ -5,31 +5,35 @@ The seam between `python-pydantic` and `python-sqlalchemy`, linked from both ski
 ### A model is never validated from an ORM row with `from_attributes`
 
 **Why:** `from_attributes=True` reads the row attribute by attribute, so every relationship the
-model names is loaded there: a `lazy="raise"` relationship raises far from the query, and one left
-lazy runs a statement per row. The repository turns the row into a domain object, and the model is
-built from that, field by field (`python-boundaries`).
+model names is loaded there: one left lazy runs a statement per row, and a `lazy="raise"` one
+arrives as a `ValidationError` — "Error extracting attribute: InvalidRequestError" (*measured* on
+pydantic 2.14 and SQLAlchemy 2.1) — reported as bad data, far from the query that forgot to load
+it. The repository turns the row into a domain object, and the model is built from that, field by
+field.
 
 **Example:**
 ```python
-# WRONG — validating the row loads its lessons here, one statement per course, or raises
-class CourseResponse(BoundaryModel):
+# WRONG — validating the row loads its pickings here, one statement per estate, or fails as data
+@final
+class TeaEstateResponse(StrictPayload):
     model_config = ConfigDict(from_attributes=True)
 
-    title: str
-    lesson_titles: tuple[str, ...]
+    name: str
+    pickings: tuple[TeaPickingResponse, ...]
 
 
-def course_response(row: CourseRow) -> CourseResponse:
-    return CourseResponse.model_validate(row)
+def tea_estate_response(row: TeaEstateRow) -> TeaEstateResponse:
+    return TeaEstateResponse.model_validate(row)
 
 
 # CORRECT — the domain object, loaded by the repository, is what the model is built from
-class CourseResponse(BoundaryModel):
-    title: str
-    lesson_titles: tuple[str, ...]
+@final
+class TeaEstateResponse(StrictPayload):
+    name: str
+    pickings: tuple[TeaPickingResponse, ...]
 
     @classmethod
-    def from_domain(cls, course: Course) -> Self:
-        lesson_titles = tuple(lesson.title for lesson in course.lessons)
-        return cls(title=course.title, lesson_titles=lesson_titles)
+    def from_domain(cls, estate: TeaEstate) -> Self:
+        pickings = tuple(TeaPickingResponse.from_domain(picking) for picking in estate.pickings)
+        return cls(name=estate.name, pickings=pickings)
 ```
