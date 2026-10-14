@@ -119,10 +119,21 @@ class Query:
 check, read [context.md](context.md)** — a typed context behind one `GraphQLInfo` alias, the scope
 gate through `PermissionExtension`, ownership decided by the service.
 
+- The context is a typed class, and resolvers read it through one `GraphQLInfo` alias
+- The context is built from the services the root built, and adds only what is request-scoped
+- A permission class is the coarse gate, attached through `PermissionExtension`
+- Ownership is decided by the service, and someone else's claim is answered as not found
+
 ## DataLoaders
 
 **Before writing a field that loads by key — a nested object, a list of related rows — read
 [dataloaders.md](dataloaders.md)** — one loader per request, results in key order, bounded batches.
+
+- Every field that loads by key goes through the request's `DataLoader`
+- The `load_fn` returns one result per key, in key order
+- A batch is one statement, and `max_batch_size` bounds it
+- A loader is built per request, never by the root
+- A loader over owned data calls a service method that takes the caller
 
 ## Building the Schema
 
@@ -130,11 +141,23 @@ gate through `PermissionExtension`, ownership decided by the service.
 configuring `MaskErrors`, read [schema.md](schema.md)** — query limits, a ceiling on every list,
 discovery closed, errors as union members, masking and logging only the unexpected.
 
+- Depth, tokens and aliases are limited together, each extension passed as a class or a factory
+- Every list field takes `first`, with a ceiling the resolver enforces
+- Where the schema is private, introspection, the IDE and field suggestions close together
+- A classified domain error is a member of the field's result union, converted by a schema handler
+- `MaskErrors` masks only what an unexpected exception raised, and `process_errors` logs only that
+
 ## Inputs and the Published Schema
 
 **Before writing a mutation's input, changing a published field or setting up the schema's CI,
 read [contract.md](contract.md)** — inputs converted by `to_domain()`, idempotency keys, the SDL
 diffed in CI, breaking changes found by graphql-core, deprecation before removal.
+
+- An input is a `@strawberry.input` type converted by `to_domain()`
+- A mutation a client retries carries an idempotency key, minted by the client once per operation
+- The SDL is exported, checked in, and compared in CI
+- A breaking change is found by graphql-core, not by eye
+- A field is deprecated before it is removed, and removed once its traffic has stopped
 
 ## Subscriptions
 
@@ -142,10 +165,17 @@ diffed in CI, breaking changes found by graphql-core, deprecation before removal
 [subscriptions.md](subscriptions.md)** — an async generator that releases what it holds, one
 protocol, and per-connection limits.
 
+- A subscription is an async generator that releases what it holds, through `aclosing`
+- The router speaks one protocol, `graphql-transport-ws`
+- The per-connection limits are set to what a client needs
+
 ## Testing
 
 **Before testing resolvers or the limits, read [testing.md](testing.md)** — `schema.execute` with
 fakes, and each limit answered visibly.
+
+- Resolvers are tested through `schema.execute`, with a context of in-memory fakes
+- Each limit is tested: one past it is answered with a visible error
 
 ## With Other Libraries
 
