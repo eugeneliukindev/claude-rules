@@ -37,64 +37,33 @@ function gets three of them in another order; its invariant is checked once, in 
 **Except:** a keyword-only boolean that tunes one behaviour — `sorted(reverse=)` — is fine; the test
 is whether the branches share a body.
 
-### A setting is a keyword parameter defaulted to its constant — never the settings object
+### A function reads only its parameters; a clock, randomness and a setting arrive as parameters, a setting defaulted to its module constant — never the settings object
 
-**Why:** a timeout, a limit, a TTL, a size, a width, a duration, a retry count, the set of statuses
-worth retrying, a path — read in the body, it can be changed only by patching the module; defaulted
-in the signature, a caller passes nothing and a test passes what it needs. A function taking
-`settings: Settings` hides what it reads and makes a test build the whole tree; the entry point
-reads the settings and unpacks them into plain values, or a frozen config dataclass for a group that
-travels together. A constructor keeps each in a field.
+**Why:** global mutable state, an imported `settings`, a clock or randomness read inside are inputs
+no caller can see and no test can fix — a timeout, a limit, a TTL, a size, a width, a duration, a
+retry count, the set of statuses worth retrying or a path read in the body changes only by patching
+the module. The time arrives as `now` or an injected clock; a setting defaulted in the signature
+lets a caller pass nothing and a test pass what it needs, and a constructor keeps each in a field.
+`settings: Settings` hides what a function reads and makes a test build the whole tree; the entry
+point unpacks it into plain values, or a frozen config dataclass for a group that travels together.
 **Except:** the root (`main`, `run`, `lifespan`), a test, a fixture and a signature a framework
 parses — a route, a subscriber, a resolver, where a defaulted parameter is an input the client
 sets — read the constant where they stand. A value a format or a protocol fixes, a query, a
-dispatch table and a security allowlist are code, not settings, and stay in the body.
+dispatch table and a security allowlist are code, not settings, and stay in the body. A fresh
+identifier whose value no test compares, and a monotonic reading that only measures a duration, are
+made inside.
 
 **Example:**
 ```python
-# WRONG — the limit is read inside: a test of the rejection must upload twenty megabytes
-@final
-class UploadInbox:
-    def __init__(self, *, storage: ObjectStorage) -> None:
-        self._storage = storage
-
-    def accept(self, upload: Upload) -> str:
-        if upload.size_bytes > _MAX_UPLOAD_BYTES:
-            raise UploadTooLargeError(upload.name, limit_bytes=_MAX_UPLOAD_BYTES)
-        return self._storage.put(upload.name, upload.content)
-
-
-# CORRECT — the root passes nothing, and a test of the rejection passes ten bytes
-@final
-class UploadInbox:
-    def __init__(
-        self, *, storage: ObjectStorage, max_upload_bytes: int = _MAX_UPLOAD_BYTES
-    ) -> None:
-        self._storage = storage
-        self._max_upload_bytes = max_upload_bytes
-
-    def accept(self, upload: Upload) -> str:
-        if upload.size_bytes > self._max_upload_bytes:
-            raise UploadTooLargeError(upload.name, limit_bytes=self._max_upload_bytes)
-        return self._storage.put(upload.name, upload.content)
-```
-
-### A function uses only its parameters and module constants
-
-**Why:** global mutable state, an imported `settings`, a clock or randomness read inside are inputs
-no caller can see and no test can fix; the time arrives as `now` or an injected clock.
-**Except:** a fresh identifier whose value no test compares, and a monotonic reading that only
-measures a duration, are made inside.
-
-**Example:**
-```python
-# WRONG — the clock and the lifetime come from outside, and no test can fix either
+# WRONG — the clock and the lifetime are read inside, and no test can fix either
 def is_expired(token: AccessToken) -> bool:
     return datetime.now(UTC) > token.issued_at + settings.token_lifetime
 
 
-# CORRECT — both arrive as parameters
-def is_expired(token: AccessToken, *, now: datetime, lifetime: timedelta) -> bool:
+# CORRECT — the time arrives, and the lifetime is defaulted to its constant
+def is_expired(
+    token: AccessToken, *, now: datetime, lifetime: timedelta = _TOKEN_LIFETIME
+) -> bool:
     return now > token.issued_at + lifetime
 ```
 
