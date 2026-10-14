@@ -10,38 +10,40 @@ How a contract is declared and what its methods look like are in `SKILL.md`.
 
 ### A contract is named after the capability, without a prefix or a mechanism suffix
 
-**Why:** `Notifier`, `UserDirectory`, `Comparable` — an agent noun or an "-able" adjective says what
-the thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared, which no caller cares
-about. The implementations carry the qualifier that distinguishes them: `EmailNotifier`,
-`LdapUserDirectory`. Stdlib ABCs keep their stdlib names.
+**Why:** `TranslationEngine`, `TranslatorDirectory`, `Comparable` — an agent noun or an "-able"
+adjective says what the thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared,
+which no caller cares about. The implementations carry the qualifier that distinguishes them:
+`DeepLTranslationEngine`, `LdapTranslatorDirectory`. Stdlib ABCs keep their stdlib names.
 
 **Example:**
 ```python
 # WRONG — the mechanism as the name, and Base on a class that hands nothing down
-class UserDirectoryProtocol(Protocol):
-    def find(self, email: str) -> User | None: ...
+class TranslatorDirectoryProtocol(Protocol):
+    def find(self, email: str) -> Translator | None: ...
 
 
-class BaseUserDirectory(ABC):
+class BaseTranslatorDirectory(ABC):
     @abstractmethod
-    def find(self, email: str) -> User | None: ...
+    def find(self, email: str) -> Translator | None: ...
 
 
 # CORRECT — the contract names the capability; the implementation names what makes it concrete
-class UserDirectory(ABC):
+class TranslatorDirectory(ABC):
     @abstractmethod
-    def find(self, email: str) -> User | None: ...
+    def find(self, email: str) -> Translator | None: ...
 
 
 @final
-class LdapUserDirectory(UserDirectory):
+class LdapTranslatorDirectory(TranslatorDirectory):
     def __init__(self, *, connection: LdapConnection) -> None:
         self._connection = connection
 
     @override
-    def find(self, email: str) -> User | None:
+    def find(self, email: str) -> Translator | None:
         entry = self._connection.search_one(f"(mail={email})")
-        return None if entry is None else User(user_id=UserId(entry.uid), email=email)
+        if entry is None:
+            return None
+        return Translator(translator_id=TranslatorId(entry.uid), email=email)
 ```
 
 ### `Base` means "inherit me", never "implement me"
@@ -54,5 +56,6 @@ contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
 ### An implementation is named for what makes it concrete, never `Default` or `Impl`
 
-**Why:** `DefaultNotifier` and `NotifierImpl` say nothing; the driver, the transport or the storage
-does. If nothing distinguishes the implementation, there was no contract worth writing.
+**Why:** `DefaultTranslationEngine` and `TranslationEngineImpl` say nothing; the driver, the
+transport or the storage does. If nothing distinguishes the implementation, there was no contract
+worth writing.

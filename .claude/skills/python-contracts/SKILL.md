@@ -12,35 +12,35 @@ paths:
 
 # Contracts and Implementations
 
-When a class is worth writing at all, and the defaults for a contract — an ABC that implementations
-inherit, sized to its consumer, composition for reuse — are in `classes.md`; `@override` on every
-implementation is in `types.md`. What comes after: when a `Protocol` fits instead, what a contract's
-methods look like, and where implementations and fakes live.
+That a class is written only when triggered, that it inherits a contract and reuses by composition,
+are in `classes.md`; `@override` and `@final` on every implementation are in `types.md`. What comes
+after: when a `Protocol` fits, what a contract's methods look like, what a consumer is handed, and
+where implementations and fakes live.
 
 ## Declaring a Contract
 
 ### `Protocol` is for code you cannot make inherit, or a project that chose it once
 
 **Why:** a third-party type, a duck-typed shape someone else's code produces, a callback signature —
-none of them can inherit your class. A project may also choose structural typing throughout:
-implementations import nothing from the contract and a fake needs no base, at the price above (the
-missing method is reported where the object is passed), so it is chosen once for the whole project,
-never contract by contract.
+none of them can inherit your class. A Protocol reports a missing method where the object is passed,
+not where the class is written; a project may still choose structural typing throughout, so that
+implementations import nothing from the contract, but it chooses once for the whole project, never
+contract by contract.
 **Except:** a published extension point is not that case — a plugin written for your library can
 inherit the ABC you ship; a web framework that published its plugin points as Protocols replaced
 them with ABCs in its next major.
 
 **Example:**
 ```python
-# WRONG — a Protocol plugin point: a plugin that forgets render() is accepted, fails when called
-class Renderer(Protocol):
-    def render(self, document: Document) -> bytes: ...
+# WRONG — a Protocol plugin point: a check that forgets inspect() is accepted, fails when called
+class QualityCheck(Protocol):
+    def inspect(self, segment: Segment) -> list[QualityIssue]: ...
 
 
 # CORRECT — the plugin inherits the ABC, and a forgotten method fails at the plugin's own class
-class Renderer(ABC):
+class QualityCheck(ABC):
     @abstractmethod
-    def render(self, document: Document) -> bytes: ...
+    def inspect(self, segment: Segment) -> list[QualityIssue]: ...
 
 
 # CORRECT — a shape produced by code you do not control stays a Protocol
@@ -60,16 +60,16 @@ plain base with `@abstractmethod` where one is; never both shapes in one tree.
 
 **Example:**
 ```python
-# WRONG — an ABC under a framework base that brings its own metaclass: metaclass conflict at import
-class ExportPlugin(Plugin, ABC):
+# WRONG — an ABC under an editor base that brings its own metaclass: metaclass conflict at import
+class FileFilter(EditorExtension, ABC):
     @abstractmethod
-    def export(self, report: Report) -> bytes: ...
+    def extract(self, source: bytes) -> list[Segment]: ...
 
 
 # CORRECT — the metaclass slot is taken, so the plain base keeps the checker's guarantee only
-class ExportPlugin(Plugin):
+class FileFilter(EditorExtension):
     @abstractmethod
-    def export(self, report: Report) -> bytes: ...
+    def extract(self, source: bytes) -> list[Segment]: ...
 ```
 
 ### A stdlib ABC that already names the capability is used directly
@@ -92,25 +92,25 @@ implementation written as an async generator fails the override check.
 **Example:**
 ```python
 # WRONG — async def promises a coroutine: the async-generator implementation is an [override] error
-class MessageFeed(ABC):
+class EditFeed(ABC):
     @abstractmethod
-    async def follow(self, room: RoomId) -> AsyncIterator[ChatMessage]: ...
+    async def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
 
 
 # CORRECT — plain def returning AsyncIterator; implementations write `async def … yield`
-class MessageFeed(ABC):
+class EditFeed(ABC):
     @abstractmethod
-    def follow(self, room: RoomId) -> AsyncIterator[ChatMessage]: ...
+    def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
 
 
 @final
-class InMemoryMessageFeed(MessageFeed):
+class InMemoryEditFeed(EditFeed):
     def __init__(self) -> None:
-        self._queue_by_room: dict[RoomId, asyncio.Queue[ChatMessage]] = {}
+        self._queue_by_project: dict[TranslationProjectId, asyncio.Queue[SegmentEdit]] = {}
 
     @override
-    async def follow(self, room: RoomId) -> AsyncIterator[ChatMessage]:
-        queue = self._queue_by_room.setdefault(room, asyncio.Queue())
+    async def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]:
+        queue = self._queue_by_project.setdefault(project_id, asyncio.Queue())
         while True:
             yield await queue.get()
 ```
@@ -122,16 +122,16 @@ class InMemoryMessageFeed(MessageFeed):
 
 ### A generic contract binds its parameter in each implementation
 
-**Why:** `class Repository[T](ABC)` is one contract for every entity; an implementation that stays
-generic by accident — `class PostgresRepository[T](Repository[T])` — promises to store anything and
-can store nothing in particular.
+**Why:** `class KeyedStore[T](ABC)` is one contract for every entity; an implementation that stays
+generic by accident — `class SqlKeyedStore[T](KeyedStore[T])` — promises to store anything and can
+store nothing in particular.
 
 **Example:**
 ```python
 # WRONG — the implementation stays generic: the table and the row mapping cannot be written
 @final
-class PostgresRepository[T](Repository[T]):
-    def __init__(self, *, connection: DatabaseConnection) -> None:
+class SqlKeyedStore[T](KeyedStore[T]):
+    def __init__(self, *, connection: SqlConnection) -> None:
         self._connection = connection
 
     @override
@@ -141,14 +141,14 @@ class PostgresRepository[T](Repository[T]):
 
 # CORRECT — the parameter is bound, and the body knows its table
 @final
-class PostgresDocumentRepository(Repository[Document]):
-    def __init__(self, *, connection: DatabaseConnection) -> None:
+class SqlGlossaryStore(KeyedStore[GlossaryEntry]):
+    def __init__(self, *, connection: SqlConnection) -> None:
         self._connection = connection
 
     @override
-    def get(self, key: str) -> Document:
-        row = self._connection.fetch_one(_SELECT_DOCUMENT, key)
-        return Document(document_id=DocumentId(row["id"]), page_count=row["page_count"])
+    def get(self, key: str) -> GlossaryEntry:
+        row = self._connection.fetch_one(_SELECT_GLOSSARY_ENTRY, key)
+        return GlossaryEntry(term=row["term"], approved_translation=row["approved_translation"])
 ```
 
 ### A template method — the base's skeleton calling abstract steps — is `@final`
@@ -158,53 +158,55 @@ class PostgresDocumentRepository(Repository[Document]):
 
 **Example:**
 ```python
-# WRONG — a subclass can replace render() and skip the header every report must carry
-class Report(ABC):
+# WRONG — a subclass can replace render() and skip the header every export must carry
+class GlossaryExport(ABC):
     def render(self) -> str:
-        return f"{self.title()}\n{self.body()}"
+        return f"{self.header()}\n{self.rows()}"
 
     @abstractmethod
-    def title(self) -> str: ...
+    def header(self) -> str: ...
 
     @abstractmethod
-    def body(self) -> str: ...
+    def rows(self) -> str: ...
 
 
 # CORRECT — the skeleton is final; subclasses supply the steps only
-class Report(ABC):
+class GlossaryExport(ABC):
     @final
     def render(self) -> str:
-        return f"{self.title()}\n{self.body()}"
+        return f"{self.header()}\n{self.rows()}"
 
     @abstractmethod
-    def title(self) -> str: ...
+    def header(self) -> str: ...
 
     @abstractmethod
-    def body(self) -> str: ...
+    def rows(self) -> str: ...
 ```
 
 ## What a Consumer Depends On
 
 ### Code uses what the collaborator's contract declares, and never reaches past it
 
-**Why:** the Law of Demeter, applied to collaborators — a service that calls
-`notifier.smtp.send_message(...)` depends on the transport its notifier hides, cannot run against
-the fake, and breaks when the transport changes. The parameter typed as the contract enforces it:
-mypy answers the reach with `[attr-defined]`, so the leak always starts with an annotation naming
-the implementation.
-**Except:** data — `document.owner.address.city` reads a frozen structure and couples to nothing
-that behaves.
+**Why:** the Law of Demeter, applied to collaborators — a function that calls
+`machine_translation.session.translate_text(...)` depends on the transport its engine hides, cannot
+run against the fake, and breaks when the transport changes. The parameter typed as the contract
+enforces it: mypy answers the reach with `[attr-defined]`, so the leak always starts with an
+annotation naming the implementation.
+**Except:** data — `segment.unit.project.source_language` reads a frozen structure and couples to
+nothing that behaves.
 
 **Example:**
 ```python
-# WRONG — typed as the implementation, so the service can reach the transport behind the notifier
-def send_receipt(receipt: Receipt, *, notifier: SmtpNotifier) -> None:
-    notifier.smtp.send_message(receipt.as_email())
+# WRONG — typed as the implementation, so the function reaches the session behind the engine
+def pretranslate(segment: Segment, *, machine_translation: HttpTranslationEngine) -> str:
+    return machine_translation.session.translate_text(
+        segment.source_text, target=segment.target_language
+    )
 
 
 # CORRECT — typed as the contract: the call it declares is the only one there is
-def send_receipt(receipt: Receipt, *, notifier: Notifier) -> None:
-    notifier.send(receipt.recipient, receipt.as_message())
+def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) -> str:
+    return machine_translation.translate(segment.source_text, into=segment.target_language)
 ```
 
 ### A subclass accepts at least what its parent accepts and returns nothing wider
@@ -214,36 +216,35 @@ types, and nothing checks the behaviour — no new precondition, no dropped prom
 
 **Example:**
 ```python
-class Archive(ABC):
+class TranslationMemory(ABC):
     @abstractmethod
-    def store(self, document: Document) -> StoredDocument: ...
+    def store(self, segment: Segment) -> StoredUnit: ...
 
 
-# WRONG — narrows the parameter: a caller passing any Document to an Archive fails here
+# WRONG — narrows the parameter: a caller passing any Segment to a TranslationMemory fails here
 @final
-class PdfArchive(Archive):
-    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
-        self._storage = storage
-        self._prefix = prefix
+class SqlTranslationMemory(TranslationMemory):
+    def __init__(self, *, units: UnitTable, memory_code: str) -> None:
+        self._units = units
+        self._memory_code = memory_code
 
     @override
-    def store(self, document: PdfDocument) -> StoredDocument:
-        key = f"{self._prefix}/{document.document_id}.pdf"
-        return StoredDocument(location=self._storage.put(key, document.content))
+    def store(self, segment: ReviewedSegment) -> StoredUnit:
+        unit_id = self._units.insert(self._memory_code, segment.source_text, segment.target_text)
+        return StoredUnit(unit_id=unit_id)
 
 
 # CORRECT — accepts what the parent accepts, and promises something narrower back
 @final
-class PdfArchive(Archive):
-    def __init__(self, *, storage: ObjectStorage, prefix: str) -> None:
-        self._storage = storage
-        self._prefix = prefix
+class SqlTranslationMemory(TranslationMemory):
+    def __init__(self, *, units: UnitTable, memory_code: str) -> None:
+        self._units = units
+        self._memory_code = memory_code
 
     @override
-    def store(self, document: Document) -> StoredPdf:
-        key = f"{self._prefix}/{document.document_id}.pdf"
-        location = self._storage.put(key, document.content)
-        return StoredPdf(location=location, page_count=document.page_count)
+    def store(self, segment: Segment) -> CountedUnit:
+        unit_id = self._units.insert(self._memory_code, segment.source_text, segment.target_text)
+        return CountedUnit(unit_id=unit_id, word_count=segment.word_count)
 ```
 
 ### A contract holds only what its consumer calls
@@ -251,32 +252,32 @@ class PdfArchive(Archive):
 **Why:** a consumer handed more depends on it — its fake must implement it, and a change to a method
 it never calls reaches it anyway. One class may implement several contracts; the split is in what
 the consumer is given, not in the storage.
-**Except:** split when a consumer that needs a different set exists, not in advance — a repository
+**Except:** split when a consumer that needs a different set exists, not in advance — a glossary
 every caller uses whole stays one contract.
 
 **Example:**
 ```python
-# WRONG — the report receives the whole repository, writes included
-class DocumentRepository(ABC):
+# WRONG — the term count receives the whole glossary, writes included
+class Glossary(ABC):
     @abstractmethod
-    def add(self, document: Document) -> None: ...
+    def add(self, entry: GlossaryEntry) -> None: ...
 
     @abstractmethod
-    def expired_on(self, day: date) -> list[Document]: ...
+    def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
 
 
-def build_retention_report(day: date, *, documents: DocumentRepository) -> RetentionReport:
-    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
+def count_terms(language: LanguageCode, *, glossary: Glossary) -> TermCount:
+    return TermCount(language=language, term_count=len(glossary.terms_in(language)))
 
 
-# CORRECT — the report depends on the one capability it uses
-class ExpiredDocuments(ABC):
+# CORRECT — the term count depends on the one capability it uses
+class GlossaryTerms(ABC):
     @abstractmethod
-    def expired_on(self, day: date) -> list[Document]: ...
+    def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
 
 
-def build_retention_report(day: date, *, documents: ExpiredDocuments) -> RetentionReport:
-    return RetentionReport(day=day, expired_count=len(documents.expired_on(day)))
+def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount:
+    return TermCount(language=language, term_count=len(glossary.terms_in(language)))
 ```
 
 ## Naming
@@ -296,5 +297,5 @@ a contract.
 ## Fakes
 
 **Before writing a fake of a contract for a test, or the tests every implementation must pass, read
-[fakes.md](fakes.md)** — the fake inherits the contract and lives with the tests, and one contract
-suite runs against every implementation.
+[fakes.md](fakes.md)** — one parametrized suite runs against every implementation, the fake
+included.

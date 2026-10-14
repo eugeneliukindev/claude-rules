@@ -1,67 +1,40 @@
-# Fakes and the Contract Suite
+# The Contract Suite
 
-How a contract is declared and what its methods look like are in `SKILL.md`.
+That a contract a unit test depends on has an in-memory fake in `tests/fakes.py`, inheriting the
+contract, is in `testing.md`; this is the suite the fake and the real implementations pass.
 
-### A test fake is an implementation, and it lives with the tests
+### One parametrized fixture runs the contract suite against every implementation
 
-**Why:** `tests/fakes.py` inherits the contract like any other implementation, so a renamed method
-breaks the fake too; the group that ships carries no test code.
-
-**Example:**
-```python
-# WRONG — the fake ships with the package, and does not inherit the contract
-# notifications/fake.py
-class FakeNotifier:
-    def __init__(self) -> None:
-        self.sent: list[Message] = []
-
-    def send(self, recipient: UserId, message: Message) -> None:
-        self.sent.append(message)
-
-
-# CORRECT — tests/fakes.py, inheriting the contract
-@final
-class InMemoryNotifier(Notifier):
-    def __init__(self) -> None:
-        self.sent: list[tuple[UserId, Message]] = []
-
-    @override
-    def send(self, recipient: UserId, message: Message) -> None:
-        self.sent.append((recipient, message))
-```
-
-### Every implementation passes one contract suite — the fake included
-
-**Why:** the tests are written once against the contract and run for each implementation through a
-parametrized fixture; the real ones carry the integration marker, so the unit run still takes the
-fake. A fake not held to the same tests drifts, and the unit tests then prove the fake.
+**Why:** the tests are written once against the contract; the real implementations carry the
+integration marker, so the unit run still takes the fake. A fake not held to the same tests drifts,
+and the unit tests then prove the fake.
 
 **Example:**
 ```python
-# WRONG — the fake is tested by nothing, and the real repository by its own separate tests
-def test_in_memory_repository_finds_saved_document() -> None:
-    repository = InMemoryDocumentRepository()
-    document = make_document()
-    repository.save(document)
-    assert repository.find(document.document_id) == document
+# WRONG — the fake is tested by nothing, and the real glossary by its own separate tests
+def test_in_memory_glossary_lists_added_term() -> None:
+    glossary = InMemoryGlossary()
+    entry = make_glossary_entry(language=LanguageCode("de"))
+    glossary.add(entry)
+    assert glossary.terms_in(LanguageCode("de")) == [entry]
 
 
 # CORRECT — one suite, every implementation
 @pytest.fixture(
     params=[
         pytest.param("memory", id="memory"),
-        pytest.param("postgres", id="postgres", marks=pytest.mark.integration),
+        pytest.param("sql", id="sql", marks=pytest.mark.integration),
     ]
 )
-def document_repository(request: pytest.FixtureRequest) -> DocumentRepository:
-    repository: DocumentRepository = request.getfixturevalue(f"{request.param}_document_repository")
-    return repository
+def glossary(request: pytest.FixtureRequest) -> Glossary:
+    implementation: Glossary = request.getfixturevalue(f"{request.param}_glossary")
+    return implementation
 
 
-def test_saved_document_is_found_by_id(document_repository: DocumentRepository) -> None:
-    document = make_document()
+def test_added_term_is_listed_in_its_language(glossary: Glossary) -> None:
+    entry = make_glossary_entry(language=LanguageCode("de"))
 
-    document_repository.save(document)
+    glossary.add(entry)
 
-    assert document_repository.find(document.document_id) == document
+    assert glossary.terms_in(LanguageCode("de")) == [entry]
 ```

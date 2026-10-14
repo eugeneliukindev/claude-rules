@@ -17,12 +17,14 @@ contract in `base.py`, one module per implementation named for what makes it con
 `__init__.py` exporting the contract and the implementations — so a new implementation is a new
 file and no existing file changes.
 **Except:** an implementation whose driver is an optional extra is reached through its builder, so
-importing the contract never imports the driver (the per-extra facade in `python-packaging`).
+importing the contract never imports the driver (the extras reason for a function-level import,
+`modules.md`).
 
 ### `base.py` is a position, not a `Base` class
 
 **Why:** the module sits at the base of the group; the class inside it is still named for the
-capability — `Notifier`, never `BaseNotifier`. One rule is about a file, the other about a class.
+capability — `TranslationEngine`, never `BaseTranslationEngine`. One rule is about a file, the other
+about a class.
 
 ### The contract's module imports nothing any implementation needs
 
@@ -31,36 +33,37 @@ that driver, and the split stops paying.
 
 **Example:**
 ```python
-# WRONG — notifications/base.py imports the SDK one implementation uses
-from slack_sdk import WebClient
+# WRONG — machine_translation/base.py imports the SDK one implementation uses
+from deepl import DeepLClient
 
 
-class Notifier(ABC):
+class TranslationEngine(ABC):
     @abstractmethod
-    def send(self, recipient: UserId, message: Message) -> None: ...
+    def translate(self, text: str, *, into: LanguageCode) -> str: ...
 
 
-# CORRECT — notifications/slack.py is the only file that knows the SDK exists
-from slack_sdk import WebClient
+# CORRECT — machine_translation/deepl_engine.py is the only file that knows the SDK exists
+from deepl import DeepLClient
 
-from notifications.base import Notifier
+from machine_translation.base import TranslationEngine
 
 
 @final
-class SlackNotifier(Notifier):
-    def __init__(self, *, client: WebClient, channel: str) -> None:
+class DeepLTranslationEngine(TranslationEngine):
+    def __init__(self, *, client: DeepLClient, formality: str = DEFAULT_FORMALITY) -> None:
         self._client = client
-        self._channel = channel
+        self._formality = formality
 
     @override
-    def send(self, recipient: UserId, message: Message) -> None:
-        self._client.chat_postMessage(channel=self._channel, text=f"<@{recipient}> {message}")
+    def translate(self, text: str, *, into: LanguageCode) -> str:
+        result = self._client.translate_text(text, target_lang=into, formality=self._formality)
+        return str(result)
 ```
 
 ### A helper only one implementation uses is private and stays in the group
 
-**Why:** `_templates.py` beside `smtp.py` is found by whoever edits `smtp.py`; the same code in a
-shared `utils` is found by nobody and imported by everybody.
+**Why:** `_glossary_upload.py` beside `deepl_engine.py` is found by whoever edits `deepl_engine.py`;
+the same code in a shared `utils` is found by nobody and imported by everybody.
 
 ### No contract, no directory
 
