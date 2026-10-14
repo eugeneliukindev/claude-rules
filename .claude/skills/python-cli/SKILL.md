@@ -2,7 +2,7 @@
 name: python-cli
 description: >-
   Designs a command-line interface with argparse, click or typer: arguments, exit codes, stdout
-  against stderr, dry-run, configuration precedence, interrupts, tests. Use when writing an entry
+  against stderr, configuration precedence, interrupts, pipes, tests. Use when writing an entry
   point that takes arguments, a command or subcommand, a __main__ block, or a sys.exit call. Not
   for a one-off script (python-scripts).
 paths:
@@ -20,52 +20,55 @@ problem as keeping a package's (`python-packaging`).
 
 ### `main()` builds and exits once; `run()` does the work and returns the exit code
 
-**Why:** the entry point constructs settings and the object graph and calls a function that contains
-no construction. Exit codes are a contract — success, generic failure, usage error, further codes as
-named constants — and exit is called once, in `main()`, with the code `run()` returned; an exit
-inside the work gives a test `SystemExit` instead of a code.
+**Why:** exit codes are a contract — success, generic failure, usage error, further codes as named
+constants — and exit is called once, in `main()`, with the code `run()` returned; an exit inside
+the work gives a test `SystemExit` instead of a code.
 
 **Example:**
 ```python
 # WRONG — exits from inside run(): a test calling it gets SystemExit instead of a code
-def run(*, backups: BackupService, older_than: date) -> int:
+def run(srt: TextIO, *, shift_ms: int, out: TextIO) -> int:
     try:
-        backups.prune(older_than=older_than)
-    except StorageError:
-        logger.exception("pruning backups failed")
-        sys.exit(EXIT_FAILURE)
+        cues = parse_srt(srt)
+    except MalformedCueError as error:
+        print(error, file=sys.stderr)
+        sys.exit(EXIT_INVALID_INPUT)
+    out.write(render_webvtt(cues, shift_ms=shift_ms))
     return EXIT_SUCCESS
 
 
 # CORRECT — run() returns the code, and main() is the one place that exits
-def run(*, backups: BackupService, older_than: date) -> int:
+def run(srt: TextIO, *, shift_ms: int, out: TextIO) -> int:
     try:
-        backups.prune(older_than=older_than)
-    except StorageError:
-        logger.exception("pruning backups failed")
-        return EXIT_FAILURE
+        cues = parse_srt(srt)
+    except MalformedCueError as error:
+        print(error, file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    out.write(render_webvtt(cues, shift_ms=shift_ms))
     return EXIT_SUCCESS
 ```
 
 ### With click or typer, the decorated command is `main()`, never the work
 
-**Why:** the command receives the parsed options, builds, calls `run()` and turns the code into
-`raise typer.Exit(code)` (click: `sys.exit`). `CliRunner` then tests the argument layer and `run()`
-is tested directly; work inside the decorated function is reachable only as argv strings.
+**Why:** the command receives the parsed options, opens what the work needs, calls `run()` and
+turns the code into `raise typer.Exit(code)` (click: `sys.exit`). `CliRunner` then tests the
+argument layer and `run()` is tested directly; work inside the decorated function is reachable only
+as argv strings.
 
 **Example:**
 ```python
 # WRONG — the work is in the command: a test must spell it as argv and parse stdout back
 @app.command()
-def list_stale(days: int = _DEFAULT_STALE_DAYS) -> None:
-    for backup_id in _load_stale(days):
-        print(backup_id)
+def shift(source: Path, shift_ms: int = 0) -> None:
+    with source.open(encoding="utf-8") as srt:
+        sys.stdout.write(render_webvtt(parse_srt(srt), shift_ms=shift_ms))
 
 
-# CORRECT — the command builds and calls run(); its code becomes the exit status
+# CORRECT — the command opens the file and calls run(); its code becomes the exit status
 @app.command()
-def list_stale(days: int = _DEFAULT_STALE_DAYS) -> None:
-    exit_code = run(_load_stale(days), out=sys.stdout)
+def shift(source: Path, shift_ms: int = 0) -> None:
+    with source.open(encoding="utf-8") as srt:
+        exit_code = run(srt, shift_ms=shift_ms, out=sys.stdout)
     raise typer.Exit(exit_code)
 ```
 
@@ -74,26 +77,27 @@ def list_stale(days: int = _DEFAULT_STALE_DAYS) -> None:
 ### stdout carries the product; logs and progress go to stderr
 
 **Why:** results on stdout can be piped; progress on stdout is read by the next command as data —
-`list-stale | xargs` treats "searching…" as an id. Logging writes to stderr.
+`subconv shift pilot.srt > pilot.vtt` writes "converting…" into the subtitle file. Logging writes
+to stderr.
 
 ### A boolean option is a pair of flags, never a positional `type=bool`
 
 **Why:** `type=bool` converts the string, and the string `"false"` is non-empty, so it is `True`.
-`argparse.BooleanOptionalAction` gives `--dry-run` and `--no-dry-run` with a stated default.
+`argparse.BooleanOptionalAction` gives `--strict` and `--no-strict` with a stated default.
 
 **Example:**
 ```python
-# WRONG — the argument "false" is a non-empty string, so dry_run is True
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="prune-backups")
-    parser.add_argument("dry_run", type=bool)
+# WRONG — the argument "false" is a non-empty string, so strict is True
+def build_shift_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="subconv")
+    parser.add_argument("strict", type=bool)
     return parser
 
 
 # CORRECT — paired flags, with the default stated
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="prune-backups")
-    parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=False)
+def build_shift_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="subconv")
+    parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=False)
     return parser
 ```
 
@@ -106,37 +110,33 @@ yields to the flag.
 **Example:**
 ```python
 # WRONG — read after parsing, the environment overrides the flag the user just typed
-def timeout_seconds(argv: Sequence[str]) -> float:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--timeout-seconds", type=float, default=_DEFAULT_TIMEOUT_SECONDS)
+def source_encoding(argv: Sequence[str], *, environ: Mapping[str, str]) -> str:
+    parser = argparse.ArgumentParser(prog="subconv")
+    parser.add_argument("--encoding", default=_DEFAULT_ENCODING)
     arguments = parser.parse_args(argv)
-    return float(os.environ.get(_TIMEOUT_VARIABLE, arguments.timeout_seconds))
+    return environ.get(_ENCODING_VARIABLE, arguments.encoding)
 
 
 # CORRECT — the environment replaces only the default, so a flag still wins
-def timeout_seconds(argv: Sequence[str]) -> float:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--timeout-seconds",
-        type=float,
-        default=float(os.environ.get(_TIMEOUT_VARIABLE, _DEFAULT_TIMEOUT_SECONDS)),
-    )
-    seconds: float = parser.parse_args(argv).timeout_seconds
-    return seconds
+def source_encoding(argv: Sequence[str], *, environ: Mapping[str, str]) -> str:
+    parser = argparse.ArgumentParser(prog="subconv")
+    parser.add_argument("--encoding", default=environ.get(_ENCODING_VARIABLE, _DEFAULT_ENCODING))
+    encoding: str = parser.parse_args(argv).encoding
+    return encoding
 ```
 
 ## Testing
 
-### A CLI is tested through `run()`, with fakes injected and stdout captured
+### A CLI is tested through `run()`, its input and output in memory
 
-**Why:** through `main()` the test builds the real repository and receives the code as `SystemExit`;
-the argument layer holds no logic worth testing on its own.
+**Why:** through `main()` the test opens a real file and receives the code as `SystemExit`; the
+argument layer holds no logic worth testing on its own.
 
 **Example:**
 ```python
-# WRONG — through main(): it builds the real repository, and the code arrives as SystemExit
-def test_run_prints_one_stale_id_per_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["list-stale", "--older-than", "2026-01-31"])
+# WRONG — through main(): it needs a file on disk, and the code arrives as SystemExit
+def test_run_writes_cues_shifted_by_the_offset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["subconv", "pilot.srt", "--shift-ms", "500"])
 
     with pytest.raises(SystemExit) as excinfo:
         main()
@@ -144,14 +144,15 @@ def test_run_prints_one_stale_id_per_line(monkeypatch: pytest.MonkeyPatch) -> No
     assert excinfo.value.code == EXIT_SUCCESS
 
 
-# CORRECT — through run(), with a fake injected and stdout captured
-def test_run_prints_one_stale_id_per_line(capsys: pytest.CaptureFixture[str]) -> None:
-    backups = InMemoryBackupRepository(stale_ids=[BackupId(7), BackupId(9)])
+# CORRECT — through run(), the subtitle text passed in and the output read back
+def test_run_writes_cues_shifted_by_the_offset() -> None:
+    srt = io.StringIO("1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+    out = io.StringIO()
 
-    exit_code = run(backups=backups, older_than=date(2026, 1, 31))
+    exit_code = run(srt, shift_ms=500, out=out)
 
     assert exit_code == EXIT_SUCCESS
-    assert capsys.readouterr().out == "7\n9\n"
+    assert "00:00:01.500 --> 00:00:02.500" in out.getvalue()
 ```
 
 ## Interrupts and Pipes
