@@ -65,6 +65,10 @@ retries behind every call. How a dropped subscription looks depends on it too
 ([pubsub.md](pubsub.md)). `Retry` is `redis.asyncio.retry.Retry`, `NoBackoff` is
 `redis.backoff.NoBackoff`.
 
+- A second `subscribe` confirmation is a gap, raised as the channel's error
+- A `ConnectionError` while listening is the channel's error too, and a bad payload is skipped
+- `subscribe` reads the first confirmation before it yields
+
 **Example:**
 ```python
 # WRONG — the constructor's ten retries: an unreachable replica holds each read for six seconds
@@ -213,6 +217,8 @@ def _count_occupancy_failure(operation: str, error: RedisError) -> None:
 **Before calling `client.lock()`, read [locks.md](locks.md)** — `timeout` and `blocking_timeout`
 always set, `LockError`, and `LockNotOwnedError` arriving only at release.
 
+- `lock()` is always given `timeout` and `blocking_timeout`
+
 ## Pub/Sub
 
 **Before subscribing with `pubsub()` or publishing to a channel other processes listen on, read
@@ -225,3 +231,7 @@ limit.
 **Before writing a test against redis, read [testing.md](testing.md)** — a real redis from
 testcontainers with the production client, the loss test that kills a subscription, every written
 key expiring.
+
+- Tests run against a real redis from testcontainers, on the client the root builds
+- The loss test kills the subscription from a second client, for both kinds of client
+- A cache in redis has one test of its own: no key it writes lives forever
