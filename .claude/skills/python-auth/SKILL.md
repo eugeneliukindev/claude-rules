@@ -241,14 +241,26 @@ state-changing requests. The `__Host-` prefix makes the browser refuse the cooki
 password-reset or token endpoint, read [issuing.md](issuing.md)** — short access tokens, rotated
 refresh tokens, key rotation through the key set, shared attempt limits per account and per source.
 
+- An access token lives minutes, and carries `iss`, `aud`, `sub`, `iat`, `exp`, `jti` and `kid`
+- A refresh token is opaque, stored hashed, and rotated on every use
+- A signing key rotates through the key set: publish, wait the cache lifetime, sign, retire
+- A credential endpoint counts attempts per account and per source, in the shared cache
+
 ## Service-to-Service Credentials
 
 **Before one service calls another with a credential, read
 [service-credentials.md](service-credentials.md)** — a credential per service, the audience named,
 no forwarded user tokens across a boundary, an outbound token fetched once and reused.
 
+- Each service has its own credential, and the token names the service it is for
+- An outbound token is fetched once and reused until shortly before its `exp`
+
 ## Testing
 
 **Before testing authentication or authorization, read [testing.md](testing.md)** — a fake verifier,
 one contract suite with a harness per implementation, authorization tested at the service with the
 owner and another pupil.
+
+- The unit tests take a fake verifier that issues opaque tokens and can lose its signing keys
+- Each implementation hands the contract suite a harness that issues a token and cuts off its keys
+- Authorization is tested at the service, with the owner and another pupil
