@@ -19,11 +19,17 @@ patching (`testing.md`).
 
 ## Composition Root
 
-### All construction happens in one place — the composition root
+### All construction happens in plain code in one place — the composition root — and a container, if one is used at all, never leaves it
 
 **Why:** the entry point of a worker or CLI, or the application factory of a service, is the one
 place that knows every concrete class; a function below it that opens its own resources is a second
-root, and no test or second entry point can hand it another.
+root, and no test or second entry point can hand it another. A container is unnecessary until
+wiring is measured in hundreds of objects, and one handed below the root is a service locator: the
+signature no longer lists what the class needs, and a test must register every lookup before the
+first call.
+**Except:** module-level names that hold nothing until the root configures them (`modules.md`) —
+and the task-queue app object tasks are decorated with, whose pools the worker's startup hook
+builds.
 
 **Example:**
 ```python
@@ -123,37 +129,6 @@ class CourierScheduler:
         return self._couriers.book(agreement.exhibit_id, earliest=self._clock.now())
 ```
 
-### The wiring is plain code; a container, if one is used at all, never leaves the root
-
-**Why:** a container is unnecessary until wiring is measured in hundreds of objects, and one handed
-below the root is a service locator: the signature no longer lists what the class needs, and a
-test must register every lookup before the first call.
-**Except:** module-level names that hold nothing until the root configures them (`modules.md`) —
-and the task-queue app object tasks are decorated with, whose pools the worker's startup hook
-builds.
-
-**Example:**
-```python
-# WRONG — the container reached from inside: what the desk needs is known only at run time
-@final
-class GalleryDesk:
-    def __init__(self, *, container: Container) -> None:
-        self._container = container
-
-    def assign_gallery(self, exhibit: Exhibit) -> GalleryId:
-        return self._container.resolve(GalleryPlanner).free_gallery_for(exhibit)
-
-
-# CORRECT — the root resolved the planner and passed it in
-@final
-class GalleryDesk:
-    def __init__(self, *, planner: GalleryPlanner) -> None:
-        self._planner = planner
-
-    def assign_gallery(self, exhibit: Exhibit) -> GalleryId:
-        return self._planner.free_gallery_for(exhibit)
-```
-
 ### Scopes are explicit: application-scoped objects built once, request-scoped by a passed factory
 
 **Why:** an object with per-request state built once is shared between requests; a pooled resource
@@ -189,8 +164,7 @@ context manager, one `with` per known set, the async root, a class closing only 
 cleanup that never raises over the block's error, no process-wide mutation.
 
 - A resource enters through its own context manager
-- A known set of resources is one `with` statement, an item per resource
-- An async root has the same shape
+- A known set of resources is one `with` or `async with` statement, an item per resource, and an async root runs once under `asyncio.run`
 - A class closes only what it built
 - Cleanup never raises over the block's own error
 - No process-wide mutation in library or service code

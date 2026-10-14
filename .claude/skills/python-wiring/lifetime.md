@@ -5,8 +5,7 @@ The root acquires, so the root releases; everything below it borrows.
 ## Contents
 
 - A resource enters through its own context manager
-- A known set of resources is one `with` statement, an item per resource
-- An async root has the same shape
+- A known set of resources is one `with` or `async with` statement, an item per resource, and an async root runs once under `asyncio.run`
 - A class closes only what it built
 - Cleanup never raises over the block's own error
 - No process-wide mutation in library or service code
@@ -46,11 +45,14 @@ def main() -> None:
         print_loan_schedule(agreements=PostgresAgreementLedger(pool))
 ```
 
-### A known set of resources is one `with` statement, an item per resource
+### A known set of resources is one `with` or `async with` statement, an item per resource, and an async root runs once under `asyncio.run`
 
 **Why:** the parenthesized form closes them in reverse order exactly as nesting would, and shows
-what is open; `ExitStack` is for a count known only at runtime — one connection per configured
-lender archive — and hides that for two or three fixed resources.
+what is open; `ExitStack` and `AsyncExitStack` are for a count known only at runtime — one
+connection per configured lender archive — and hide that for two or three fixed resources. A pool
+created with a bare `await` and never entered is closed by nobody: the process exits with its
+connections open and the server logs them as dropped. In a web service the framework's startup and
+shutdown hook is this root.
 
 **Example:**
 ```python
@@ -71,31 +73,6 @@ def main() -> None:
         ValuationClient(base_url=settings.valuation_url) as client,
     ):
         import_valuations(agreements=PostgresAgreementLedger(pool), valuations=client)
-```
-
-### An async root has the same shape
-
-**Why:** `asyncio.run(main())` once, `async with` an item per resource, `AsyncExitStack` only for a
-runtime count. A pool created with a bare `await` and never entered is closed by nobody: the process
-exits with its connections open and the server logs them as dropped. In a web service the
-framework's startup and shutdown hook is this root.
-
-**Example:**
-```python
-# WRONG — the pool is created and never closed; shutdown drops its connections mid-protocol
-async def main() -> None:
-    settings = Settings()
-    pool = await AsyncRegistryPool.open(settings.registry_url)
-    office = LoanOffice(agreements=AsyncAgreementLedger(pool))
-    await consume_loan_requests(office)
-
-
-# CORRECT — entered like any resource, and closed on the way out whatever happened
-async def main() -> None:
-    settings = Settings()
-    async with AsyncRegistryPool(settings.registry_url) as pool:
-        office = LoanOffice(agreements=AsyncAgreementLedger(pool))
-        await consume_loan_requests(office)
 ```
 
 ### A class closes only what it built
