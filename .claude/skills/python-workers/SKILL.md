@@ -19,6 +19,8 @@ contracts; the broker library is only what calls them — FastStream on RabbitMQ
 policy `python-tenacity`, the wire model in pydantic `python-pydantic`, and the outbox row a request
 writes `python-persistence`.
 
+- A library's acknowledge-on-receipt default is switched off where the consumer is configured
+
 ## The Handler
 
 ### A handler is a plain function over the raw body and the dependencies it is handed
@@ -227,6 +229,8 @@ Prefetch — how many messages a worker holds before it acks any — is set, nev
 message keeps its ack deadline running, so `prefetch × handler deadline` fits inside it, and an
 unbounded prefetch pulls the whole queue into one worker while the others idle.
 
+- The handler deadline fits inside the drain, and the drain inside the orchestrator's grace period
+
 **Example:**
 ```python
 # WRONG — a print station that stops answering holds the delivery until the broker takes it
@@ -256,17 +260,25 @@ abandon the rest unacknowledged, the numbers that must nest.
 that builds pools and clients, read [composition-root.md](composition-root.md)** — built once in
 the root, nothing at import, hooks per prefork child.
 
+- The handler gets its dependencies from a function `main()` calls, never from a module global
+- A Celery or taskiq app object opens nothing; pools are built in the worker's startup hook
+
 ## Ordering
 
 **Before relying on messages arriving in the order they were published, or partitioning by key,
 read [ordering.md](ordering.md)** — make the order not matter with a version, or buy it with one
 consumer per key.
 
+- A handler that needs order skips an event older than the state it already holds
+
 ## Testing
 
 **Before writing a test for a handler, a fake of the contract it calls, or a broker integration
 test, read [testing.md](testing.md)** — the handler called with a body and a fake, redelivery as a
 second call, one dead-letter test per queue against the real broker.
+
+- A handler's unit test calls it with a body and a fake, and a redelivery is a second call
+- Each queue has one test on the real broker that a rejected message is dead-lettered
 
 ## Libraries
 
