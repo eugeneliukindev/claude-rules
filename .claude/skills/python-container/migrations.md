@@ -1,9 +1,9 @@
 # Migrations
 
-### The migration is a deploy step run once from the release's image, not part of the start command
+### The migration runs once per deploy as a one-shot container of the release's image and tag
 
-**Why:** every replica that migrates at start runs it concurrently, and a failing migration becomes
-a crash loop. The deploy runs it once before the rollout — `docker run --rm IMAGE` with the
-migration command, or a Kubernetes `Job` from the same image and tag; an init container runs once
-per pod and is not that step. The old replicas keep serving meanwhile, which is why the migration is
-expand-first.
+**Why:** the image that serves the release is the one that holds its revisions, so the step runs
+`docker run --rm IMAGE:TAG` with the migration command, or a Kubernetes `Job` from the same image
+and tag, before the rollout; an init container runs once per pod, not once per deploy, and a
+migration in the start command runs in every replica and turns a failing revision into a crash
+loop.

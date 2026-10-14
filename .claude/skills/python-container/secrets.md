@@ -2,12 +2,12 @@
 
 ### One image serves every environment; a build-time secret is a secret mount
 
-**Why:** settings come from the environment at start and are validated before serving
-(`python-wiring`); an `ENV DATABASE_URL` or a copied `.env` bakes one environment in and holds a
-credential in a layer. `ENV` is for facts about the image — `PATH`, the `PYTHON*` flags. A build
-argument used by a `RUN` is recorded in the image history, which `docker history` prints; a secret
-mount exists for one `RUN` and is written nowhere. The credential for a private index named
-`private` is `UV_INDEX_PRIVATE_PASSWORD`, and every sync against that index needs it.
+**Why:** settings come from the environment at start and are validated before serving; an
+`ENV DATABASE_URL` or a copied `.env` bakes one environment in and holds a credential in a layer.
+`ENV` is for facts about the image — `PATH`, the `PYTHON*` flags. A build argument used by a `RUN`
+is recorded in the image history, which `docker history` prints; a secret mount exists for one
+`RUN` and is written nowhere. The credential for a private index named `private` is
+`UV_INDEX_PRIVATE_PASSWORD`, and every sync against that index needs it.
 
 **Example:**
 ```dockerfile

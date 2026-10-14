@@ -57,10 +57,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER 10001
 WORKDIR /app
 EXPOSE 8000
-CMD ["tracker-server"]
+CMD ["tile-server", "--drain-seconds", "25"]
 ```
 
-`tracker-server` is the project's console script, `[project.scripts]` in `pyproject.toml`.
+`tile-server` is the project's console script, `[project.scripts]` in `pyproject.toml`.
 
 ### The builder holds uv and the source; the runtime holds the same interpreter and the environment
 
@@ -75,7 +75,7 @@ managed interpreter fixes `UV_PYTHON_INSTALL_DIR` and is copied too.
 **Example:**
 ```dockerfile
 # WRONG — downloads allowed: with a 3.13 floor on a 3.12 image the build passes, and the container
-# fails with "exec /app/.venv/bin/tracker-server: no such file or directory"
+# fails with "exec /app/.venv/bin/tile-server: no such file or directory"
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
@@ -124,35 +124,17 @@ requests even when the code has not changed.
 ### `CMD` uses the exec form, so the server is PID 1 and receives `SIGTERM`
 
 **Why:** in shell form `/bin/sh -c` is PID 1 and does not forward `SIGTERM`; `docker stop` waits ten
-seconds and sends `SIGKILL`, and the shutdown `python-async` designs
-never runs — with a single command, a `migrate && serve` chain, or a wrapper script that does not
-`exec`. A wrapper is allowed when its last line is `exec "$@"`.
+seconds and sends `SIGKILL`, and the application's shutdown never runs — with a single command, a
+`migrate && serve` chain, or a wrapper script that does not `exec`. A wrapper is allowed when its
+last line is `exec "$@"`.
 
 ### A process you write handles `SIGTERM` itself, because PID 1 ignores what it does not handle
 
-**Why:** an off-the-shelf server installs a `SIGTERM` handler; a worker you write must install its
-own, or the stop runs out the grace period into `SIGKILL`. Handling only Ctrl-C is the version that
-passes on a laptop. `--init` and `tini` forward the signal, but then `SIGTERM`'s default action ends
-Python without running any `finally`, so they replace no handler.
-
-**Example:**
-```python
-# WRONG — Ctrl-C is handled and SIGTERM is not: as PID 1 the stop is ignored until SIGKILL
-def main() -> None:
-    stop = threading.Event()
-    signal.signal(signal.SIGINT, lambda _signal_number, _frame: stop.set())
-    with build_consumer() as consumer:
-        consumer.run_until(stop)
-
-
-# CORRECT — both signals set the event; the consumer stops and the with block closes it
-def main() -> None:
-    stop = threading.Event()
-    for signal_number in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(signal_number, lambda _signal_number, _frame: stop.set())
-    with build_consumer() as consumer:
-        consumer.run_until(stop)
-```
+**Why:** the kernel gives PID 1 no default action for a signal it has no handler for, so the stop
+runs out the grace period into `SIGKILL`. An off-the-shelf server installs its own handler; a
+worker you write installs one for `SIGTERM`, not only Ctrl-C — the version that passes on a laptop.
+`--init` and `tini` forward the signal, but then `SIGTERM`'s default action ends Python without
+running any `finally`, so they replace no handler.
 
 ### The server's drain is bounded a few seconds below the orchestrator's grace period
 
@@ -164,10 +146,10 @@ command.
 **Example:**
 ```dockerfile
 # WRONG — the drain waits for every open request; a stream outlives the grace period
-CMD ["tracker-server"]
+CMD ["tile-server"]
 
 # CORRECT — open requests get 25 seconds, inside the default 30, then the application closes
-CMD ["tracker-server", "--drain-seconds", "25"]
+CMD ["tile-server", "--drain-seconds", "25"]
 ```
 
 ### The image starts its server directly, never through `uv run`

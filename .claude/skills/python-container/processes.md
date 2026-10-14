@@ -13,8 +13,8 @@ what library defaults such as executor sizes see.
 **Example:**
 ```dockerfile
 # WRONG — workers derived from the node's CPU count, not the container's limit
-CMD ["sh", "-c", "exec tracker-server --workers $(( $(nproc) * 2 + 1 ))"]
+CMD ["sh", "-c", "exec tile-server --workers $(( $(nproc) * 2 + 1 ))"]
 
 # CORRECT — one worker; the orchestrator scales by replicas
-CMD ["tracker-server", "--workers", "1"]
+CMD ["tile-server", "--workers", "1"]
 ```

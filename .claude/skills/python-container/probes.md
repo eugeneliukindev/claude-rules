@@ -3,29 +3,31 @@
 ### Liveness asks only whether the process answers; readiness asks about its dependencies
 
 **Why:** a failed liveness probe restarts the container, a failed readiness probe takes it out of
-the endpoints. If liveness checked the database, an outage would restart every replica, over and
-over, and no restart fixes the database. The readiness check runs under a deadline shorter than the
-probe's timeout (`python-boundaries`); a slow start is a startup probe's job, not a long initial
-delay on liveness.
+the endpoints. If liveness checked the tile pyramid, its outage would restart every replica, over
+and over, and no restart fixes the tile pyramid. The readiness check runs under a deadline shorter
+than the probe's timeout; a slow start is a startup probe's job, not a long initial delay on
+liveness.
 
 **Example:**
 ```python
-# WRONG — liveness asks the database: while it is down, every replica is restarted, over and over
-async def liveness(database: Database) -> HTTPStatus:
-    await database.ping()
+# WRONG — liveness asks the tile pyramid: while it is down, every replica restarts, over and over
+async def liveness(*, pyramid: TilePyramid) -> HTTPStatus:
+    await pyramid.ping()
     return HTTPStatus.NO_CONTENT
 
 
-# CORRECT — liveness asks only whether the process answers; the database decides readiness
+# CORRECT — liveness asks only whether the process answers; the tile pyramid decides readiness
 async def liveness() -> HTTPStatus:
     return HTTPStatus.NO_CONTENT
 
 
-async def readiness(database: Database) -> HTTPStatus:
+async def readiness(
+    *, pyramid: TilePyramid, deadline_seconds: float = _READINESS_DEADLINE_SECONDS
+) -> HTTPStatus:
     try:
-        async with asyncio.timeout(_READINESS_DEADLINE_SECONDS):
-            await database.ping()
-    except (DatabaseUnavailableError, TimeoutError):
+        async with asyncio.timeout(deadline_seconds):
+            await pyramid.ping()
+    except (TilePyramidUnavailableError, TimeoutError):
         return HTTPStatus.SERVICE_UNAVAILABLE
     return HTTPStatus.NO_CONTENT
 ```
