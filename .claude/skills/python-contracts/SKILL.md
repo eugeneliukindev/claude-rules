@@ -2,9 +2,9 @@
 name: python-contracts
 description: >-
   Designs contracts past the defaults: Protocol against ABC, runtime checks, the shapes a contract
-  method takes, where implementations and fakes live. Use when writing an abstract base class, a
-  Protocol, a base class or mixin, a second implementation or a test fake, or deciding what a
-  consumer depends on. Not for a metaclass or __init_subclass__ (python-metaclasses).
+  method takes, what a consumer is handed, where implementations and fakes live. ALWAYS invoke this
+  skill when a task adds a second implementation or store, an in-memory or fake one for tests, an
+  abstract base class, a Protocol, a base class or mixin. Do not write a contract directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
