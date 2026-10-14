@@ -252,3 +252,5 @@ shutdown tests, the fake that records a lookup started.
 **Before running a gRPC server beside a FastAPI app, read
 [fastapi-grpc.md](../python-integrations/fastapi-grpc.md)** — the server entered in the lifespan,
 under one worker.
+
+- Beside FastAPI, the gRPC server lives in the lifespan, and the app runs one worker
