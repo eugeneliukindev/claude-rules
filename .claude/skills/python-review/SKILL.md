@@ -1,9 +1,10 @@
 ---
 name: python-review
 description: >-
-  Reviews Python changes against these rules: the tools first, then the prefix check, then the
-  Definition of Done checks per changed unit, reported as findings. Use when asked to review
-  Python code, a diff, a branch or a pull request, or to check that Python work is done.
+  Reviews Python changes against these rules: the tools first, then the Definition of Done checks
+  per changed unit, reported as findings. ALWAYS invoke this skill when asked to review Python code,
+  a diff, a branch or a pull request, or to check that Python work is done. Do not review Python
+  changes directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -11,7 +12,7 @@ paths:
 
 # Reviewing Python Changes
 
-`core.md` ends with eight checks no tool makes, and they are skipped first under pressure. This is
+`core.md` ends with the checks no tool makes, and they are skipped first under pressure. This is
 the procedure that runs them. It reviews a **diff**: what changed, against these files — not the
 whole repository, and not the code's taste.
 
@@ -40,18 +41,7 @@ Each failure is a finding. A new suppression in the diff — `# noqa`, `# type: 
 per-file ignore, a raised limit — is a finding unless it carries its rule code and reason on its
 line (`core.md`).
 
-## 3. Run the Scripted Check
-
-For every package root the diff touches:
-
-```bash
-python <python-packaging skill's directory>/scripts/find_unprefixed_names.py src/yourpackage
-```
-
-A reported name that the diff introduced or moved is a finding; a reported name the diff did not
-touch goes to the untouched list (step 5).
-
-## 4. The Eight Checks, Unit by Unit
+## 3. The Checks, Unit by Unit
 
 For every changed unit, each question below, answered from the code and not from the description
 of the change. Each question names the file whose rule decides it; open that file when the answer
@@ -61,10 +51,11 @@ is not obvious.
    relocation test: no history, place, caller or neighbour in the name.
 2. **Actors** — every new module and class answers to one actor. Name who would ask to change each
    function; two answers are two modules (`classes.md`).
-3. **Reasons to exist** — every new helper has one of the six reasons in `functions.md` and fails
+3. **Reasons to exist** — every new helper has a reason from `functions.md` and fails
    none of the shallow-helper tests; every new class has a trigger from `classes.md`.
 4. **Surface** — constants at the top of the module; every top-level name used by nothing outside
-   its module is prefixed (step 3 has the evidence).
+   its module is prefixed — run `python scripts/find_unprefixed_names.py .` from this skill over the
+   project root, so the tests count as callers, and report what it lists.
 5. **Abstraction level** — no generically named unit branches on a concrete type, channel, vendor,
    tenant or environment; no concrete rule lives in two places (`naming.md`).
 6. **Types** — no `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on
@@ -78,13 +69,13 @@ is not obvious.
 8. **Comments** — every comment is one of the four forms in `comments.md` and passes the relocation
    test; no credential, URL or environment value is hardcoded.
 
-Then the skills the diff reaches: an `async def` is read against `python-async`, a thread or a pool
-against `python-sync`, a query against `python-persistence`, a migration against
-`python-migrations`, an outbound call against `python-boundaries`, a settings field against
-`python-wiring`, an import of a library against its `python-<library>` skill. A test file is read
-against `testing.md`.
+Then the skills the diff reaches: an outbound call, a file or a payload against
+`python-boundaries`, outside input or an access check against `python-security`, a settings field
+or an entry point against `python-wiring`, a new representation against `python-types`, a contract
+or a fake against `python-contracts`. A call into a library is read against that library's current
+documentation, not from memory. A test file is read against `testing.md`.
 
-## 5. Report
+## 4. Report
 
 One finding per defect, most severe first — a wrong result or a lost error before a name:
 
@@ -102,4 +93,4 @@ src/shop/orders.py:42 — errors.md: `except Exception` around the whole loop sw
 - **A step that could not run is reported**, with the reason — a tool missing, tests needing a
   database — never silently skipped.
 
-When asked to fix as well, fix the findings in the diff, rerun steps 2–3, and report what changed.
+When asked to fix as well, fix the findings in the diff, rerun step 2, and report what changed.
