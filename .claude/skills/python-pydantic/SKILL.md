@@ -210,16 +210,24 @@ validated, such as rows just written; it will build an invalid model without a w
 [serialization.md](serialization.md)** — `model_dump_json`, `mode="json"`, `exclude_unset` as a
 contract, no `model_dump()` splat.
 
+- JSON comes from `model_dump_json`, a dict of primitives from `model_dump(mode="json")`
+- `exclude_none`, `exclude_unset` and `exclude_defaults` are contract decisions
+
 ## Unions
 
 **Before validating a field that may be one of several models, read [unions.md](unions.md)** — a
 discriminator instead of trying every member.
+
+- A union of models is discriminated on a literal field
 
 ## Settings
 
 **Before defining a `BaseSettings` or a credential field, read [settings.md](settings.md)** — built
 validated at startup, `SecretStr` for credentials, `extra="ignore"` on
 classes that share a `.env` file.
+
+- `BaseSettings` is validated at startup, with credentials as `SecretStr`
+- Settings classes that share one `.env` file each set `extra="ignore"`
 
 ## With Other Libraries
 
