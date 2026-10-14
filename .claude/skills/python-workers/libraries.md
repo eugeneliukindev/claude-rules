@@ -6,7 +6,7 @@ signal handler is an `untyped-decorator` error until the `celery-types` stubs ar
 
 | | ack after the work | bounded attempts | dead letters | handler deadline | in flight |
 |---|---|---|---|---|---|
-| FastStream on RabbitMQ (`python-faststream`) | `AckPolicy.REJECT_ON_ERROR` | queue's `x-delivery-limit` | queue's `x-dead-letter-exchange` | `asyncio.timeout` | `Channel(prefetch_count=…)`; none by default |
+| FastStream on RabbitMQ | `AckPolicy.REJECT_ON_ERROR` | queue's `x-delivery-limit` | queue's `x-dead-letter-exchange` | `asyncio.timeout` | `Channel(prefetch_count=…)`; none by default |
 | Celery | `acks_late=True` and `task_reject_on_worker_lost=True`; the default acks before running | `max_retries` (3) | none built in: a failed task is acked | `soft_time_limit`, `time_limit` | `worker_prefetch_multiplier` × concurrency (4) |
 | taskiq | `--ack-type` `when_saved` (default) or `when_executed` | `SmartRetryMiddleware(default_retry_count=…)` | none built in | `timeout` label | `--max-async-tasks` (100) |
 | aiokafka | `enable_auto_commit=False`, `commit()` after; the default commits every 5 s whatever happened | your own counter | a dead-letter topic | `asyncio.timeout` | `max_poll_records`; none by default |
@@ -21,20 +21,20 @@ row above names the switch for each library.
 **Example:**
 ```python
 # WRONG — Celery's default: the task is acknowledged before it runs
-celery_app = Celery("bookings")
+photo_lab = Celery("photo_lab")
 
 
-@celery_app.task
-def confirm_booking_task(body: str) -> None:
-    asyncio.run(on_booking_confirmed(body.encode(), inventory=_resources.inventory))
+@photo_lab.task
+def enlarge_scan(body: str) -> None:
+    asyncio.run(on_enlargement_requested(body.encode(), print_station=_lab.print_station))
 
 
 # CORRECT — acknowledged after the task returns, and redelivered if its worker dies
-celery_app = Celery("bookings")
-celery_app.conf.update(task_acks_late=True, task_reject_on_worker_lost=True)
+photo_lab = Celery("photo_lab")
+photo_lab.conf.update(task_acks_late=True, task_reject_on_worker_lost=True)
 
 
-@celery_app.task
-def confirm_booking_task(body: str) -> None:
-    asyncio.run(on_booking_confirmed(body.encode(), inventory=_resources.inventory))
+@photo_lab.task
+def enlarge_scan(body: str) -> None:
+    asyncio.run(on_enlargement_requested(body.encode(), print_station=_lab.print_station))
 ```

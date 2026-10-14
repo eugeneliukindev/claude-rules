@@ -1,7 +1,7 @@
 # The Worker's Composition Root
 
 Settings, pools and clients are built once in `main()`, passed down and closed in reverse; nothing
-connects at import time (why: `python-wiring`). FastStream's shape is in `python-faststream`.
+connects at import time (`modules.md`).
 
 ### The handler gets its dependencies from a function `main()` calls, never from a module global
 
@@ -12,20 +12,20 @@ for.
 
 **Example:**
 ```python
-# WRONG — the inventory client is built at import, from the environment
-_INVENTORY: Final = HttpRoomInventory(base_url=os.environ["INVENTORY_URL"])
+# WRONG — the print station client is built at import, from the environment
+_PRINT_STATION: Final = HttpPrintStation(base_url=os.environ["PRINT_STATION_URL"])
 
 
-async def on_booking_confirmed_task(body: str) -> None:
-    await on_booking_confirmed(body.encode(), inventory=_INVENTORY)
+async def enlarge_scan(body: str) -> None:
+    await on_enlargement_requested(body.encode(), print_station=_PRINT_STATION)
 
 
-# CORRECT — main() builds the inventory and registers the handler with it
-def register_booking_handlers(consumer: Consumer, *, inventory: RoomInventory) -> None:
-    async def on_booking_confirmed_task(body: str) -> None:
-        await on_booking_confirmed(body.encode(), inventory=inventory)
+# CORRECT — main() builds the print station and registers the handler with it
+def register_enlargement_handler(lab_queue: LabQueue, *, print_station: PrintStation) -> None:
+    async def enlarge_scan(body: str) -> None:
+        await on_enlargement_requested(body.encode(), print_station=print_station)
 
-    consumer.register("bookings.confirmed", on_booking_confirmed_task)
+    lab_queue.register(_ENLARGEMENTS_QUEUE_NAME, enlarge_scan)
 ```
 
 ### A Celery or taskiq app object opens nothing; pools are built in the worker's startup hook
@@ -38,21 +38,22 @@ built before the fork is shared by every child — and closed in the matching sh
 **Example:**
 ```python
 # WRONG — the pool is created at import, before the fork: every child shares its sockets
-celery_app = Celery("bookings")
-_POOL: Final = open_database_pool(os.environ["DATABASE_URL"])
+photo_lab = Celery("photo_lab")
+_SCAN_POOL: Final = connect_scan_pool(os.environ["SCAN_DATABASE_URL"])
 
 
 # CORRECT — each prefork child builds its own pool after the fork, and disposes it on exit
-celery_app = Celery("bookings")
-_resources = WorkerResources()
+photo_lab = Celery("photo_lab")
+_lab = LabResources()
 
 
 @worker_process_init.connect
-def _open_resources(**_: object) -> None:
-    _resources.open(Settings())
+def _open_lab(**_: object) -> None:
+    settings = LabSettings()
+    _lab.open(scan_database_url=settings.scan_database_url)
 
 
 @worker_process_shutdown.connect
-def _close_resources(**_: object) -> None:
-    _resources.close()
+def _close_lab(**_: object) -> None:
+    _lab.close()
 ```

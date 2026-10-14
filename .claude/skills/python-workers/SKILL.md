@@ -15,10 +15,9 @@ paths:
 Consumer design, whatever the broker. The examples are plain functions over the application's own
 contracts; the broker library is only what calls them — FastStream on RabbitMQ is
 `python-faststream`, and Celery 5.6, taskiq 0.13, aiokafka 0.14 and arq 0.28 are mapped in
-[libraries.md](libraries.md). The rules a consumer shares with every adapter — idempotent consumers,
-one retry level, versioned payloads — are in `python-boundaries`. The adapter's retry policy is
-`python-tenacity`, and the wire model's strict, versioned JSON parsing in pydantic is
-`python-pydantic`.
+[libraries.md](libraries.md). Which failures an adapter retries is `python-boundaries`, its retry
+policy `python-tenacity`, the wire model in pydantic `python-pydantic`, and the outbox row a request
+writes `python-persistence`.
 
 ## The Handler
 
@@ -28,26 +27,32 @@ one retry level, versioned payloads — are in `python-boundaries`. The adapter'
 return or raise — returning means done, raising means failed, and "requeue" or "reject" stay in
 the library's wrapper. A plain function validates the payload, bounds the work and calls the use
 case, so every rule below is testable without a broker and the same on every broker.
-`RoomInventory` is the application's contract (`python-contracts`).
 
 **Example:**
 ```python
-# WRONG — the handler is the library's message object and a module-level inventory
-@broker.subscriber("bookings.confirmed")
-async def on_booking_confirmed(message: RabbitMessage) -> None:
-    payload = json.loads(message.body)
-    await _INVENTORY.hold(payload["booking_id"], idempotency_key=payload["event_id"])
+# WRONG — a dict the library decoded, and a print station from a module global
+async def on_enlargement_requested(
+    payload: Mapping[str, str], *, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    async with asyncio.timeout(deadline_seconds):
+        await _PRINT_STATION.submit(
+            ScanId(payload["scan_id"]), idempotency_key=payload["enlargement_id"]
+        )
 
 
 # CORRECT — the body and the contract in; the library's wrapper only passes them
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 
 
-async def hold_room(event: BookingConfirmed, *, inventory: RoomInventory) -> None:
-    await inventory.hold(event.booking_id, idempotency_key=str(event.event_id))
+async def submit_enlargement(
+    request: EnlargementRequested, *, print_station: PrintStation
+) -> None:
+    await print_station.submit(request.scan_id, idempotency_key=str(request.enlargement_id))
 ```
 
 ## Delivery Is At Least Once
@@ -65,16 +70,18 @@ message can come back — the dead-letter queue's retention, not the redelivery 
 
 **Example:**
 ```python
-# WRONG — the delivery's id: the republished copy arrives under a new one and is held again
-async def hold_room(
-    event: BookingConfirmed, *, delivery_id: str, inventory: RoomInventory
+# WRONG — the delivery's id: the republished copy arrives under a new one and is printed again
+async def submit_enlargement(
+    request: EnlargementRequested, *, delivery_id: str, print_station: PrintStation
 ) -> None:
-    await inventory.hold(event.booking_id, idempotency_key=delivery_id)
+    await print_station.submit(request.scan_id, idempotency_key=delivery_id)
 
 
-# CORRECT — the event's id, minted with the event and carried in the payload
-async def hold_room(event: BookingConfirmed, *, inventory: RoomInventory) -> None:
-    await inventory.hold(event.booking_id, idempotency_key=str(event.event_id))
+# CORRECT — the request's id, minted with the event and carried in the payload
+async def submit_enlargement(
+    request: EnlargementRequested, *, print_station: PrintStation
+) -> None:
+    await print_station.submit(request.scan_id, idempotency_key=str(request.enlargement_id))
 ```
 
 ### The handler returns only once its work has committed
@@ -88,19 +95,21 @@ handler returns ([libraries.md](libraries.md)).
 
 **Example:**
 ```python
-# WRONG — returns before the room is held: the ack follows, and a crash loses the booking
-async def on_booking_confirmed(
-    body: bytes, /, *, inventory: RoomInventory, tasks: asyncio.TaskGroup
+# WRONG — returns before the print job is submitted: the ack follows, and a crash loses it
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, tasks: asyncio.TaskGroup
 ) -> None:
-    event = parse_booking_confirmed(body)
-    tasks.create_task(hold_room(event, inventory=inventory))
+    request = parse_enlargement_requested(body)
+    tasks.create_task(submit_enlargement(request, print_station=print_station))
 
 
-# CORRECT — returns once the room is held, so the ack that follows is true
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+# CORRECT — returns once the print job is submitted, so the ack that follows is true
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 ```
 
 ## Failure
@@ -109,40 +118,43 @@ async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> N
 
 **Why:** caught and logged, an error becomes a return, and a return is an acknowledgement — the
 message is gone. A failing message gets a bounded number of attempts, then a dead-letter queue
-whose depth is a metric with an alert (`python-observability`). Two bounds are needed because a
-crash raises nothing: the library reports a raised error, and only the broker's delivery limit
-catches a worker killed mid-handler. A payload that fails validation is dead-lettered on its first
+whose depth is a metric with an alert. Two bounds are needed because a crash raises nothing: the
+library reports a raised error, and only the broker's delivery limit catches a worker killed
+mid-handler. A payload that fails validation is dead-lettered on its first
 delivery. Where the library has no dead-letter queue — Celery, taskiq, arq — the handler records
 the failure before the error escapes; on Kafka the consumer publishes the record to a dead-letter
 topic and commits, since a partition retrying one record blocks every record behind it.
 
 **Example:**
 ```python
-# WRONG — the error is logged and swallowed: the handler returns, and the ack drops the booking
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
+# WRONG — the error is logged and swallowed: the handler returns, and the ack drops the request
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
     try:
-        async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-            await hold_room(event, inventory=inventory)
-    except InventoryError:
-        logger.exception("room hold failed", extra={"booking_id": str(event.booking_id)})
+        async with asyncio.timeout(deadline_seconds):
+            await submit_enlargement(request, print_station=print_station)
+    except PrintStationError:
+        logger.exception("enlargement failed", extra={"scan_id": request.scan_id})
 
 
 # CORRECT — the error escapes: a failed delivery, counted toward the dead-letter queue
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 ```
 
-### Each failure is retried by exactly one layer
+### A failure is retried by the adapter or by the broker, never both
 
-**Why:** the broker redelivers and the adapter's retry policy retries; together they multiply
-— three attempts in the adapter under a delivery limit of five is fifteen calls to a dependency
-that is already struggling (`python-boundaries`). A redelivery comes at once, with no backoff, so a
-retry with backoff that fits inside the handler's deadline lives in the adapter,
-and the final error escapes to the dead-letter queue. A wait longer than the
-deadline is the broker's — Celery's `self.retry(countdown=...)`, taskiq's `SmartRetryMiddleware`,
+**Why:** the broker redelivers and the adapter's retry policy retries; together they multiply —
+three attempts in the adapter under a delivery limit of five is fifteen calls to a dependency that
+is already struggling. A redelivery comes at once, with no backoff, so a retry with backoff that
+fits inside the handler's deadline lives in the adapter, and the final error escapes to the
+dead-letter queue. A wait longer than the deadline is the broker's — Celery's `self.retry(countdown=...)`, taskiq's `SmartRetryMiddleware`,
 a delayed retry queue — and the adapter then does not retry. The delivery limit stays either way:
 it bounds crashes, not exceptions.
 
@@ -150,47 +162,50 @@ it bounds crashes, not exceptions.
 ```python
 # WRONG — the handler retries an adapter that retries, under a broker that redelivers
 @_RETRY_TRANSIENT
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 
 
-# CORRECT — the adapter behind RoomInventory retries inside the deadline; the handler does not
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+# CORRECT — the adapter behind PrintStation retries inside the deadline; the handler does not
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 ```
 
 ## The Payload
 
 ### The body is validated as JSON into a strict, versioned wire model
 
-**Why:** a message is a boundary — a wire model validated where it is consumed and converted to a
-domain object, never a domain or ORM object and never a pickle (`python-boundaries`); Celery's
-`pickle` in `accept_content` lets anyone who can publish run code in the worker. The raw body goes
-to the wire model whole, never a dict a library decoded first; a task library
-that decodes its arguments itself is handed the JSON text as its one argument. Queued payloads
-ignore added fields and pin their version with a `Literal`; a consumer that also knows v2
+**Why:** a message is a boundary, validated where it is consumed and converted to a domain object,
+never a pickle: Celery's `pickle` in `accept_content` lets anyone who can publish run code in the
+worker. The raw body goes to the wire model whole, never a dict a library decoded first; a task
+library that decodes its arguments itself is handed the JSON text as its one argument. Queued
+payloads ignore added fields and pin their version with a `Literal`; a consumer that also knows v2
 validates a union discriminated on `version`. A request that enqueues work writes an outbox row in
-its own transaction (`python-persistence`), and `BackgroundTasks` are no substitute.
+its own transaction, and `BackgroundTasks` are no substitute.
 
 **Example:**
 ```python
 # WRONG — a dict, no version, and any shape accepted
-def parse_booking_confirmed(body: bytes) -> BookingConfirmed:
+def parse_enlargement_requested(body: bytes) -> EnlargementRequested:
     payload = json.loads(body)
-    return BookingConfirmed(
-        event_id=EventId(UUID(payload["event_id"])),
-        booking_id=BookingId(UUID(payload["booking_id"])),
-        confirmed_at=datetime.fromisoformat(payload["confirmed_at"]),
+    return EnlargementRequested(
+        enlargement_id=EnlargementId(UUID(payload["enlargement_id"])),
+        scan_id=ScanId(payload["scan_id"]),
+        requested_at=datetime.fromisoformat(payload["requested_at"]),
     )
 
 
 # CORRECT — the wire model of a pinned version parses the whole body in one step
-def parse_booking_confirmed(body: bytes) -> BookingConfirmed:
-    return BookingConfirmedV1.from_json(body).to_domain()
+def parse_enlargement_requested(body: bytes) -> EnlargementRequested:
+    return EnlargementRequestedV1.from_json(body).to_domain()
 ```
 
 ## Deadlines Nest
@@ -214,17 +229,19 @@ unbounded prefetch pulls the whole queue into one worker while the others idle.
 
 **Example:**
 ```python
-# WRONG — an inventory service that stops answering holds the delivery until the broker takes it
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    await hold_room(event, inventory=inventory)
+# WRONG — a print station that stops answering holds the delivery until the broker takes it
+async def on_enlargement_requested(body: bytes, /, *, print_station: PrintStation) -> None:
+    request = parse_enlargement_requested(body)
+    await submit_enlargement(request, print_station=print_station)
 
 
 # CORRECT — the handler gives up at its own deadline, well inside the broker's
-async def on_booking_confirmed(body: bytes, /, *, inventory: RoomInventory) -> None:
-    event = parse_booking_confirmed(body)
-    async with asyncio.timeout(_HANDLER_DEADLINE_SECONDS):
-        await hold_room(event, inventory=inventory)
+async def on_enlargement_requested(
+    body: bytes, /, *, print_station: PrintStation, deadline_seconds: float = _DEADLINE_SECONDS
+) -> None:
+    request = parse_enlargement_requested(body)
+    async with asyncio.timeout(deadline_seconds):
+        await submit_enlargement(request, print_station=print_station)
 ```
 
 ## Shutdown

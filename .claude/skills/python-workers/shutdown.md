@@ -2,8 +2,7 @@
 
 On `SIGTERM` a worker stops fetching, lets the handlers in flight finish within a bound, abandons
 the rest unacknowledged — the broker redelivers them, and the delivery limit counts each one — and
-then closes its resources. The general shape is `python-async`'s; the worker's part is the numbers.
-FastStream's drain timeout is in `python-faststream`.
+then closes its resources. The worker's part is the numbers.
 
 ### The handler deadline fits inside the drain, and the drain inside the orchestrator's grace period
 
