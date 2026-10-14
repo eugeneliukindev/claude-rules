@@ -207,11 +207,28 @@ async def report_damage(
 a protected route, read [authentication.md](authentication.md)** — one fixed 401 body, 503 for an
 unreachable key set, `set_cookie` flags, tests through the app.
 
+- The bearer dependency is a plain `def` that turns every rejection into one fixed 401
+- `set_cookie` sets `secure`, `httponly` and `samesite` on purpose
+- Protected routes are tested through the app built with a fake verifier
+
 ## Streaming and WebSockets
 
 **Before writing a route that streams — a generator under `EventSourceResponse`, a
 `StreamingResponse`, a WebSocket — read [streaming.md](streaming.md)** — the response classes, how a
 disconnect arrives, the WebSocket handler, uvicorn's flags, the tests.
+
+- Events go out through an `EventSourceResponse`, never a bare `StreamingResponse`
+- `Last-Event-ID` is a typed header parameter
+- A route that works between sends polls `request.is_disconnected()`
+- A streaming route takes no connection through `Depends`
+- A WebSocket handler runs pusher and reader in one `TaskGroup` and closes with a code per ending
+- `WebSocketDisconnect` ends the reader; it is never caught to keep reading
+- Handshake checks are router dependencies that raise `WebSocketException` with 1008
+- A frame is read with `receive_text` and handed to the edge's parser, never `receive_json`
+- A download is a generator handed to `StreamingResponse`, and blocking reads go in a sync one
+- uvicorn is started with the limits a long-lived connection needs
+- A WebSocket is tested through `websocket_connect`, inside `with TestClient(app)`
+- An SSE route is tested with a stream that ends
 
 ## Testing
 
@@ -219,11 +236,19 @@ disconnect arrives, the WebSocket handler, uvicorn's flags, the tests.
 `httpx2`, an async client with `LifespanManager`, the test root through the factory or
 `dependency_overrides`.
 
+- `TestClient` is entered with `with`, and `httpx2` is in the test dependencies
+- An async test uses an async client through `LifespanManager`
+- The test root is the factory or `dependency_overrides`, never a patched module
+
 ## Serving
 
 **Before writing the entry point that runs uvicorn, read [serving.md](serving.md)** — the settings
 built there and unpacked into the factory, the drain bounded below the grace period, and
 `forwarded_allow_ips` set to the proxy's network behind one.
+
+- The entry point builds the settings and runs uvicorn with the app; the app reads no environment
+- The drain is bounded with `timeout_graceful_shutdown`, a few seconds below the grace period
+- Behind a proxy, `forwarded_allow_ips` names the proxy's network
 
 ## With Other Libraries
 
