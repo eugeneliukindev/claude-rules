@@ -224,15 +224,22 @@ class ArticleEditing:
 **Before caching a hot or expensive key — one that many concurrent requests read — read
 [stampede.md](stampede.md)** — single-flight per key in one process, refresh ahead across processes.
 
+- In one process, a miss for a key that is already loading awaits that load
+- Across processes, a hot and expensive key is refreshed before it expires, by one caller
+
 ## Negative Caching
 
 **Before caching the answer "this does not exist", read [negative-caching.md](negative-caching.md)**
 — absence as its own payload, its own shorter TTL, deleted when the entity is created.
 
+- Whether absence is cached is decided per kind, with its own shorter TTL
+
 ## A Lock in the Cache
 
 **Before using the cache as a lock — `add` as a marker, "only one worker should do this" — read
 [locks.md](locks.md)** — an efficiency lock only; correctness from the resource.
+
+- A lock held in a cache spares duplicate work; the resource itself guarantees correctness
 
 ## In-Process Caches
 
@@ -240,7 +247,13 @@ class ArticleEditing:
 one process, read [in-process.md](in-process.md)** — per process, bounded on both axes, an injected
 timer, never on an `async def`.
 
+- An in-process cache holds what may be stale for its TTL, bounded, in an object the root builds
+- cachetools' decorators never go on an `async def`
+
 ## Testing
 
 **Before writing a fake cache or a test of a service that caches, read [testing.md](testing.md)**
 — the fake against an injected clock, an unreachable cache that answers as an empty one.
+
+- The service's unit tests run on a fake that honours the TTL against an injected clock
+- An unreachable cache answers as an empty one, within its timeout
