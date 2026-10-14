@@ -222,3 +222,8 @@ and the deprecated `close()` under warnings as errors.
 [cashews-fastapi.md](../python-integrations/cashews-fastapi.md)** — the cache entered in the
 lifespan, no middleware that lets a client clear it, decorators on the service and not the route,
 and 429 and 503 for its rate limit and circuit breaker.
+
+- The lifespan sets up the app's `cashews.Cache` and closes it in `finally`
+- The app installs none of cashews' FastAPI middlewares
+- A cashews decorator goes on the service or the adapter, never on the route
+- `RateLimitError` is a 429 and `CircuitBreakerOpen` a 503, each with `Retry-After`
