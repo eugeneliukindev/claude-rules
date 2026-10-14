@@ -13,10 +13,10 @@ paths:
 # Security
 
 Input from outside the process, whatever library reads it. The rules name the function, because the
-function is what gets copied. Where a secret lives is `python-wiring`, and keeping it out of a
-`repr` is `python-types`; verifying a bearer token and IDOR are `python-auth`; a WebSocket's
-`Origin` check is `python-streaming`; a `LiteralString` check under pyright is `python-types`;
-dependency scanning is `python-project`; an exception escaping a gRPC handler is `python-grpc`.
+function is what gets copied. Where a secret lives is `python-wiring`; keeping it out of a `repr`
+and a `LiteralString` check are `python-types`; verifying a bearer token and who may touch which
+resource are `python-auth`; a WebSocket's `Origin` check is `python-streaming`; dependency scanning
+is `python-project`; an exception escaping a gRPC handler is `python-grpc`.
 
 ## Untrusted Data
 
@@ -29,26 +29,28 @@ too, never a joined string.
 **Example:**
 ```python
 # WRONG — the sort column arrives from the query string, so the query string writes SQL
-def open_tickets(*, connection: sqlite3.Connection, queue_id: int, sort_by: str) -> list[Row]:
-    query = f"SELECT ticket_id, subject FROM tickets WHERE queue_id = ? ORDER BY {sort_by}"
-    return connection.execute(query, (queue_id,)).fetchall()
+def queued_print_jobs(
+    press_id: int, *, connection: sqlite3.Connection, sort_by: str
+) -> list[tuple[int, str]]:
+    query = f"SELECT job_id, title FROM print_jobs WHERE press_id = ? ORDER BY {sort_by}"
+    return connection.execute(query, (press_id,)).fetchall()
 
 
 # CORRECT — the clause is one of two constants; only the value travels as a parameter
-_ORDER_BY: Final = MappingProxyType(
-    {TicketSort.NEWEST: "opened_at DESC", TicketSort.OLDEST: "opened_at ASC"}
+_PRINT_JOB_ORDER: Final = MappingProxyType(
+    {PrintJobSort.NEWEST: "queued_at DESC", PrintJobSort.OLDEST: "queued_at ASC"}
 )
 
 
-def open_tickets(
-    *, connection: sqlite3.Connection, queue_id: int, sort_by: TicketSort
-) -> list[Row]:
-    order_by = _ORDER_BY[sort_by]
+def queued_print_jobs(
+    press_id: int, *, connection: sqlite3.Connection, sort_by: PrintJobSort
+) -> list[tuple[int, str]]:
+    order_clause = _PRINT_JOB_ORDER[sort_by]
     query = (
-        "SELECT ticket_id, subject FROM tickets WHERE queue_id = ?"
-        f" ORDER BY {order_by}"  # noqa: S608  # allowlisted identifier
+        "SELECT job_id, title FROM print_jobs WHERE press_id = ?"
+        f" ORDER BY {order_clause}"  # noqa: S608  # allowlisted identifier
     )
-    return connection.execute(query, (queue_id,)).fetchall()
+    return connection.execute(query, (press_id,)).fetchall()
 ```
 
 ### An untrusted document is parsed by the safe parser, and nothing from outside is evaluated
@@ -69,20 +71,20 @@ check.
 
 **Example:**
 ```python
-# WRONG — inflates whatever the payload expands to
-def read_upload(payload: bytes) -> bytes:
-    return gzip.decompress(payload)
+# WRONG — inflates whatever the artwork expands to
+def inflate_artwork(compressed: bytes) -> bytes:
+    return gzip.decompress(compressed)
 
 
 # CORRECT — inflate at most one byte past the limit, refuse that, and refuse a truncated stream
-def read_upload(payload: bytes, *, max_bytes: int = _MAX_DOCUMENT_BYTES) -> bytes:
+def inflate_artwork(compressed: bytes, *, max_bytes: int = _MAX_ARTWORK_BYTES) -> bytes:
     inflater = zlib.decompressobj(wbits=_GZIP_WBITS)
-    document = inflater.decompress(payload, max_bytes + 1)
-    if len(document) > max_bytes:
-        raise PayloadTooLargeError(max_bytes)
+    artwork = inflater.decompress(compressed, max_bytes + 1)
+    if len(artwork) > max_bytes:
+        raise ArtworkTooLargeError(max_bytes)
     if not inflater.eof:
-        raise MalformedPayloadError("compressed stream is truncated")
-    return document
+        raise TruncatedArtworkError(len(compressed))
+    return artwork
 ```
 
 ## Decisions That Fail Closed
@@ -90,19 +92,19 @@ def read_upload(payload: bytes, *, max_bytes: int = _MAX_DOCUMENT_BYTES) -> byte
 ### A permission check allows what it lists, and an error inside it denies
 
 **Why:** a check that denies a list of roles allows every role added after it; one that allows a
-list denies them. Authorization lives in the service, not only at the edge, and the edge declares
-authentication once with the public routes as the reviewed exception.
+list denies them. A lookup that fails inside the check — the store holding the roles times out —
+raises or denies, and nothing catches it into an allow.
 
 **Example:**
 ```python
-# WRONG — denies the roles it lists, so a role added next year may refund anything
-def can_refund(agent: Agent) -> bool:
-    return agent.role not in _ROLES_WITHOUT_REFUNDS
+# WRONG — denies the roles it lists, so a role added next year may sign off any proof
+def can_approve_proof(operator: PressOperator) -> bool:
+    return operator.role not in _ROLES_WITHOUT_PROOF_APPROVAL
 
 
 # CORRECT — allows the roles it lists; every other role, a new one included, is denied
-def can_refund(agent: Agent) -> bool:
-    return agent.role in _REFUNDING_ROLES
+def can_approve_proof(operator: PressOperator) -> bool:
+    return operator.role in _PROOF_APPROVING_ROLES
 ```
 
 ### A secret is compared with `hmac.compare_digest`, never `==`

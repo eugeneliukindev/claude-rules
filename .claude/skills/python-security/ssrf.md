@@ -13,20 +13,20 @@ closes that gap.
 **Example:**
 ```python
 # WRONG — the name is checked, and a name that resolves to the metadata service passes
-def require_allowed_url(url: str) -> None:
+def require_public_artwork_url(url: str) -> None:
     host = urlsplit(url).hostname
     if host is None or host in _BLOCKED_HOSTS:
-        raise ForbiddenUrlError(url)
+        raise ArtworkUrlRefusedError(url)
 
 
 # CORRECT — every address the name resolves to must be a public one
-def require_allowed_url(url: str) -> None:
+def require_public_artwork_url(url: str) -> None:
     host = urlsplit(url).hostname
     if host is None:
-        raise ForbiddenUrlError(url)
+        raise ArtworkUrlRefusedError(url)
     for *_, socket_address in socket.getaddrinfo(host, None):
         if not ipaddress.ip_address(socket_address[0]).is_global:
-            raise ForbiddenUrlError(url)
+            raise ArtworkUrlRefusedError(url)
 ```
 
 ### Redirects are followed by hand, and every hop is checked before it is requested
@@ -37,20 +37,22 @@ redirect to `169.254.169.254` on its own.
 **Example:**
 ```python
 # WRONG — only the first URL is checked; a redirect to the metadata service is followed unchecked
-def fetch_preview(url: str, *, fetcher: HttpFetcher) -> HttpResponse:
-    require_allowed_url(url)
-    return fetcher.get(url, follow_redirects=True)
+def download_artwork(
+    url: str, *, downloads: ArtworkDownloads, max_redirects: int = _MAX_REDIRECTS
+) -> ArtworkDownload:
+    require_public_artwork_url(url)
+    return downloads.get(url, max_redirects=max_redirects)
 
 
 # CORRECT — each hop is checked, and the chain is bounded
-def fetch_preview(
-    url: str, *, fetcher: HttpFetcher, max_redirects: int = _MAX_REDIRECTS
-) -> HttpResponse:
+def download_artwork(
+    url: str, *, downloads: ArtworkDownloads, max_redirects: int = _MAX_REDIRECTS
+) -> ArtworkDownload:
     for _ in range(max_redirects):
-        require_allowed_url(url)
-        response = fetcher.get(url, follow_redirects=False)
-        if response.redirect_location is None:
-            return response
-        url = urljoin(url, response.redirect_location)
-    raise TooManyRedirectsError(url)
+        require_public_artwork_url(url)
+        download = downloads.get(url, max_redirects=0)
+        if download.next_hop is None:
+            return download
+        url = urljoin(url, download.next_hop)
+    raise ArtworkRedirectsExceededError(url)
 ```

@@ -11,12 +11,14 @@ those parameters fail with `memory limit exceeded` — and the salt is stored be
 **Example:**
 ```python
 # WRONG — a fast hash: a leaked table is tested at billions of guesses a second
-def is_password_correct(password_hash: str, password: str) -> bool:
+def is_customer_password_correct(password_hash: str, password: str) -> bool:
     return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), password_hash)
 
 
 # CORRECT — Argon2id, salted and slow by design; a corrupt hash raises rather than matching
-def is_password_correct(password_hash: str, password: str, *, hasher: PasswordHasher) -> bool:
+def is_customer_password_correct(
+    password_hash: str, password: str, *, hasher: PasswordHasher
+) -> bool:
     try:
         return hasher.verify(password_hash, password)
     except VerifyMismatchError:

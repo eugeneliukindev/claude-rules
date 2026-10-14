@@ -2,24 +2,24 @@
 
 ### A path from outside input is resolved, then checked component by component against its base
 
-**Why:** a string prefix check passes `../../etc/passwd` and `/srv/uploads-old` alike; `resolve()`
+**Why:** a string prefix check passes `../../etc/passwd` and `/srv/proofs-old` alike; `resolve()`
 removes `..` and follows symlinks, and `is_relative_to` compares path components, not characters.
 
 **Example:**
 ```python
-# WRONG — "../../etc/passwd" still starts with the root string, and so does "/srv/uploads-old"
-def attachment_path(upload_root: Path, filename: str) -> Path:
-    path = upload_root / filename
-    if not str(path).startswith(str(upload_root)):
-        raise UnsafePathError(filename)
+# WRONG — "../../etc/passwd" still starts with the root string, and so does "/srv/proofs-old"
+def proof_file_path(proof_root: Path, filename: str) -> Path:
+    path = proof_root / filename
+    if not str(path).startswith(str(proof_root)):
+        raise ProofPathEscapeError(filename)
     return path
 
 
 # CORRECT — resolve ".." and symlinks first, then compare path components
-def attachment_path(upload_root: Path, filename: str) -> Path:
-    path = (upload_root / filename).resolve()
-    if not path.is_relative_to(upload_root.resolve()):
-        raise UnsafePathError(filename)
+def proof_file_path(proof_root: Path, filename: str) -> Path:
+    path = (proof_root / filename).resolve()
+    if not path.is_relative_to(proof_root.resolve()):
+        raise ProofPathEscapeError(filename)
     return path
 ```
 
@@ -36,13 +36,13 @@ from 3.14, and below that the argument is mandatory, because the old default tru
 **Example:**
 ```python
 # WRONG — below 3.14 every entry is trusted, "../../.ssh/authorized_keys" included
-def unpack_bundle(archive_path: Path, destination: Path) -> None:
+def unpack_print_bundle(archive_path: Path, destination: Path) -> None:
     with tarfile.open(archive_path) as archive:
         archive.extractall(destination)
 
 
 # CORRECT — the data filter raises on absolute paths, "..", outside links and device files
-def unpack_bundle(archive_path: Path, destination: Path) -> None:
+def unpack_print_bundle(archive_path: Path, destination: Path) -> None:
     with tarfile.open(archive_path) as archive:
         archive.extractall(destination, filter="data")
 ```
