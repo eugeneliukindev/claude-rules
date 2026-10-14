@@ -11,18 +11,18 @@ in; the worker loads what it needs.
 
 **Example:**
 ```python
-# WRONG — every loaded dataset is pickled into a worker, and a lambda cannot be pickled at all
-def summarize_all(datasets: Sequence[Dataset], *, pool: Executor) -> list[Summary]:
-    return list(pool.map(lambda dataset: dataset.summarize(), datasets))
+# WRONG — every decoded video is pickled into a worker, and a lambda cannot be pickled at all
+def measure_loudness(videos: Sequence[SourceVideo], *, pool: Executor) -> list[Loudness]:
+    return list(pool.map(lambda video: video.loudness(), videos))
 
 
-# CORRECT — paths cross the boundary; a module-level function loads and summarizes
-def _summarize_file(path: Path) -> Summary:
-    return Dataset.load(path).summarize()
+# CORRECT — paths cross the boundary; a module-level function decodes and measures
+def _measure_file(path: Path) -> Loudness:
+    return SourceVideo.decode(path).loudness()
 
 
-def summarize_all(paths: Sequence[Path], *, pool: Executor) -> list[Summary]:
-    return list(pool.map(_summarize_file, paths))
+def measure_loudness(paths: Sequence[Path], *, pool: Executor) -> list[Loudness]:
+    return list(pool.map(_measure_file, paths))
 ```
 
 ### The `multiprocessing` start method is `spawn` or `forkserver`, named explicitly

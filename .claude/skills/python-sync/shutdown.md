@@ -18,20 +18,20 @@ timeout bounds how long shutdown waits for it.
 **Example:**
 ```python
 # WRONG — a daemon thread is killed wherever it stands when the interpreter exits
-def start_audit_writer(entries: queue.Queue[AuditEntry]) -> threading.Thread:
-    writer = threading.Thread(target=flush_audit_log, args=(entries,), daemon=True)
-    writer.start()
-    return writer
+def start_segment_uploader(segments: queue.Queue[Segment]) -> threading.Thread:
+    uploader = threading.Thread(target=upload_segments, args=(segments,), daemon=True)
+    uploader.start()
+    return uploader
 
 
 # CORRECT — the thread watches a stop event, and shutdown waits for it with a deadline
 @final
-class AuditWriter:
+class SegmentUploader:
     def __init__(
-        self, *, entries: queue.Queue[AuditEntry], join_timeout_seconds: float = _JOIN_SECONDS
+        self, *, segments: queue.Queue[Segment], join_timeout_seconds: float = _JOIN_SECONDS
     ) -> None:
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=flush_audit_log, args=(entries, self._stop))
+        self._thread = threading.Thread(target=upload_segments, args=(segments, self._stop))
         self._join_timeout_seconds = join_timeout_seconds
 
     def start(self) -> None:
@@ -51,17 +51,17 @@ sleeping.
 **Example:**
 ```python
 # WRONG — a stop that arrives mid-sleep waits out the rest of the interval
-def refresh_rates(*, rates: RateRefresher, stop: threading.Event, interval_seconds: float) -> None:
+def claim_encode_jobs(*, jobs: EncodeJobBoard, stop: threading.Event, poll_seconds: float) -> None:
     while not stop.is_set():
-        rates.refresh()
-        time.sleep(interval_seconds)
+        jobs.claim_next()
+        time.sleep(poll_seconds)
 
 
 # CORRECT — the wait ends the moment the event is set
-def refresh_rates(*, rates: RateRefresher, stop: threading.Event, interval_seconds: float) -> None:
+def claim_encode_jobs(*, jobs: EncodeJobBoard, stop: threading.Event, poll_seconds: float) -> None:
     while not stop.is_set():
-        rates.refresh()
-        stop.wait(interval_seconds)
+        jobs.claim_next()
+        stop.wait(poll_seconds)
 ```
 
 ### A signal handler only sets an event; the main thread does the stopping
@@ -74,19 +74,19 @@ checks the event at a safe point and leaves through its `with` blocks.
 
 **Example:**
 ```python
-# WRONG — the handler closes the importer at whatever line the main thread was on
+# WRONG — the handler closes the farm at whatever line the main thread was on
 def main() -> None:
-    importer = build_importer()
-    signal.signal(signal.SIGTERM, lambda signal_number, frame: importer.close())
-    importer.run()
+    farm = build_transcode_farm()
+    signal.signal(signal.SIGTERM, lambda signal_number, frame: farm.close())
+    farm.transcode()
 
 
-# CORRECT — the importer stops between files, and the with block closes it
+# CORRECT — the farm stops between encodes, and the with block closes it
 def main() -> None:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda signal_number, frame: stop.set())
-    with build_importer() as importer:
-        importer.run_until(stop)
+    with build_transcode_farm() as farm:
+        farm.transcode(stop=stop)
 ```
 
 ### A pool closed on the way out cancels what it has not started
@@ -94,20 +94,20 @@ def main() -> None:
 **Why:** measured: a `with ThreadPoolExecutor()` block left by `KeyboardInterrupt` with twenty tasks
 queued ran all twenty before it exited, and the drain outlived every deadline;
 `shutdown(wait=True, cancel_futures=True)` ran only the two already running. Work never started is
-picked up by the next run (`python-workers`).
+left for the next run to pick up.
 
 **Example:**
 ```python
 # WRONG — leaving the block waits for every queued task, however the block was left
 @contextmanager
-def managed_thread_pool(*, max_workers: int = _MAX_WORKERS) -> Iterator[ThreadPoolExecutor]:
+def encoder_pool(*, max_workers: int = _MAX_WORKERS) -> Iterator[ThreadPoolExecutor]:
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         yield pool
 
 
 # CORRECT — what has not started is cancelled, and what is running finishes
 @contextmanager
-def managed_thread_pool(*, max_workers: int = _MAX_WORKERS) -> Iterator[ThreadPoolExecutor]:
+def encoder_pool(*, max_workers: int = _MAX_WORKERS) -> Iterator[ThreadPoolExecutor]:
     pool = ThreadPoolExecutor(max_workers=max_workers)
     try:
         yield pool

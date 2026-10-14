@@ -13,8 +13,8 @@ paths:
 # Threads and Processes
 
 Checked on Python 3.14. Handing work between an event loop and a thread — `to_thread`,
-`run_in_executor`, `call_soon_threadsafe`, `asyncio.Lock` — is `python-async`; who builds and closes
-an executor is `python-wiring`; how a container delivers `SIGTERM` is `python-container`.
+`run_in_executor`, `call_soon_threadsafe`, `asyncio.Lock` — is `python-async`; where a resource is
+built and closed is `python-wiring`; how a container delivers `SIGTERM` is `python-container`.
 
 | Workload | Model |
 |---|---|
@@ -31,7 +31,7 @@ Parallelism is measured before it is assumed: pool startup and pickling are real
 ### An executor is built once by the composition root, sized by a setting, and passed in
 
 **Why:** a pool per call starts and tears down its workers every time and breaks every concurrency
-limit; one pool shared by the process is sized once and closed on shutdown (`python-wiring`).
+limit; one pool shared by the process is sized once and closed on shutdown.
 
 ### Every submitted future is read; its exception is raised only by `result()`
 
@@ -41,19 +41,19 @@ the futures as they finish; `map` raises a failure when iteration reaches its it
 
 **Example:**
 ```python
-# WRONG — the futures are dropped: a photo whose thumbnail failed is never noticed
-def render_thumbnails(
-    photo_ids: Sequence[PhotoId], *, pool: Executor, renderer: ThumbnailRenderer
+# WRONG — the futures are dropped: a rendition whose encode failed is never noticed
+def encode_renditions(
+    renditions: Sequence[Rendition], *, pool: Executor, encoder: VideoEncoder
 ) -> None:
-    for photo_id in photo_ids:
-        pool.submit(renderer.render, photo_id)
+    for rendition in renditions:
+        pool.submit(encoder.encode, rendition)
 
 
 # CORRECT — every future is read, and the first failure is raised here
-def render_thumbnails(
-    photo_ids: Sequence[PhotoId], *, pool: Executor, renderer: ThumbnailRenderer
+def encode_renditions(
+    renditions: Sequence[Rendition], *, pool: Executor, encoder: VideoEncoder
 ) -> None:
-    futures = [pool.submit(renderer.render, photo_id) for photo_id in photo_ids]
+    futures = [pool.submit(encoder.encode, rendition) for rendition in renditions]
     for future in as_completed(futures):
         future.result()
 ```
@@ -78,19 +78,19 @@ consumer.
 **Example:**
 ```python
 # WRONG — a None per consumer, and every producer must know how many consumers there are
-def upload_until_none(pending: queue.Queue[Path | None], *, uploader: Uploader) -> None:
-    while (path := pending.get()) is not None:
-        uploader.upload(path)
+def package_segments(segments: queue.Queue[Segment | None], *, packager: SegmentPackager) -> None:
+    while (segment := segments.get()) is not None:
+        packager.package(segment)
 
 
 # CORRECT — the consumer ends when the producer shuts the queue and the backlog is drained
-def upload_until_shut_down(pending: queue.Queue[Path], *, uploader: Uploader) -> None:
+def package_segments(segments: queue.Queue[Segment], *, packager: SegmentPackager) -> None:
     while True:
         try:
-            path = pending.get()
+            segment = segments.get()
         except queue.ShutDown:
             return
-        uploader.upload(path)
+        packager.package(segment)
 ```
 
 ## Shared State
