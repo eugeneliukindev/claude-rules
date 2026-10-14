@@ -52,8 +52,8 @@ a fixture.
 NUMBER_WIDTH: Final = 6
 
 
-def format_number(sequence: int) -> str:
-    return f"TKT-{sequence:0{NUMBER_WIDTH}d}"
+def format_number(sequence: int, *, width: int = NUMBER_WIDTH) -> str:
+    return f"TKT-{sequence:0{width}d}"
 
 
 @final
@@ -69,8 +69,8 @@ class TicketNumbering:
 _NUMBER_WIDTH: Final = 6
 
 
-def _format_number(sequence: int) -> str:
-    return f"TKT-{sequence:0{_NUMBER_WIDTH}d}"
+def _format_number(sequence: int, *, width: int = _NUMBER_WIDTH) -> str:
+    return f"TKT-{sequence:0{width}d}"
 
 
 @final
