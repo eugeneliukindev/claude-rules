@@ -136,13 +136,16 @@ row — or attaching a bound or a pattern the static type cannot express, read
 
 ## Closed Sets
 
-### A closed set in one or two signatures is a `Literal`; reused, it is an `Enum`
+### A closed set in one or two signatures is a `Literal`; reused, an `Enum` of the kind its use calls for, and a member is compared to a member
 
-**Why:** the checker rejects `"votable"` at the call site, where a `str` lets the function raise
-in the caller's process. Promote to `Enum` at three users, or earlier when the set needs
-iteration, behaviour, or crosses a boundary where wire and code values may diverge. `Final` keeps a
-constant's exact value — `DEFAULT_CURVE_FORMAT: Final = "fits"` passes where the `Literal` is
-expected; a `Literal[True]` parameter is a boolean flag with extra syntax.
+**Why:** the checker rejects `"votable"` at the call site, where a `str` lets the function raise in
+the caller's process. Promote to `Enum` at three users, or earlier when the set needs iteration,
+behaviour, or crosses a boundary where wire and code values may diverge. `Final` keeps a constant's
+exact value — `DEFAULT_CURVE_FORMAT: Final = "fits"` passes where the `Literal` is expected; a
+`Literal[True]` parameter is a boolean flag with extra syntax. `StrEnum` serializes as its value
+with no `.value`; `IntEnum` equals the integer codes it replaces; `Flag` combines bits; a plain
+`Enum` with `auto()` has no wire form to leak. A comparison with a raw literal survives a renamed
+value and turns false without an error.
 
 **Example:**
 ```python
@@ -161,12 +164,6 @@ def export_light_curve(curve: LightCurve, file_format: Literal["fits", "csv"]) -
         return curve.to_fits()
     return curve.to_csv()
 ```
-
-### An enumeration's kind follows its use, and a member is compared to a member
-
-**Why:** `StrEnum` serializes as its value with no `.value`; `IntEnum` equals the integer codes it
-replaces; `Flag` combines bits; a plain `Enum` with `auto()` has no wire form to leak. A comparison
-with a raw literal survives a renamed value and turns false without an error.
 
 ### A field that belongs to one state makes each state its own variant
 
@@ -256,8 +253,7 @@ def filter_bands(header: Mapping[str, object]) -> list[str]:
 dispatch on an argument's type, read [generics.md](generics.md)** — PEP 695 on the floor that has
 it, parameter names and bounds, variance, `ParamSpec`, `@overload`, `singledispatch`.
 
-- PEP 695 syntax on a 3.12 floor; `TypeVar` and `Generic` below it, and neither is a lapse
-- A PEP 695 parameter is one capital letter; a `TypeVar` is private and suffixed
+- PEP 695 syntax on a 3.12 floor, a parameter one capital letter; `TypeVar` and `Generic` below it, a `TypeVar` private and suffixed, and neither is a lapse
 - A type parameter the body relies on is bounded, and a parameter takes a read-only collection
 - A decorator keeps the signature it wraps, through `ParamSpec`
 - `@overload` is for one function with several signatures, never for two functions
@@ -271,9 +267,8 @@ annotation table, a bare `str` as a `Sequence[str]`, `numbers`, subclassing the 
 `dict`.
 
 - `Sequence[str]` also accepts a bare `str`, so a function that means "several" guards it
-- `numbers.Real` and `numbers.Integral` stay out of annotations
+- `numbers.Real` and `numbers.Integral` stay out of annotations; a number from elsewhere is checked against `numbers.Real`, one you parsed against `int` and `float`
 - A runtime check asks the ABC, never `hasattr` or a concrete type
-- A number from elsewhere is checked against `numbers.Real`; one you parsed, `int` and `float`
 - A container subclasses its ABC and implements only the abstract methods — never `dict` or `list`
 
 ## Further Constructs

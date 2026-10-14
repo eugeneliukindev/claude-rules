@@ -8,15 +8,19 @@
 
 ## Type Parameters
 
-### PEP 695 syntax on a 3.12 floor; `TypeVar` and `Generic` below it, and neither is a lapse
+### PEP 695 syntax on a 3.12 floor, a parameter one capital letter; `TypeVar` and `Generic` below it, a `TypeVar` private and suffixed, and neither is a lapse
 
 **Why:** a PEP 695 parameter belongs to its signature, so nothing module-level is declared and
 nothing is reused by accident; below 3.12 the syntax does not exist. The same floor decides the
 names that came with it — `typing_extensions.override` until 3.12, `typing_extensions.TypeIs` until
-3.13 — and a parameter default (PEP 696, `class Catalogue[T = Star]`), which is a syntax error
-on 3.12 that mypy reports against `python_version`. A project states its floor once, in
-`requires-python`, and every one of these choices follows from it rather than being argued per
-file.
+3.13 — and a parameter default (PEP 696, `class Catalogue[T = Star]`), which is a syntax error on
+3.12 that mypy reports against `python_version`. A project states its floor once, in
+`requires-python`, and every one of these choices follows from it rather than being argued per file.
+The bound carries the meaning (`[T: Frame]`), so the letter need not — `T`, `K` and `V`, `P` and `R`
+for `ParamSpec` and return; only a generic with three or more parameters spells them out. A
+`TypeVar` is a module-level name, so it is private and takes the PEP 484 suffix — `_T`, `_KT`,
+`_VT`, `_P`, `_R`; where several share a module, the role goes in front of the suffix — `_FrameT`,
+`_TargetT` — and variance after it, `_FrameT_co`, which ruff's `PLC0105` checks.
 
 **Example:**
 ```python
@@ -32,14 +36,6 @@ def load_frames(frame_type: type[FrameT], blobs: Iterable[bytes]) -> list[FrameT
 def load_frames[T: Frame](frame_type: type[T], blobs: Iterable[bytes]) -> list[T]:
     return [frame_type.from_bytes(blob) for blob in blobs]
 ```
-
-### A PEP 695 parameter is one capital letter; a `TypeVar` is private and suffixed
-
-**Why:** the bound carries the meaning (`[T: Frame]`), so the letter need not — `T`, `K` and
-`V`, `P` and `R` for `ParamSpec` and return; only a generic with three or more parameters spells
-them out. A `TypeVar` is a module-level name, so it is private and takes the PEP 484 suffix: `_T`,
-`_KT`, `_VT`, `_P`, `_R`. Where several share a module, the role goes in front of the suffix —
-`_FrameT`, `_TargetT` — and variance after it, `_FrameT_co`, which ruff's `PLC0105` checks.
 
 ### A type parameter the body relies on is bounded, and a parameter takes a read-only collection
 

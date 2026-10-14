@@ -54,11 +54,15 @@ def tag_frame(frame: Frame, tags: Sequence[str]) -> Frame:
     return replace(frame, tags=(*frame.tags, *tags))
 ```
 
-### `numbers.Real` and `numbers.Integral` stay out of annotations
+### `numbers.Real` and `numbers.Integral` stay out of annotations; a number from elsewhere is checked against `numbers.Real`, one you parsed against `int` and `float`
 
 **Why:** `int` and `float` reach them only through a runtime `register()`, which mypy ignores, so
-every call site with a plain number fails the check. `float` already accepts `int`;
-`SupportsFloat` covers anything convertible. The `numbers` ABCs are for `isinstance` (below).
+every call site with a plain number fails the check; `float` already accepts `int`, and
+`SupportsFloat` covers anything convertible. At runtime `isinstance(value, (int, float))` refuses a
+`Fraction` and a NumPy `int64`. `bool` is an `Integral` — guard it if that matters — and `Decimal`
+is no `Real`, only a `numbers.Number`. A JSON decoder produces `int` and `float` and nothing else,
+so for a value you parsed yourself those two are the complete set, and `numbers` buys an import and
+no case.
 
 ## Runtime Checks
 
@@ -90,13 +94,6 @@ def normalise_fits_keywords(keywords: object) -> dict[str, str]:
         return {str(key).upper(): str(value) for key, value in keywords}
     raise TypeError(f"keywords must be a mapping or pairs, not {type(keywords).__name__}")
 ```
-
-### A number from elsewhere is checked against `numbers.Real`; one you parsed, `int` and `float`
-
-**Why:** `isinstance(value, (int, float))` refuses a `Fraction` and a NumPy `int64`. `bool` is an
-`Integral` — guard it if that matters — and `Decimal` is no `Real`, only a `numbers.Number`. A JSON
-decoder produces `int` and `float` and nothing else, so for a value you parsed yourself those two
-are the complete set, and `numbers` buys an import and no case.
 
 ## Implementing a Container
 
