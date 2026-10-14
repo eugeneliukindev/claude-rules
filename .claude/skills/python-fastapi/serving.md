@@ -7,26 +7,24 @@ The WebSocket limits are in [streaming.md](streaming.md); the container start co
 
 **Why:** `uvicorn --factory` calls a function with no arguments, so the app module would have to
 read the environment itself — the one place allowed to read it is the entry point, which builds the
-settings once and unpacks the fields `create_app` takes. It runs `uvicorn.Server` with that app, the
-server's options from the server's own settings (`python-wiring`); tests call `create_app` with
-their own values.
+settings once, unpacks the fields the factory takes, and runs `uvicorn.Server` with the app and the
+server's own options; tests call the factory with their own values.
 
 **Example:**
 ```python
-# WRONG — `uvicorn --factory tracker.api:app_from_environment`: the app module reads the environment
-def app_from_environment() -> FastAPI:
-    app_settings = AppSettings()
-    return create_app(database_url=app_settings.database_url)
+# WRONG — `uvicorn --factory bike_share.api:api_from_environment`: the app module reads it
+def api_from_environment() -> FastAPI:
+    settings = Settings()
+    return build_bike_share_api(database_url=settings.database_url)
 
 
-# CORRECT — `tracker-server = "tracker.server:main"`: the entry point reads, the app receives
+# CORRECT — `bike-share-api = "bike_share.server:main"`: the entry point reads, the app receives
 def main() -> None:
-    server_settings = ServerSettings()
-    app_settings = AppSettings()
+    settings = Settings()
     config = uvicorn.Config(
-        create_app(database_url=app_settings.database_url),
-        host=server_settings.host,
-        port=server_settings.port,
+        build_bike_share_api(database_url=settings.database_url),
+        host=settings.host,
+        port=settings.port,
     )
     uvicorn.Server(config).run()
 ```
@@ -40,30 +38,29 @@ orchestrator's grace period into `SIGKILL`, so the lifespan's shutdown never run
 ```python
 # WRONG — the drain waits for every open request
 def main() -> None:
-    server_settings = ServerSettings()
-    app_settings = AppSettings()
+    settings = Settings()
     config = uvicorn.Config(
-        create_app(database_url=app_settings.database_url),
-        host=server_settings.host,
-        port=server_settings.port,
+        build_bike_share_api(database_url=settings.database_url),
+        host=settings.host,
+        port=settings.port,
     )
     uvicorn.Server(config).run()
 
 
 # CORRECT — open requests get the drain, inside Kubernetes' default 30 seconds, then the lifespan
 def main() -> None:
-    server_settings = ServerSettings()
-    app_settings = AppSettings()
+    settings = Settings()
     config = uvicorn.Config(
-        create_app(database_url=app_settings.database_url),
-        host=server_settings.host,
-        port=server_settings.port,
-        timeout_graceful_shutdown=server_settings.drain_seconds,
+        build_bike_share_api(database_url=settings.database_url),
+        host=settings.host,
+        port=settings.port,
+        timeout_graceful_shutdown=settings.drain_seconds,
     )
     uvicorn.Server(config).run()
 ```
 
 ### Behind a proxy, `forwarded_allow_ips` names the proxy's network
 
-**Why:** the default is `127.0.0.1,::1`, so behind an ingress every request appears to come from the
-ingress and rate limits and audit logs see one client; `*` lets any caller forge its address.
+**Why:** the default is `127.0.0.1,::1` (or `FORWARDED_ALLOW_IPS`), so behind an ingress every
+request appears to come from the ingress and rate limits and audit logs see one client; `*` lets
+any caller forge its address.

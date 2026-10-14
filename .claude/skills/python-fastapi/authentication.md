@@ -1,77 +1,72 @@
 # Authentication in FastAPI
 
-## Contents
+What a token verifier must check, and when a request is a 401, a 403 or a 503, is `python-auth`.
 
-- The dependency that turns a bearer token into a `Principal`
-- `set_cookie` with every flag set
-- Routes tested through the app with the fake verifier
+### The bearer dependency is a plain `def` that turns every rejection into one fixed 401
 
-What a verifier must do — the contract, the two errors, 401 against 403 against 503, a fixed body —
-is `python-auth`.
-
-### `require_principal` is a plain `def` mapping the verifier's errors to a fixed 401 and a 503
-
-**Why:** `verify` may block on a key set fetch, so the dependency is a `def` that FastAPI runs in
-its thread pool. `HTTPBearer` already answers a missing header with a 401 and
-`WWW-Authenticate`; the verifier's rejection must match it, with one fixed body, the reason left on
-the chained cause. `HTTPException` is right here: authentication failing exists only in HTTP. The
-root builds the verifier, the lifespan yields it, and the dependency sits on the protected router.
+**Why:** verifying may block on a key set fetch, so the dependency is a `def` that FastAPI runs in
+its thread pool. `HTTPBearer` — the alias here is `Annotated[HTTPAuthorizationCredentials,
+Depends(HTTPBearer())]` — already answers a missing header with a 401 and `WWW-Authenticate:
+Bearer`; a rejected token gets the same, with one fixed body — a body naming the failed check tells
+a forger which check passed — and the reason stays on the chained cause. An unreachable key set is a
+503: the token may be fine. `HTTPException` is right here, since authentication exists only in
+HTTP. The lifespan yields the verifier, and the dependency sits on the protected router.
 
 **Example:**
 ```python
-# WRONG — the body names the failed check: "InvalidAudienceError" says the signature was good
-def require_principal(request: Request, credentials: BearerCredentials) -> Principal:
-    token_verifier: TokenVerifier = request.state.token_verifier
+# WRONG — the body names the failed check: "audience mismatch" says the signature was good
+def authenticate_rider(request: Request, bearer: RiderBearer) -> Rider:
+    verifier: RiderTokenVerifier = request.state.rider_tokens
     try:
-        return token_verifier.verify(credentials.credentials)
-    except InvalidCredentialsError as error:
+        return verifier.verify(bearer.credentials)
+    except RiderTokenRejectedError as error:
         raise HTTPException(
             HTTPStatus.UNAUTHORIZED, error.reason, headers={"WWW-Authenticate": "Bearer"}
         ) from error
-    except KeySetUnavailableError as error:
+    except SigningKeysUnreachableError as error:
         raise HTTPException(HTTPStatus.SERVICE_UNAVAILABLE, "Try again later") from error
 
 
 # CORRECT — one fixed body for every rejected token; the reason stays on the chained cause
-def require_principal(request: Request, credentials: BearerCredentials) -> Principal:
-    token_verifier: TokenVerifier = request.state.token_verifier
+def authenticate_rider(request: Request, bearer: RiderBearer) -> Rider:
+    verifier: RiderTokenVerifier = request.state.rider_tokens
     try:
-        return token_verifier.verify(credentials.credentials)
-    except InvalidCredentialsError as error:
+        return verifier.verify(bearer.credentials)
+    except RiderTokenRejectedError as error:
         raise HTTPException(
             HTTPStatus.UNAUTHORIZED, "Invalid bearer token", headers={"WWW-Authenticate": "Bearer"}
         ) from error
-    except KeySetUnavailableError as error:
+    except SigningKeysUnreachableError as error:
         raise HTTPException(HTTPStatus.SERVICE_UNAVAILABLE, "Try again later") from error
 ```
 
 ### `set_cookie` sets `secure`, `httponly` and `samesite` on purpose
 
-**Why:** Starlette's `set_cookie` defaults to `secure=False` and `httponly=False`, so a session
-cookie set with the defaults is readable by any script on the page and sent over plain HTTP. A
-`__Host-` name works with Starlette's defaults of `Path=/` and no `Domain`.
+**Why:** Starlette's `set_cookie` defaults to `secure=False`, `httponly=False` and `samesite="lax"`,
+so a session cookie set with the defaults is readable by any script on the page and sent over plain
+HTTP. A `__Host-` name works with Starlette's defaults of `Path=/` and no `Domain`.
 
-### Protected routes are tested through the app built with the fake verifier
+### Protected routes are tested through the app built with a fake verifier
 
-**Why:** a principal injected with `dependency_overrides` skips the edge's mapping; through the app,
-a token from the fake's `issue` gets through, `"Bearer forged"` gets the fixed 401 with
-`WWW-Authenticate`, and `is_key_set_reachable = False` gets the 503.
+**Why:** a rider injected with `dependency_overrides` skips the mapping above; through the app, a
+token the fake issued gets through, `"Bearer forged"` gets the fixed 401 with `WWW-Authenticate`,
+and a fake set to unreachable gets the 503.
 
 **Example:**
 ```python
 # WRONG — the dependency is overridden, so the 401 and 503 mapping is never exercised
-def test_document_route_rejects_forged_token(app: FastAPI) -> None:
-    app.dependency_overrides[require_principal] = lambda: _OWNER
+def test_ride_history_rejects_forged_token(app: FastAPI) -> None:
+    app.dependency_overrides[authenticate_rider] = lambda: _RIDER
     with TestClient(app) as client:
-        response = client.get(f"/documents/{_DOCUMENT_ID}", headers=_FORGED_BEARER)
+        response = client.get("/riders/me/rides", headers=_FORGED_BEARER)
 
     assert response.status_code == HTTPStatus.OK
 
 
 # CORRECT — the real dependency runs against the fake verifier
-def test_document_route_rejects_forged_token(app: FastAPI) -> None:
+def test_ride_history_rejects_forged_token(app: FastAPI) -> None:
     with TestClient(app) as client:
-        response = client.get(f"/documents/{_DOCUMENT_ID}", headers=_FORGED_BEARER)
+        response = client.get("/riders/me/rides", headers=_FORGED_BEARER)
 
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.headers["WWW-Authenticate"] == "Bearer"
