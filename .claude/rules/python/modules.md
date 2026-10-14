@@ -83,7 +83,8 @@ def main() -> None:
 **Why:** functions, methods, attributes, constants, type aliases and classes alike — without the
 prefix a name reads as surface, and the first outside import makes it surface for good; a library
 still serves an internal builder its facade once exposed, with a warning, years later. Constants and
-aliases are the ones missed: read quietly from a second module, they get two owners.
+aliases are the ones missed: read quietly from a second module, they get two owners. A name a test
+imports is used outside, and stays unprefixed.
 **Except:** a script nobody imports (`python-scripts`), and a name a framework reaches through a
 decorator — a route, a fixture.
 
@@ -122,12 +123,6 @@ class TicketNumbering:
     def next_number(self) -> str:
         return _format_number(self._sequences.increment("support_ticket"))
 ```
-
-### The check runs over sources and tests together
-
-**Why:** a name a test imports is used outside and stays unprefixed; checked over the sources alone,
-every such name is reported, gets a prefix, and the tests then import `_private` names. The check is
-run after the move that made a name internal (`python-packaging`).
 
 ## Facade, Public Module, Internal Module
 
