@@ -1,7 +1,6 @@
 # Settings and Startup
 
-The settings model in pydantic is `python-pydantic`, and FastAPI's form of the settings accessor is
-`python-fastapi`. Below the root nothing takes the settings object (`functions.md`).
+Below the root nothing takes the settings object (`functions.md`).
 
 ## Contents
 

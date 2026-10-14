@@ -1,11 +1,10 @@
 ---
 name: python-wiring
 description: >-
-  Designs construction and configuration: one composition root, scopes, resource lifetime,
-  settings, constants. Use when writing an entry point or an
-  application factory, deciding where an object is built, opening a pool or a client, adding a
-  settings field or a constant, or removing a global or an import that opens a connection. Not for
-  which layer imports which (python-layers).
+  Designs construction and configuration: one composition root, scopes, resource lifetime, settings,
+  constants. ALWAYS invoke this skill when a task writes an entry point, main() or an application
+  factory, opens a pool, client or connection, reads environment variables or a settings field, or
+  fixes an import that connects. Do not wire objects directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -13,10 +12,10 @@ paths:
 
 # Wiring: Composition Root, Resource Lifetime
 
-Which layer may import which is `python-layers`; in an ASGI service the composition root is the
-application's lifespan (`python-fastapi`). Collaborators arrive through the constructor
-(`classes.md`), plain values instead of the settings object (`functions.md`), nothing runs at import
-(`modules.md`), and a test hands in fakes instead of patching (`testing.md`).
+In an ASGI service the composition root is the application's lifespan. Collaborators arrive
+through the constructor (`classes.md`), plain values instead of the settings object
+(`functions.md`), nothing runs at import (`modules.md`), and a test hands in fakes instead of
+patching (`testing.md`).
 
 ## Composition Root
 
