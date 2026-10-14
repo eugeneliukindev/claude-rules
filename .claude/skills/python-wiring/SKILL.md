@@ -189,10 +189,19 @@ an `ExitStack`, or a `close()` method, read [lifetime.md](lifetime.md)** — the
 context manager, one `with` per known set, the async root, a class closing only what it built,
 cleanup that never raises over the block's error, no process-wide mutation.
 
+- A resource enters through its own context manager
+- A known set of resources is one `with` statement, an item per resource
+- An async root has the same shape
+- A class closes only what it built
+- Cleanup never raises over the block's own error
+- No process-wide mutation in library or service code
+
 ## Constants
 
 **Before adding a module constant or a constants module, read [constants.md](constants.md)** — a
 constant lives beside the one module that owns its concept, never in a grab-bag.
+
+- A constant lives next to its single user
 
 ## Settings and Startup
 
@@ -201,8 +210,17 @@ read [settings.md](settings.md)** — typed settings built at the root, the serv
 application's, no branch on the environment's name, validation at startup, secrets without
 defaults.
 
+- Configuration is typed settings, built once at the root and unpacked there
+- The server's settings are a class apart from the application's
+- Behaviour never branches on the deployment environment's name; each difference is a setting
+- Configuration is validated at startup, before serving
+- A secret never appears in code, in a default or in a log
+
 ## Parameter Objects
 
 **Before grouping parameters into an options object or forwarding `**kwargs`, read
 [parameter-objects.md](parameter-objects.md)** — a concept the callee uses whole, never the
 configuration root renamed; typed options through `Unpack`.
+
+- A cohesive group of values passed as one frozen object is encouraged
+- A dispatcher that forwards options forwards them typed
