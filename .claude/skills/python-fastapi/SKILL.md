@@ -257,22 +257,44 @@ built there and unpacked into the factory, the drain bounded below the grace per
 lifespan, no middleware that lets a client clear it, decorators on the service and not the route,
 and 429 and 503 for its rate limit and circuit breaker.
 
+- The lifespan sets up the app's `cashews.Cache` and closes it in `finally`
+- The app installs none of cashews' FastAPI middlewares
+- A cashews decorator goes on the service or the adapter, never on the route
+- `RateLimitError` is a 429 and `CircuitBreakerOpen` a 503, each with `Retry-After`
+
 **Before publishing a FastStream message from a FastAPI app, read
 [fastapi-faststream.md](../python-integrations/fastapi-faststream.md)** — the event written to the
 outbox by the service, never published from the route.
+
+- A route never publishes to the broker; the service writes an outbox row in its transaction
 
 **Before running a gRPC server beside a FastAPI app, read
 [fastapi-grpc.md](../python-integrations/fastapi-grpc.md)** — the server entered in the lifespan,
 under one worker.
 
+- Beside FastAPI, the gRPC server lives in the lifespan, and the app runs one worker
+
 **Before declaring a FastAPI request or response model, or answering a validation error, read
 [fastapi-pydantic.md](../python-integrations/fastapi-pydantic.md)** — `input` dropped from the 422,
 the response built from the domain and named by the return annotation.
+
+- The validation error handler drops `input` from what it returns
+- A route's response is a model it builds from the domain object, named by the return annotation
 
 **Before using SQLAlchemy in a FastAPI app, read
 [fastapi-sqlalchemy.md](../python-integrations/fastapi-sqlalchemy.md)** — the engine and a `partial`
 service factory in the lifespan, a session per request on `scope="function"`, the service commits.
 
+- The lifespan builds the engine and the session maker, and disposes the engine as it ends
+- The lifespan binds fixed values into a service factory; a request adds its session
+- The request's session comes from a dependency with `scope="function"`, and repositories take it
+- The service commits; the dependency only closes the session
+- A route takes the service, never the session
+
 **Before mounting a strawberry GraphQL app in FastAPI, read
 [fastapi-strawberry.md](../python-integrations/fastapi-strawberry.md)** — the context getter as an
 authenticating dependency, on `HTTPConnection`.
+
+- The GraphQL router's context getter is a dependency, and it is where authentication happens
+- The context is a plain `BaseContext` subclass, never a frozen dataclass
+- The getter takes `HTTPConnection`, not `Request`
