@@ -7,8 +7,6 @@
 - `contains_eager` after a join the query already has
 - A fixture that counts statements
 
-Why an N+1 must be impossible, and why the count is asserted, is `python-persistence`.
-
 ### Every relationship is declared `lazy="raise"`
 
 **Why:** an unloaded access then raises `InvalidRequestError` naming the relationship, instead of a
@@ -103,7 +101,7 @@ def statements(engine: Engine) -> Iterator[list[str]]:
     executed: list[str] = []
 
     def record(
-        connection: Connection,
+        connection: object,
         cursor: object,
         statement: str,
         parameters: object,

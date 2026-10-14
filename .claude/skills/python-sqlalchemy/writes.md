@@ -33,7 +33,7 @@ def expire_enrollments(*, session: Session, now: datetime) -> None:
 ### An upsert is the dialect's `insert(...).on_conflict_do_update(...)`
 
 **Why:** a select-then-insert is passed by two concurrent requests alike, and the second `INSERT`
-fails on the unique key (`python-persistence`). PostgreSQL and SQLite spell it
+fails on the unique key. PostgreSQL and SQLite spell it
 `on_conflict_do_update`, MySQL `on_duplicate_key_update`; the `insert` is the dialect's, from
 `sqlalchemy.dialects.postgresql`.
 
@@ -68,10 +68,10 @@ def record_progress(*, session: Session, student_id: int, lesson_id: int, percen
 ### Optimistic locking is `version_id_col` on an assigned column
 
 **Why:** every ORM update then carries the version check and increment, and a stale write raises
-`StaleDataError`, which the repository translates into the domain's conflict error
-(`python-persistence`). The column must be assigned — an annotation alone binds no name, and the
-class body raises `NameError`. It covers ORM flushes only: a bulk `update()` checks nothing unless
-its own `where` states the version.
+`StaleDataError`, which the repository translates into its package's conflict error. The column
+must be assigned — an annotation alone binds no name, and the class body raises `NameError`. It
+covers ORM flushes only: a bulk `update()` checks nothing unless its own `where` states the
+version.
 
 **Example:**
 ```python

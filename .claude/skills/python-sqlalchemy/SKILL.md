@@ -2,7 +2,7 @@
 name: python-sqlalchemy
 description: >-
   SQLAlchemy 2.0 mechanics: select() and the session, Mapped models, relationship loading, the
-  engine and sessionmaker, bulk inserts, upserts, version_id_col, text() with bound parameters.
+  engine and the session, bulk inserts, upserts, version_id_col, text() with bound parameters.
   Use when code imports sqlalchemy. Not for where a transaction begins (python-persistence) or a
   schema change (python-alembic).
 paths:
@@ -12,9 +12,9 @@ paths:
 
 # SQLAlchemy
 
-Checked against SQLAlchemy 2.1; the 2.0-style API below is unchanged in 2.1. One use case is one
-transaction, opened by the service and never committed by a repository, and a repository returns
-frozen domain objects, never ORM rows (`python-persistence`); revisions are `python-alembic`.
+Checked against SQLAlchemy 2.0 and 2.1. One use case is one transaction, committed by the service
+and never by a repository, and a repository returns frozen domain objects, never ORM rows
+(`python-persistence`); revisions are `python-alembic`.
 
 ## Queries
 
@@ -84,8 +84,8 @@ class Course(Base):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
-    published_at = Column(DateTime)
-    price = Column(Numeric)
+    starts_at = Column(DateTime)
+    fee = Column(Numeric)
 
 
 # CORRECT — typed for the checker, with the time zone and the scale stated
@@ -94,8 +94,8 @@ class Course(Base):
     __tablename__ = "courses"
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    price: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fee: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
 ```
 
 ## Engine and Sessions
@@ -104,50 +104,51 @@ class Course(Base):
 
 **Why:** `pool_pre_ping=True` replaces a connection dropped by a database restart at checkout
 instead of failing the request; SQLAlchemy has no portable statement timeout, so it goes through
-the driver's `connect_args`.
+the driver's `connect_args`. An engine is no context manager: the root calls `engine.dispose()` in
+its `finally`.
 
 **Example:**
 ```python
 # WRONG — default pool size, dead connections handed out after a restart, no statement limit
-def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int) -> Engine:
+def course_engine(database_url: str) -> Engine:
     return create_engine(database_url)
 
 
 # CORRECT — a sized pool checked at checkout, and the timeout in the driver's (psycopg) options
-def build_engine(database_url: str, *, pool_size: int, statement_timeout_ms: int) -> Engine:
+def course_engine(
+    database_url: str,
+    *,
+    pool_size: int = _POOL_SIZE,
+    query_timeout_ms: int = _QUERY_TIMEOUT_MS,
+) -> Engine:
     return create_engine(
         database_url,
         pool_size=pool_size,
         pool_pre_ping=True,
-        connect_args={"options": f"-c statement_timeout={statement_timeout_ms}"},
+        connect_args={"options": f"-c statement_timeout={query_timeout_ms}"},
     )
 ```
 
 ### A session is opened in a `with`, and closing it rolls back what the service did not commit
 
-**Why:** the edge opens one session per request or message and the service commits it
-(`python-persistence`); a session opened without a `with` is never closed when the use case raises,
-and its transaction stays open on its connection. Closing a session rolls back whatever was not
-committed, so an error needs no rollback written by hand. `session_factory.begin()` commits on the
-way out, which takes the commit away from the service.
+**Why:** a session opened without a `with` is never closed when the use case raises, and its
+transaction stays open on its connection. Closing a session rolls back whatever was not committed,
+so an error needs no rollback written by hand. `with Session(engine).begin()` commits on the way
+out, which takes the commit away from the service.
 
 **Example:**
 ```python
 # WRONG — an error in the use case skips the close: the transaction stays open on its connection
-def handle_enrollment(
-    message: EnrollmentRequested, *, session_factory: sessionmaker[Session]
-) -> None:
-    session = session_factory()
-    enroll(message, enrollments=SqlEnrollmentRepository(session), transaction=session)
+def handle_enrollment(message: EnrollmentRequested, *, engine: Engine) -> None:
+    session = Session(engine)
+    enroll(message, enrollments=SqlEnrollmentRepository(session=session), transaction=session)
     session.close()
 
 
 # CORRECT — closed whatever happens; enroll commits, and anything it did not commit rolls back
-def handle_enrollment(
-    message: EnrollmentRequested, *, session_factory: sessionmaker[Session]
-) -> None:
-    with session_factory() as session:
-        enroll(message, enrollments=SqlEnrollmentRepository(session), transaction=session)
+def handle_enrollment(message: EnrollmentRequested, *, engine: Engine) -> None:
+    with Session(engine) as session:
+        enroll(message, enrollments=SqlEnrollmentRepository(session=session), transaction=session)
 ```
 
 ### A session whose rows are read after commit sets `expire_on_commit=False`
@@ -156,18 +157,26 @@ def handle_enrollment(
 on an async session. With `lazy="raise"` it is not only async: a relationship loaded by
 `selectinload` is expired at `commit()` like any attribute, and the next read raises
 `InvalidRequestError` (*measured* on 2.1.4). Better still, the repository maps rows to domain
-objects before the transaction exits (`python-persistence`).
+objects before the transaction exits.
 
 **Example:**
 ```python
-# WRONG — reading an attribute after commit on an async session raises
-def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(engine)
+# WRONG — commit expires the row, and reading its id afterwards raises on an async session
+async def open_course(draft: CourseDraft, *, engine: AsyncEngine) -> int:
+    async with AsyncSession(engine) as session:
+        course = Course(title=draft.title, fee=draft.fee)
+        session.add(course)
+        await session.commit()
+        return course.id
 
 
 # CORRECT — attributes keep the values they had at commit
-def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(engine, expire_on_commit=False)
+async def open_course(draft: CourseDraft, *, engine: AsyncEngine) -> int:
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        course = Course(title=draft.title, fee=draft.fee)
+        session.add(course)
+        await session.commit()
+        return course.id
 ```
 
 ### A repository that needs a generated id flushes; it never commits
@@ -220,7 +229,7 @@ read [writes.md](writes.md)** — `insert()` with a list, one `update()`, the di
 ## Raw SQL
 
 **Before writing a query as text, read [raw-sql.md](raw-sql.md)** — `text()` with bound
-parameters, and identifiers from an allowlist.
+parameters, and a list as an expanding `bindparam`.
 
 ## With Other Libraries
 
