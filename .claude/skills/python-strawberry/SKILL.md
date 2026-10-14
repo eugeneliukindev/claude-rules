@@ -183,7 +183,16 @@ fakes, and each limit answered visibly.
 [fastapi-strawberry.md](../python-integrations/fastapi-strawberry.md)** — the context getter as an
 authenticating dependency, on `HTTPConnection`.
 
+- The GraphQL router's context getter is a dependency, and it is where authentication happens
+- The context is a plain `BaseContext` subclass, never a frozen dataclass
+- The getter takes `HTTPConnection`, not `Request`
+
 **Before using `strawberry.experimental.pydantic`, read
 [pydantic-strawberry.md](../python-integrations/pydantic-strawberry.md)** — for inputs whose
 boundary model exists, validation in `to_pydantic()`, the mypy plugin, PEP 695 aliases, and no
 `all_fields`.
+
+- It is for an input whose pydantic model already exists; output is built from the domain
+- Validation runs in `to_pydantic()`, so a resolver reads the converted model, never the input
+- A field annotated with a PEP 695 alias gets its GraphQL type written out
+- The GraphQL type lists each field it publishes; never `all_fields=True`
