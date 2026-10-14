@@ -11,21 +11,21 @@
 ## The Sequence
 
 Observed on CPython 3.12 to 3.14 with every hook printing, for
-`@decorate class Child(Base, flavour="x")` where `Base` has a metaclass and `Child` a descriptor:
+`@decorate class Child(Base, variant="x")` where `Base` has a metaclass and `Child` a descriptor:
 
-1. `Meta.__prepare__("Child", bases, flavour="x")` returns the mapping the body will fill.
+1. `Meta.__prepare__("Child", bases, variant="x")` returns the mapping the body will fill.
 2. The class body executes into that mapping.
-3. `Meta.__new__(mcls, "Child", bases, namespace, flavour="x")` calls `type.__new__`, which,
+3. `Meta.__new__(mcls, "Child", bases, namespace, variant="x")` calls `type.__new__`, which,
    before it returns:
    1. calls `__set_name__(Child, "field")` on every value in the namespace that defines it;
-   2. calls `__init_subclass__(flavour="x")` — the nearest one in the MRO of `Child`, never the
+   2. calls `__init_subclass__(variant="x")` — the nearest one in the MRO of `Child`, never the
       hook a class defines for itself.
-4. `Meta.__init__(cls, "Child", bases, namespace, flavour="x")`.
+4. `Meta.__init__(cls, "Child", bases, namespace, variant="x")`.
 5. The class decorators, innermost first.
 6. Later, `Child(...)` goes through `Meta.__call__`, which runs the instance's `__new__` and
    `__init__`.
 
-A descriptor attached after the class exists — `setattr(Cls, "x", Column(int))` — never gets
+A descriptor attached after the class exists — `setattr(Cls, "x", RuleOption(int))` — never gets
 `__set_name__`.
 
 ## What Follows
@@ -40,27 +40,27 @@ exactly this case and answers.
 **Example:**
 ```python
 # WRONG — AttributeError: __abstractmethods__, for every subclass
-class Report(ABC):
+class VictoryCondition(ABC):
     @override
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         if not cls.__abstractmethods__:
-            _check_concrete_report(cls)
+            _check_concrete_condition(cls)
 
     @abstractmethod
-    def render(self) -> bytes: ...
+    def is_met(self, board: BoardState) -> bool: ...
 
 
 # CORRECT — the scan that works before ABCMeta has finished
-class Report(ABC):
+class VictoryCondition(ABC):
     @override
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         if not inspect.isabstract(cls):
-            _check_concrete_report(cls)
+            _check_concrete_condition(cls)
 
     @abstractmethod
-    def render(self) -> bytes: ...
+    def is_met(self, board: BoardState) -> bool: ...
 ```
 
 ### A hook that must replace the class, or read its dataclass fields, is a class decorator
@@ -68,12 +68,12 @@ class Report(ABC):
 **Why:** `__init_subclass__` runs before the decorators, so on a `@dataclass` subclass
 `dataclasses.fields(cls)` is not available yet. And it cannot apply `dataclass(slots=True)`
 itself: that builds a new class, which re-enters the hook, and the second pass fails —
-`TypeError: Cannot overwrite attribute __setattr__ in class Paid` on CPython 3.14.
+`TypeError: Cannot overwrite attribute __setattr__ in class PieceMoved` on CPython 3.14.
 
 **Example:**
 ```python
 # WRONG — the slotted class re-enters the hook, and the import fails
-class LedgerEvent:
+class MoveEvent:
     @override
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -81,10 +81,11 @@ class LedgerEvent:
 
 
 # CORRECT — each class states it, and the decorator returns the slotted class
+@final
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Paid:
-    invoice_number: str
-    amount: Decimal
+class PieceMoved:
+    from_square: str
+    to_square: str
 ```
 
 ### A class decorator that implements an abstract method calls `abc.update_abstractmethods`
@@ -94,17 +95,17 @@ the class still refuses to instantiate, naming the method the decorator just sup
 
 **Example:**
 ```python
-# WRONG — "Can't instantiate abstract class ... without an implementation for 'render'"
-def with_plain_text_render[T: type[Report]](report_class: T) -> T:
-    report_class.render = _render_plain_text  # type: ignore[method-assign]  # added by design
-    return report_class
+# WRONG — "Can't instantiate abstract class ... without an implementation for 'is_met'"
+def won_by_last_piece[T: type[VictoryCondition]](condition_class: T) -> T:
+    condition_class.is_met = _has_one_piece_left  # type: ignore[method-assign]  # added by design
+    return condition_class
 
 
 # CORRECT — the abstract set is recomputed after the method is added
-def with_plain_text_render[T: type[Report]](report_class: T) -> T:
-    report_class.render = _render_plain_text  # type: ignore[method-assign]  # added by design
-    abc.update_abstractmethods(report_class)
-    return report_class
+def won_by_last_piece[T: type[VictoryCondition]](condition_class: T) -> T:
+    condition_class.is_met = _has_one_piece_left  # type: ignore[method-assign]  # added by design
+    abc.update_abstractmethods(condition_class)
+    return condition_class
 ```
 
 ### A metaclass that consumes a class keyword leaves it out of `super().__new__`
@@ -116,19 +117,19 @@ takes none — a keyword nobody consumed fails with
 
 **Example:**
 ```python
-# WRONG — table= is passed on, and object.__init_subclass__ rejects it
-class _TableMeta(type):
+# WRONG — notation= is passed on, and object.__init_subclass__ rejects it
+class _PieceMeta(type):
     def __new__(
         mcls, name: str, bases: tuple[type, ...], namespace: dict[str, Any], **kwargs: Any
-    ) -> "_TableMeta":
+    ) -> "_PieceMeta":
         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
-        cls.table_name = kwargs.get("table", name.lower())
+        cls.notation = kwargs.get("notation", name[0])
         return cls
 
 
 # CORRECT — the metaclass takes its keyword and forwards only the rest
-class _TableMeta(type):
-    table_name: str
+class _PieceMeta(type):
+    notation: str
 
     def __new__(
         mcls,
@@ -136,10 +137,10 @@ class _TableMeta(type):
         bases: tuple[type, ...],
         namespace: dict[str, Any],
         *,
-        table: str | None = None,
+        notation: str | None = None,
         **kwargs: Any,
-    ) -> "_TableMeta":
+    ) -> "_PieceMeta":
         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
-        cls.table_name = table if table is not None else name.lower()
+        cls.notation = notation if notation is not None else name[0]
         return cls
 ```
