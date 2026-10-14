@@ -31,7 +31,7 @@ def find_user(email: str, *, users: UserRepository) -> User | None:
 ### An outcome the caller would treat as success is not an error
 
 **Why:** `cancel` on a cancelled booking and `delete` of a missing key promise a state, and they
-succeed — a retry then needs no special case (`python-boundaries`).
+succeed — a retry then needs no special case.
 **Except:** never a guess in place of an error — a clipped index, an empty list for "not found".
 
 **Example:**
@@ -64,9 +64,11 @@ without `from` loses its cause, and `None` for an error makes every caller guess
 **Example:**
 ```python
 # WRONG — broad catch, swallowed cause, a try around everything, the error returned as None
-def load_user(user_id: UserId, *, base_url: str) -> User | None:
+def load_user(
+    user_id: UserId, *, base_url: str, timeout_seconds: float = _TIMEOUT_SECONDS
+) -> User | None:
     try:
-        with urlopen(f"{base_url}/users/{user_id}", timeout=_TIMEOUT_SECONDS) as response:
+        with urlopen(f"{base_url}/users/{user_id}", timeout=timeout_seconds) as response:
             return User.from_payload(json.load(response))
     except Exception:
         logger.error("failed")
@@ -74,9 +76,11 @@ def load_user(user_id: UserId, *, base_url: str) -> User | None:
 
 
 # CORRECT — narrow try, translated with its cause, an error is never a return value
-def load_user(user_id: UserId, *, base_url: str) -> User:
+def load_user(
+    user_id: UserId, *, base_url: str, timeout_seconds: float = _TIMEOUT_SECONDS
+) -> User:
     try:
-        with urlopen(f"{base_url}/users/{user_id}", timeout=_TIMEOUT_SECONDS) as response:
+        with urlopen(f"{base_url}/users/{user_id}", timeout=timeout_seconds) as response:
             payload = json.load(response)
     except HTTPError as error:
         if error.code == HTTPStatus.NOT_FOUND:
