@@ -13,8 +13,15 @@ client sent.
 **Example:**
 ```python
 # WRONG — the default handler: {"loc": ["body", "password"], ..., "input": "hunter2"}
-app = FastAPI(lifespan=lifespan)
-app.include_router(accounts_router)
+def build_choir_api(*, database_url: str) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
+        async with RosterStore.connect(database_url) as roster:
+            yield {"choir": ChoirService(roster=roster)}
+
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(singers_router)
+    return app
 
 
 # CORRECT — where and why the body was refused, never what it contained
@@ -28,28 +35,35 @@ async def _validation_error_response(request: Request, error: Exception) -> JSON
     return JSONResponse({"detail": details}, status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
 
 
-app = FastAPI(lifespan=lifespan)
-app.add_exception_handler(RequestValidationError, _validation_error_response)
-app.include_router(accounts_router)
+def build_choir_api(*, database_url: str) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[dict[str, object]]:
+        async with RosterStore.connect(database_url) as roster:
+            yield {"choir": ChoirService(roster=roster)}
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_exception_handler(RequestValidationError, _validation_error_response)
+    app.include_router(singers_router)
+    return app
 ```
 
 ### A route's response is a model it builds from the domain object, named by the return annotation
 
-**Why:** returned as is, a domain object is serialized through the response model by attribute, so
-a field added to the domain later is one rename away from being published; built field by field by
-`from_domain`, the response says what leaves (`python-boundaries`). The return annotation is the
-response model — a separate `response_model=` restates it and drifts.
+**Why:** returned as is, a domain object is validated into the response model by attribute, so a
+field added to the domain later is one rename away from being published; built field by field by
+`from_domain`, the response says what leaves. The return annotation is the response model — a
+separate `response_model=` restates it and drifts.
 
 **Example:**
 ```python
 # WRONG — the domain object goes out, and response_model restates the annotation's job
-@accounts_router.get("/accounts/{account_id}", response_model=AccountResponse)
-async def read_account(account_id: AccountId, accounts: AccountServiceDep) -> Account:
-    return await accounts.get(account_id)
+@singers_router.get("/singers/{singer_id}", response_model=SingerResponse)
+async def show_singer(singer_id: SingerId, choir: ChoirDep) -> Singer:
+    return await choir.get_singer(singer_id)
 
 
 # CORRECT — the response is built from the domain object, and the annotation names it
-@accounts_router.get("/accounts/{account_id}")
-async def read_account(account_id: AccountId, accounts: AccountServiceDep) -> AccountResponse:
-    return AccountResponse.from_domain(await accounts.get(account_id))
+@singers_router.get("/singers/{singer_id}")
+async def show_singer(singer_id: SingerId, choir: ChoirDep) -> SingerResponse:
+    return SingerResponse.from_domain(await choir.get_singer(singer_id))
 ```
