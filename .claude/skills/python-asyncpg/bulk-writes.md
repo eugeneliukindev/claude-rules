@@ -10,19 +10,26 @@ and atomic since 0.22 — a failing row leaves none of the others.
 
 **Example:**
 ```python
-# WRONG — one round trip per track: ten thousand tracks are ten thousand statements
-async def add_tracks(connection: PoolConnectionProxy, tracks: Sequence[PlaylistTrack]) -> None:
-    for track in tracks:
+# WRONG — one round trip per pairing: a round of two hundred boards is two hundred statements
+async def record_pairings(
+    pairings: Sequence[Pairing], *, connection: PoolConnectionProxy
+) -> None:
+    for pairing in pairings:
         await connection.execute(
-            _INSERT_PLAYLIST_TRACK, track.playlist_id, track.track_id, track.position
+            _INSERT_PAIRING, pairing.round_id, pairing.board, pairing.white_id, pairing.black_id
         )
 
 
-# CORRECT — one COPY streams every track
-async def add_tracks(connection: PoolConnectionProxy, tracks: Sequence[PlaylistTrack]) -> None:
+# CORRECT — one COPY streams every pairing
+async def record_pairings(
+    pairings: Sequence[Pairing], *, connection: PoolConnectionProxy
+) -> None:
     await connection.copy_records_to_table(
-        "playlist_tracks",
-        records=[(track.playlist_id, track.track_id, track.position) for track in tracks],
-        columns=_PLAYLIST_TRACK_COLUMNS,
+        "pairings",
+        records=[
+            (pairing.round_id, pairing.board, pairing.white_id, pairing.black_id)
+            for pairing in pairings
+        ],
+        columns=_PAIRING_COLUMNS,
     )
 ```

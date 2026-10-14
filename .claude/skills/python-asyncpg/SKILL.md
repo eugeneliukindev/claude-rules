@@ -12,13 +12,10 @@ paths:
 
 # asyncpg
 
-Checked against asyncpg 0.32, asyncpg-stubs 0.32 and PostgreSQL 17. One use case is one transaction,
-a repository returns domain objects, and an N+1 is an error (`python-persistence`); every value is a
-bound parameter (`python-security`); every await has a deadline (`python-async`). asyncpg fits async
-code that talks only to PostgreSQL and writes its own SQL; psycopg 3 fits sync code, or one API for
-both. Under SQLAlchemy the engine owns the pool whatever driver sits below, and `python-sqlalchemy`
-applies instead. A one-off script opens one `asyncpg.connect(..., command_timeout=...)` and closes
-it in `finally` (`python-scripts`).
+Checked against asyncpg 0.32, asyncpg-stubs 0.32 and PostgreSQL 17. One use case is one transaction
+and a repository returns domain objects (`python-persistence`). asyncpg fits async code that talks
+only to PostgreSQL and writes its own SQL; psycopg 3 fits sync code, or one API for both. Under
+SQLAlchemy the engine owns the pool whatever driver sits below (`python-sqlalchemy`).
 
 ## Typing
 
@@ -33,15 +30,37 @@ and a column read from a `Record` is `Any` — so one function per type names ea
 
 ## The Pool
 
-### One pool per database, sized and bounded from settings, built and closed by the root
+### One pool per database, sized, with a statement limit and verified TLS, entered with `async with`
 
 **Why:** the defaults are `min_size=10`, `max_size=10` and `command_timeout=None` — nothing to do
-with the server's `max_connections` divided among the replicas, and no statement limit at all.
-`create_pool` opens `min_size` connections eagerly, so an unreachable server fails the deploy
-instead of the first request. `close()` waits for every acquired connection, so one leaked
-connection hangs shutdown; under `asyncio.timeout` a cancelled `close()` terminates the pool. TLS
-is `ssl="verify-full"` or an `ssl.SSLContext` — the default `prefer` falls back to plaintext and
-verifies nothing (`python-security`).
+with the server's `max_connections` divided among the replicas, and no statement limit at all. The
+pool is its own async context manager: entering it opens `min_size` connections, so an unreachable
+server fails the deploy instead of the first request, and leaving it is `close()`, which waits for
+every acquired connection — one leaked connection hangs shutdown, and a cancelled `close()`
+terminates the pool. The default `ssl="prefer"` falls back to plaintext and verifies nothing.
+
+**Example:**
+```python
+# WRONG — ten connections per replica, no statement limit, and TLS that verifies nothing
+def tournament_pool(dsn: str) -> asyncpg.Pool:
+    return asyncpg.create_pool(dsn)
+
+
+# CORRECT — the root enters it: `async with tournament_pool(dsn) as pool:`
+def tournament_pool(
+    dsn: str,
+    *,
+    max_connections: int = _MAX_CONNECTIONS,
+    command_timeout_seconds: float = _COMMAND_TIMEOUT_SECONDS,
+) -> asyncpg.Pool:
+    return asyncpg.create_pool(
+        dsn,
+        min_size=1,
+        max_size=max_connections,
+        command_timeout=command_timeout_seconds,
+        ssl="verify-full",
+    )
+```
 
 ### A use case's statements share one connection and one transaction
 
@@ -55,30 +74,41 @@ that.
 
 **Example:**
 ```python
-# WRONG — each repository acquires its own connection, so each write commits on its own
-async def add_track(playlist_id: PlaylistId, track: Track, *, pool: asyncpg.Pool) -> None:
-    await PostgresTrackRepository(pool).add(track)
-    await PostgresPlaylistRepository(pool).append(playlist_id, track.track_id)
+# WRONG — no transaction: each write commits on its own, and a failed second leaves the first
+async def record_result(
+    result: GameResult,
+    *,
+    pool: asyncpg.Pool,
+    acquire_timeout_seconds: float = _ACQUIRE_TIMEOUT_SECONDS,
+) -> None:
+    async with pool.acquire(timeout=acquire_timeout_seconds) as connection:
+        await PostgresGameRepository(connection=connection).record(result)
+        await PostgresStandingRepository(connection=connection).award(result)
 
 
 # CORRECT — one connection, one transaction: committed on a clean exit, rolled back on an
 # exception or a cancellation, and the connection returned either way
-async def add_track(playlist_id: PlaylistId, track: Track, *, pool: asyncpg.Pool) -> None:
+async def record_result(
+    result: GameResult,
+    *,
+    pool: asyncpg.Pool,
+    acquire_timeout_seconds: float = _ACQUIRE_TIMEOUT_SECONDS,
+) -> None:
     async with (
-        pool.acquire(timeout=_ACQUIRE_TIMEOUT_SECONDS) as connection,
+        pool.acquire(timeout=acquire_timeout_seconds) as connection,
         connection.transaction(),
     ):
-        await PostgresTrackRepository(connection).add(track)
-        await PostgresPlaylistRepository(connection).append(playlist_id, track.track_id)
+        await PostgresGameRepository(connection=connection).record(result)
+        await PostgresStandingRepository(connection=connection).award(result)
 ```
 
 ## Records and Parameters
 
 ### A `Record` stops at the repository, and a missing row is decided there
 
-**Why:** a `Record` handed outward makes every caller index columns typed `Any`; `dict(row)`
-splatted into a dataclass is the splat `python-boundaries` forbids. `fetchrow` returns `None` for no
-row: a `find` passes it on, a `get` raises the package's not-found error. What comes back:
+**Why:** a `Record` handed outward makes every caller index columns typed `Any`, and `dict(row)`
+splatted into a dataclass trusts the column list to match the fields. `fetchrow` returns `None`
+for no row: a `find` passes it on, a `get` raises the package's not-found error. What comes back:
 `numeric` as `Decimal`, `timestamptz` as an aware UTC `datetime`, `uuid` as asyncpg's own
 `uuid.UUID` subclass, `json` and `jsonb` as `str` until a codec says otherwise. What goes in is
 checked for type but not meaning: `"42"` for a `bigint` raises `DataError`, while a `float` into
@@ -88,30 +118,30 @@ checked for type but not meaning: `"42"` for a `bigint` raises `DataError`, whil
 ```python
 # WRONG — the Record leaves the repository, and every caller indexes columns typed Any
 @final
-class PostgresPlaylistRepository(PlaylistRepository):
-    def __init__(self, connection: PoolConnectionProxy) -> None:
+class PostgresTournamentRepository(TournamentRepository):
+    def __init__(self, *, connection: PoolConnectionProxy) -> None:
         self._connection = connection
 
     @override
-    async def find(self, playlist_id: PlaylistId) -> Any:
-        return await self._connection.fetchrow(_SELECT_PLAYLIST, playlist_id)
+    async def find(self, tournament_id: TournamentId) -> asyncpg.Record | None:
+        return await self._connection.fetchrow(_SELECT_TOURNAMENT, tournament_id)
 
 
-# CORRECT — None is handled here, and the service gets a frozen Playlist
+# CORRECT — None is handled here, and the service gets a frozen Tournament
 @final
-class PostgresPlaylistRepository(PlaylistRepository):
-    def __init__(self, connection: PoolConnectionProxy) -> None:
+class PostgresTournamentRepository(TournamentRepository):
+    def __init__(self, *, connection: PoolConnectionProxy) -> None:
         self._connection = connection
 
     @override
-    async def find(self, playlist_id: PlaylistId) -> Playlist | None:
-        row = await self._connection.fetchrow(_SELECT_PLAYLIST, playlist_id)
-        return None if row is None else _to_playlist(row)
+    async def find(self, tournament_id: TournamentId) -> Tournament | None:
+        row = await self._connection.fetchrow(_SELECT_TOURNAMENT, tournament_id)
+        return None if row is None else _to_tournament(row)
 
 
-def _to_playlist(row: asyncpg.Record) -> Playlist:
-    return Playlist(
-        playlist_id=PlaylistId(row["id"]), title=row["title"], owner_id=UserId(row["owner_id"])
+def _to_tournament(row: asyncpg.Record) -> Tournament:
+    return Tournament(
+        tournament_id=TournamentId(row["id"]), name=row["name"], round_count=row["round_count"]
     )
 ```
 
@@ -123,53 +153,52 @@ the repository raises as not-found; parsing the tag is the brittle alternative.
 
 **Example:**
 ```python
-# WRONG — an UPDATE that matched nothing is silent: renaming a missing playlist "succeeds"
-async def rename_playlist(
-    connection: PoolConnectionProxy, playlist_id: PlaylistId, title: str
+# WRONG — an UPDATE that matched nothing is silent: postponing a missing round "succeeds"
+async def postpone_round(
+    round_id: RoundId, starts_at: datetime, *, connection: PoolConnectionProxy
 ) -> None:
-    await connection.execute(_RENAME_PLAYLIST, title, playlist_id)
+    await connection.execute(_POSTPONE_ROUND, starts_at, round_id)
 
 
 # CORRECT — no returned id is this package's not-found error
-async def rename_playlist(
-    connection: PoolConnectionProxy, playlist_id: PlaylistId, title: str
+async def postpone_round(
+    round_id: RoundId, starts_at: datetime, *, connection: PoolConnectionProxy
 ) -> None:
-    renamed_id = await connection.fetchval(_RENAME_PLAYLIST_RETURNING_ID, title, playlist_id)
-    if renamed_id is None:
-        raise PlaylistNotFoundError(playlist_id)
+    postponed_id = await connection.fetchval(_POSTPONE_ROUND_RETURNING_ID, starts_at, round_id)
+    if postponed_id is None:
+        raise RoundNotFoundError(round_id)
 ```
 
 ### Parameters are `$1`, `$2`, and a list is one array parameter
 
-**Why:** positional `$n` is the only placeholder asyncpg knows, and values never enter the SQL text;
-a sort column or a table name comes from an allowlist (`python-security`). `WHERE id = ANY($1)`
-with a `list` is the fix for an N+1 — one statement whatever the length. The cast `$1::bigint[]` is
-optional where a column fixes the type and required where nothing does: `unnest($1)` without it
-fails as ambiguous.
+**Why:** positional `$n` is the only placeholder asyncpg knows — no `%s`, no `:name`.
+`WHERE id = ANY($1)` with a `list` is the fix for an N+1 — one statement whatever the length. The
+cast `$1::bigint[]` is optional where a column fixes the type and required where nothing does:
+`unnest($1)` without it fails as ambiguous.
 
 **Example:**
 ```python
-# WRONG — one round trip per playlist: a page of fifty playlists is fifty statements
-async def tracks_of(
-    connection: PoolConnectionProxy, playlist_ids: Sequence[PlaylistId]
+# WRONG — one round trip per round: a tournament of eleven rounds is eleven statements
+async def pairings_of(
+    round_ids: Sequence[RoundId], *, connection: PoolConnectionProxy
 ) -> list[asyncpg.Record]:
     rows: list[asyncpg.Record] = []
-    for playlist_id in playlist_ids:
-        rows.extend(await connection.fetch(_SELECT_PLAYLIST_TRACKS, playlist_id))
+    for round_id in round_ids:
+        rows.extend(await connection.fetch(_SELECT_ROUND_PAIRINGS, round_id))
     return rows
 
 
-# CORRECT — the ids travel as one array parameter, and the page is one statement
-_SELECT_TRACKS_OF_PLAYLISTS: Final = """
-    SELECT playlist_id, track_id, position FROM playlist_tracks
-    WHERE playlist_id = ANY($1::bigint[])
+# CORRECT — the ids travel as one array parameter, and the tournament is one statement
+_SELECT_PAIRINGS_OF_ROUNDS: Final = """
+    SELECT round_id, board, white_id, black_id FROM pairings
+    WHERE round_id = ANY($1::bigint[])
 """
 
 
-async def tracks_of(
-    connection: PoolConnectionProxy, playlist_ids: Sequence[PlaylistId]
+async def pairings_of(
+    round_ids: Sequence[RoundId], *, connection: PoolConnectionProxy
 ) -> list[asyncpg.Record]:
-    return await connection.fetch(_SELECT_TRACKS_OF_PLAYLISTS, list(playlist_ids))
+    return await connection.fetch(_SELECT_PAIRINGS_OF_ROUNDS, list(round_ids))
 ```
 
 ## Bulk Writes

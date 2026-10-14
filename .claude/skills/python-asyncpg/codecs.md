@@ -13,7 +13,7 @@ for codecs.
 **Example:**
 ```python
 # WRONG — registered on one connection at startup: the others still return jsonb as str
-async def prepare_pool(pool: asyncpg.Pool) -> None:
+async def register_json_codecs(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as connection:
         await connection.set_type_codec(
             "jsonb", schema="pg_catalog", encoder=json.dumps, decoder=json.loads
@@ -27,14 +27,6 @@ async def _register_json_codecs(connection: asyncpg.Connection) -> None:
     )
 
 
-@asynccontextmanager
-async def managed_pool(config: PoolConfig) -> AsyncIterator[asyncpg.Pool]:
-    async with asyncpg.create_pool(
-        config.url,
-        min_size=config.min_connections,
-        max_size=config.max_connections,
-        command_timeout=config.command_timeout_seconds,
-        init=_register_json_codecs,
-    ) as pool:
-        yield pool
+def tournament_pool(dsn: str, *, max_connections: int = _MAX_CONNECTIONS) -> asyncpg.Pool:
+    return asyncpg.create_pool(dsn, max_size=max_connections, init=_register_json_codecs)
 ```
