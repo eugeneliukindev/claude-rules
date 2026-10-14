@@ -1,9 +1,9 @@
 ---
 name: python-pytest
 description: >-
-  pytest mechanics beyond the testing rules: pytest-asyncio and anyio, hypothesis,
-  pytest-httpserver and respx, testcontainers, conftest layering, markers, coverage. Use when test
-  code imports pytest_asyncio, hypothesis, pytest_httpserver, respx or testcontainers, writes an
+  pytest mechanics beyond the testing rules: pytest-asyncio and anyio, hypothesis, pytest-httpserver
+  and respx, testcontainers, conftest layering, markers, coverage. Use when test code imports
+  pytest_asyncio, hypothesis, pytest_httpserver, respx or testcontainers, writes a property-based or
   async test or fixture, edits conftest.py, or configures coverage.
 paths:
   - "**/*.py"
