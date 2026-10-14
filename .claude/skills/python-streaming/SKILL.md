@@ -247,11 +247,20 @@ async def watch_lot(
 handshake, read [websocket.md](websocket.md)** — pusher and reader in one `TaskGroup`, a code for
 each ending, authentication and `Origin` before accepting, each message validated, the frame size.
 
+- The pusher and the reader run in one `TaskGroup`
+- Each way a connection ends closes it with the code the client acts on
+- A connection is authenticated and its `Origin` checked before it is accepted
+- Every incoming message is validated at the edge, and the frame size is bounded
+
 ## Server-Sent Events
 
 **Before emitting server-sent events, setting an event `id`, resuming from `Last-Event-ID`, or
 keeping an idle stream alive, read [sse.md](sse.md)** — the browser's connection limit,
 heartbeats and buffering, ids from a durable log, subscribe before replay, `retry:`.
+
+- An idle stream sends something below the shortest idle timeout on the path
+- An event `id` is a position in a durable log, never a counter in memory
+- A resumed stream subscribes first, then replays, then follows live, skipping what it replayed
 
 ## Fan-Out Across Workers
 
@@ -260,7 +269,15 @@ writing the relay between a broker and the feed, read [fanout.md](fanout.md)** �
 per worker behind a channel contract, streams ended when a subscription goes live, a relay that
 only queues, rooms in the payload, gaps raised while iterating, the fake and the contract suite.
 
+- Each worker subscribes once to a channel between processes, and publishes to the channel
+- The channel is a contract that states at-most-once delivery and raises on a gap
+- Every time a subscription goes live, the relay ends the worker's streams
+- The relay only queues; it never awaits a socket
+- A room is a key of the feed, carried in a versioned payload — not a channel of its own
+
 ## Downloads
 
 **Before streaming an export of a large table, read [downloads.md](downloads.md)** — pages by key
 in short reads, nothing held while the client downloads.
+
+- An export from a large table pages by key in short reads
