@@ -117,13 +117,22 @@ a guessed signature was right.
 **Before storing or checking a password, read [passwords.md](passwords.md)** — Argon2id, or scrypt
 with every parameter and `maxmem` stated.
 
+- A password is hashed with Argon2id, or scrypt with every parameter stated
+
 ## Paths, Uploads and Archives
 
 **Before building a path from outside input, storing an upload, or extracting an archive, read
 [paths.md](paths.md)** — resolve then compare components, a generated storage name, the `data`
 extraction filter.
 
+- A path from outside input is resolved, then checked component by component against its base
+- An upload is stored under a generated name; the user's name is data for display
+- A tar archive is extracted with `filter="data"`
+
 ## URLs From Outside
 
 **Before fetching a URL a user supplied, read [ssrf.md](ssrf.md)** — an allowlist checked against
 the resolved addresses, and every redirect checked before it is followed.
+
+- The check is on the addresses the name resolves to, not on the name
+- Redirects are followed by hand, and every hop is checked before it is requested
