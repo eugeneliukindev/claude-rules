@@ -18,7 +18,8 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
   to, `python-integrations/<a>-<b>.md`, which both skills' `SKILL.md` link;
 - a function, class or constant defined in one skill's examples is defined in no other skill's,
   and in none of the rules'; an integration file may share names with the pair it joins;
-- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`.
+- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`, and of an
+  integration file in both skills' `SKILL.md`.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -546,14 +547,26 @@ def _router_findings(skill_files: Sequence[_Document]) -> Iterator[_Finding]:
         if document.path.name == "SKILL.md"
     }
     for document in skill_files:
-        router = routers.get(document.path.parent)
-        if document.path.name == "SKILL.md" or router is None:
+        pair = _INTEGRATION_FILE.match(document.path.name)
+        if document.path.parent.name == _INTEGRATIONS_DIRECTORY and pair is not None:
+            # An integration file is listed by both skills of its pair.
+            skills_root = document.path.parent.parent
+            router = "\n".join(
+                routers.get(skills_root / f"{_SKILL_PREFIX}{name}", "") for name in pair.groups()
+            )
+            pair_routers = [
+                routers.get(skills_root / f"{_SKILL_PREFIX}{name}", "") for name in pair.groups()
+            ]
+        else:
+            router = routers.get(document.path.parent, "")
+            pair_routers = [router]
+        if document.path.name == "SKILL.md" or not router:
             continue
         code_lines = _code_line_numbers(document.lines)
         for line_number, line in enumerate(document.lines, start=1):
             if line.startswith("### ") and line_number not in code_lines:
                 heading = line.removeprefix("### ")
-                if heading not in router:
+                if any(heading not in pair_router for pair_router in pair_routers):
                     yield _Finding(
                         path=document.path,
                         line=line_number,
