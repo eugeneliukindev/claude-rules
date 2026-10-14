@@ -17,21 +17,21 @@ linter counts operands and cannot name them, so the count is not the test.
 **Example:**
 ```python
 # WRONG — three operands the reader must assemble into "renewable"
-def renew_loan(loan: Loan, *, today: date) -> Loan:
-    if not loan.is_reserved and loan.renewals < _MAX_RENEWALS and loan.due_on >= today:
+def renew_loan(loan: Loan, *, today: date, max_renewals: int = _MAX_RENEWALS) -> Loan:
+    if not loan.is_reserved and loan.renewals < max_renewals and loan.due_on >= today:
         return loan.extended_by(_LOAN_PERIOD)
     raise RenewalRefusedError(loan.loan_id)
 
 
 # CORRECT — the name says what the operands meant
-def renew_loan(loan: Loan, *, today: date) -> Loan:
-    if _is_renewable(loan, today=today):
+def renew_loan(loan: Loan, *, today: date, max_renewals: int = _MAX_RENEWALS) -> Loan:
+    if _is_renewable(loan, today=today, max_renewals=max_renewals):
         return loan.extended_by(_LOAN_PERIOD)
     raise RenewalRefusedError(loan.loan_id)
 
 
-def _is_renewable(loan: Loan, *, today: date) -> bool:
-    return not loan.is_reserved and loan.renewals < _MAX_RENEWALS and loan.due_on >= today
+def _is_renewable(loan: Loan, *, today: date, max_renewals: int) -> bool:
+    return not loan.is_reserved and loan.renewals < max_renewals and loan.due_on >= today
 ```
 
 ## Pattern Matching
