@@ -9,21 +9,21 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 
 | Skill | When |
 |---|---|
-| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`, writing a generic, narrowing an unknown, reaching for `collections.abc`, a dunder |
-| `python-boundaries` | HTTP, queues, caches, files, serialization, timeouts, retries, time, money, identifiers |
-| `python-wiring` | an entry point, where an object is built, a resource's lifetime, a settings field |
+| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`/a value object, replacing a `dict[str, Any]`, writing a generic or a typed decorator, narrowing an unknown, reaching for `collections.abc`, a dataclass field or dunder |
+| `python-boundaries` | HTTP, queues, caches, files, serialization, validation at the edge, timeouts, retries, idempotency, time, money, identifiers |
+| `python-wiring` | an entry point or an application factory, where an object is built, opening a pool or a client, a settings field or a constant, removing a global |
 | `python-layers` | which layer may import which, an import-linter contract |
 | `python-contracts`, `python-metaclasses` | an ABC or `Protocol`, a subclass, what a consumer is handed, a second implementation, a test fake, where implementations live; a metaclass, `__init_subclass__`, a descriptor, a subclass registry |
-| `python-async`, `python-sync`, `python-streaming` | `async def`; a thread, a process pool, a lock, a signal without a loop; an SSE or WebSocket endpoint, a streamed response |
-| `python-persistence` | a transaction boundary, a repository |
+| `python-async`, `python-sync`, `python-streaming` | `async def`; a thread, a process pool, a lock, a signal without a loop; an SSE or WebSocket endpoint, a streamed response or download, fan-out between processes |
+| `python-persistence` | a transaction boundary, a repository, pagination, a lost update |
 | `python-migrations` | a schema change, planning a backfill |
 | `python-workers`, `python-caching` | a queue consumer or a background job; a cache in front of a database or an API |
 | `python-packaging` | a package other code imports: `__all__`, facade, `_internal`, optional extras, deprecation, a module named like a stdlib one |
-| `python-project`, `python-container` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration; a Dockerfile, an image |
+| `python-project`, `python-container` | a new project or package from nothing: layout, `pyproject.toml`, tool configuration, a dependency; a Dockerfile, an image, a health probe |
 | `python-scripts` | a one-off script, a notebook, the backfill script itself — what relaxes there |
-| `python-cli` | an entry point with an argument parser |
+| `python-cli` | an entry point with an argument parser, a subcommand, an exit code |
 | `python-security`, `python-auth` | input from outside: a body, a filename, a URL, a subprocess argument, a credential; a bearer token, a JWT, a session cookie, a permission or ownership check |
-| `python-observability` | metrics, tracing, correlation ids, where logging is configured |
+| `python-observability` | metrics, tracing, correlation ids, where logging is configured and its JSON output |
 | `python-performance` | a path already measured and found slow |
 | `python-examples` | an example that ships — docstring, README, `examples/` |
 | `python-rules-authoring` | editing these rules or skills |
@@ -81,7 +81,8 @@ clean with no new suppression. Then the eight checks no tool makes, skipped firs
 - [ ] Constants sit at the top of the module, and **every name used only inside its module or
       class is prefixed** — `find_unprefixed_names.py` reports nothing new
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
-- [ ] No `Any`, magic literal or cross-layer `dict[str, Any]`; `@override` and `Final` where due
+- [ ] No `Any`, magic literal or cross-layer `dict[str, Any]`; `@override` and `Final` where due;
+      a setting a function reads is a keyword parameter defaulted to its constant
 - [ ] Every conversion preserves the cause; nothing returns `None`/`False`/`-1` to signal an error;
       errors are logged once, at the boundary, with no secrets or PII
 - [ ] Every comment and docstring passes the relocation test; no credential or URL is hardcoded
