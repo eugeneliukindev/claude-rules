@@ -123,12 +123,18 @@ writing `__eq__`, `__hash__` or `__repr__` by hand, read
 [fields-and-dunders.md](fields-and-dunders.md)** — secrets out of `repr`, timestamps out of
 equality, `__eq__` with `__hash__`.
 
+- A field says what it holds: secrets out of `repr`, ids and timestamps out of equality
+- A dunder is written where the behaviour fits, and `__eq__` comes with `__hash__`
+
 ## Dict Shapes and Constraints
 
 **Before typing data that stays a dict — a foreign JSON payload, a `**kwargs` bundle, a driver
 row — or attaching a bound or a pattern the static type cannot express, read
 [dict-shapes.md](dict-shapes.md)** — `TypedDict` turned into a domain object where it enters,
 `NotRequired` and `ReadOnly`, `Unpack`, one `Annotated` alias per constraint.
+
+- Dict-shaped data that stays a dict is a `TypedDict`, turned into a domain object where it enters
+- A constraint the type cannot express is an `Annotated` alias, named once
 
 ## Closed Sets
 
@@ -252,12 +258,25 @@ def filter_bands(header: Mapping[str, object]) -> list[str]:
 dispatch on an argument's type, read [generics.md](generics.md)** — PEP 695 on the floor that has
 it, parameter names and bounds, variance, `ParamSpec`, `@overload`, `singledispatch`.
 
+- PEP 695 syntax on a 3.12 floor; `TypeVar` and `Generic` below it, and neither is a lapse
+- A PEP 695 parameter is one capital letter; a `TypeVar` is private and suffixed
+- A type parameter the body relies on is bounded, and a parameter takes a read-only collection
+- A decorator keeps the signature it wraps, through `ParamSpec`
+- `@overload` is for one function with several signatures, never for two functions
+- Behaviour that varies by an argument's type over an open set is `singledispatch`
+
 ## `collections.abc`
 
 **Before choosing a parameter's collection type, checking a value against a container type at
 runtime, or implementing a container, read [collections-abc.md](collections-abc.md)** — the
 annotation table, a bare `str` as a `Sequence[str]`, `numbers`, subclassing the ABC instead of
 `dict`.
+
+- `Sequence[str]` also accepts a bare `str`, so a function that means "several" guards it
+- `numbers.Real` and `numbers.Integral` stay out of annotations
+- A runtime check asks the ABC, never `hasattr` or a concrete type
+- A number from elsewhere is checked against `numbers.Real`; one you parsed, `int` and `float`
+- A container subclasses its ABC and implements only the abstract methods — never `dict` or `list`
 
 ## Further Constructs
 
@@ -267,6 +286,18 @@ returned generator, a runtime protocol check, a type pinned in a test, an "unset
 `None`, a batch that collects failures, or bytes-like input, read [constructs.md](constructs.md)**
 — `Never`, `LiteralString`, a recursive JSON alias, calling protocols, unit types, `Iterator`
 returns, `assert_type`, sentinels, batch results, `Buffer`.
+
+- A function that never returns normally returns `Never`
+- A parameter that must not receive interpolated input is `LiteralString`
+- Free-form JSON is a recursive alias, not `Any`
+- A callable with two or more parameters, or any keyword, is a calling protocol
+- A quantity crossing a signature carries its unit in the type as well as the name
+- A returned `Iterator` is consumed once; anything read twice returns a collection
+- `isinstance` against a runtime-checkable `Protocol` checks names, not signatures
+- A public library API pins its inferred types with `assert_type` in its tests
+- When `None` is a legal value, absence is a one-member `Enum` sentinel
+- Failure is an exception; a batch whose normal output mixes outcomes returns tagged variants
+- Bytes-like input is `Buffer`; an integer-like index is `SupportsIndex`
 
 ## Enforcement
 
