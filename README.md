@@ -28,6 +28,15 @@ for skill in .claude/skills/*/; do
 done
 ```
 
+Скилы, удалённые из репозитория, синхронизация не трогает — их каталоги в `~/.claude/skills/`
+удаляются руками:
+
+```bash
+for skill in ~/.claude/skills/python-*/; do
+  [ -d ".claude/skills/$(basename "$skill")" ] || rm -r "$skill"
+done
+```
+
 Если задан `$CLAUDE_CONFIG_DIR`, подставьте его вместо `~/.claude`.
 
 ## Проверка
