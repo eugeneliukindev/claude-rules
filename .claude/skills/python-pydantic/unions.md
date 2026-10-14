@@ -10,12 +10,12 @@ only the member it chose. Each member carries `kind: Literal[...]`.
 ```python
 # WRONG — every member is tried in turn, and a bad payload reports a failure per member
 @final
-class FineMessage(BoundaryModel):
-    payment: CardPayment | BankTransfer
+class SowingGuide(StrictPayload):
+    method: DirectSowing | Transplanting
 
 
 # CORRECT — dispatched on kind, and the error names only the member it chose
 @final
-class FineMessage(BoundaryModel):
-    payment: Annotated[CardPayment | BankTransfer, Field(discriminator="kind")]
+class SowingGuide(StrictPayload):
+    method: Annotated[DirectSowing | Transplanting, Field(discriminator="kind")]
 ```

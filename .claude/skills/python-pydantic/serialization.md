@@ -4,19 +4,19 @@
 
 **Why:** `model_dump()` keeps `datetime`, `UUID` and `Decimal` as objects, and `json.dumps` refuses
 them; `model_dump_json()` serializes straight from the core schema, every field in its wire format,
-without the intermediate dict. A mapper is never `model_dump()` splatted into another class —
-`to_domain()` and `from_domain()` name each field (`python-boundaries`).
+without the intermediate dict. A model is never `model_dump()` splatted into another class's
+constructor: the next field added to one side arrives on the other unchecked, or fails there.
 
 **Example:**
 ```python
 # WRONG — model_dump() keeps datetime and Decimal as objects, and json.dumps refuses them
-def loan_receipt_body(receipt: LoanReceipt) -> str:
-    return json.dumps(receipt.model_dump())
+def germination_report_body(report: GerminationReport) -> str:
+    return json.dumps(report.model_dump())
 
 
 # CORRECT — serialized straight from the core schema
-def loan_receipt_body(receipt: LoanReceipt) -> str:
-    return receipt.model_dump_json()
+def germination_report_body(report: GerminationReport) -> str:
+    return report.model_dump_json()
 ```
 
 ### `exclude_none`, `exclude_unset` and `exclude_defaults` are contract decisions

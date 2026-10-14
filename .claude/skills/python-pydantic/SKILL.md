@@ -1,10 +1,10 @@
 ---
 name: python-pydantic
 description: >-
-  pydantic v2 mechanics for boundary models: model_ methods, strict config, Annotated constraints,
-  pure validators, serialization choices, TypeAdapter, discriminated unions, BaseSettings. Use
-  when code imports pydantic, defines a BaseModel or BaseSettings, or validates an external
-  payload.
+  pydantic v2 mechanics: model_ methods, strict config, Annotated constraints, pure validators,
+  serialization, TypeAdapter, discriminated unions, BaseSettings. Use when code imports pydantic,
+  defines a BaseModel or BaseSettings, or validates a payload with it. Not for where a boundary
+  model belongs or how it maps to the domain (python-boundaries).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -12,9 +12,8 @@ paths:
 
 # pydantic
 
-Assumes v2.11 or later; checked against 2.14. Where a validating model belongs — at the process
-boundary only, mapped into a frozen domain object through `to_domain()` and `from_domain()` — is
-`python-boundaries`.
+Assumes v2.11 or later; checked against pydantic 2.14 and pydantic-settings 2.15. Where a
+validating model belongs, and how it maps to the domain, is `python-boundaries`.
 
 ## The API and the Checker
 
@@ -56,35 +55,34 @@ select = ["ALL"]
 runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
 ```
 
-### Boundary models share one strict, closed, frozen base
+### Validating models share one strict, closed, frozen base
 
 **Why:** lax defaults turn `"3"` into `3` and drop an unknown field in silence. `strict=True`,
 `extra="forbid"`, `frozen=True`, and `allow_inf_nan=False`, because strict still lets a `float` take
-`NaN` and `Infinity` from JSON (`python-boundaries`). It is configured once, on a shared base. Two
-kinds of model take `extra="ignore"` instead: a stored or queued payload, read by code older or
-newer than its writer, and the claims of a token, whose set the identity provider owns
-(`python-auth`). An instant is `AwareDatetime`, which refuses a value without an offset, and a
-queued payload pins its version with `Literal[1]`. With an alias generator, `validate_by_name=True`
-— it replaces `populate_by_name`.
+`NaN` and `Infinity` from JSON. It is configured once, on a shared base. A model whose writer it does
+not control — a stored or queued payload read by code older or newer than its writer, the claims
+of a token whose set the issuer owns — takes `extra="ignore"` instead. An instant is
+`AwareDatetime`, which refuses a value without an offset, and a queued payload pins its version with
+`Literal[1]`. With an alias generator, `validate_by_name=True` — it replaces `populate_by_name`.
 
 **Example:**
 ```python
 # WRONG — lax defaults: "3" becomes 3, and an unknown field is dropped in silence
 @final
-class LoanLine(BaseModel):
-    isbn: str
-    copies: int
+class SeedSelection(BaseModel):
+    variety_code: str
+    packets: int
 
 
 # CORRECT — strict, closed and frozen, configured once on the base every boundary model shares
-class BoundaryModel(BaseModel):
+class StrictPayload(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True, allow_inf_nan=False)
 
 
 @final
-class LoanLine(BoundaryModel):
-    isbn: str
-    copies: int
+class SeedSelection(StrictPayload):
+    variety_code: str
+    packets: int
 ```
 
 ### A strict model parses raw JSON with `model_validate_json`
@@ -96,13 +94,13 @@ fails every valid payload.
 **Example:**
 ```python
 # WRONG — json.loads hands strict validation strings where it wants datetime and UUID objects
-def parse_return(body: bytes) -> BookReturned:
-    return BookReturned.model_validate(json.loads(body))
+def parse_restock(body: bytes) -> SeedsRestocked:
+    return SeedsRestocked.model_validate(json.loads(body))
 
 
 # CORRECT — JSON mode: strict, and the wire formats of datetime and UUID still parse
-def parse_return(body: bytes) -> BookReturned:
-    return BookReturned.model_validate_json(body)
+def parse_restock(body: bytes) -> SeedsRestocked:
+    return SeedsRestocked.model_validate_json(body)
 ```
 
 ### A body a framework decodes for you relaxes exactly its string-carried fields, by name
@@ -115,21 +113,21 @@ made lax once, by name, and everything else stays strict.
 
 **Example:**
 ```python
-# WRONG — a framework-decoded body on the strict base: every valid due_on is a 422
+# WRONG — a framework-decoded body on the strict base: every valid sow_after is a 422
 @final
-class ReserveBookRequest(BoundaryModel):
-    due_on: datetime
-    copies: int
+class ReserveSeedsRequest(StrictPayload):
+    sow_after: datetime
+    packets: int
 
 
-# CORRECT — the string wire form is lax by name; copies="3" is still refused
+# CORRECT — the string wire form is lax by name; packets="3" is still refused
 type WireDatetime = Annotated[datetime, Field(strict=False)]
 
 
 @final
-class ReserveBookRequest(BoundaryModel):
-    due_on: WireDatetime
-    copies: int
+class ReserveSeedsRequest(StrictPayload):
+    sow_after: WireDatetime
+    packets: int
 ```
 
 ## Fields
@@ -137,29 +135,29 @@ class ReserveBookRequest(BoundaryModel):
 ### A constraint is `Annotated[..., Field(...)]`, and a frozen model is immutable all the way down
 
 **Why:** the annotated form keeps the default apart from the constraint and survives being aliased
-into a named type (`python-types`). `frozen=True` stops reassigning a field, not appending to the
+into a named type. `frozen=True` stops reassigning a field, not appending to the
 list inside it — a parsed payload takes `tuple` and `frozenset`. A model built step by step drops
 `frozen` rather than pretending. A mutable default needs no `default_factory`: pydantic copies it
 per instance; `default_factory` is for a computed default — a timestamp, a generated id.
 
 **Example:**
 ```python
-# WRONG — frozen, and still line.tags.append("signed") changes it
+# WRONG — frozen, and still selection.tags.append("organic") changes it
 @final
-class LoanLine(BoundaryModel):
-    isbn: Isbn
-    copies: int = Field(default=1, ge=1, le=5)
+class SeedSelection(StrictPayload):
+    variety_code: VarietyCode
+    packets: int = Field(default=1, ge=1, le=5)
     tags: list[str] = []
 
 
 # CORRECT — nothing reachable from the model can change, and the constraint is a named type
-type CopyCount = Annotated[int, Field(ge=1, le=5)]
+type PacketCount = Annotated[int, Field(ge=1, le=5)]
 
 
 @final
-class LoanLine(BoundaryModel):
-    isbn: Isbn
-    copies: CopyCount = 1
+class SeedSelection(StrictPayload):
+    variety_code: VarietyCode
+    packets: PacketCount = 1
     tags: tuple[str, ...] = ()
 ```
 
@@ -175,27 +173,27 @@ validator is pure — no I/O, no lookup, no clock — or the model cannot be bui
 
 **Example:**
 ```python
-# WRONG — InvalidIsbnError is no ValueError: it escapes past except ValidationError, location lost
-class InvalidIsbnError(LibraryError):
-    def __init__(self, isbn: str) -> None:
-        super().__init__(f"ISBN {isbn!r} has a wrong check digit")
-        self.isbn = isbn
+# WRONG — InvalidVarietyCodeError is no ValueError: it escapes past except ValidationError, location lost
+class InvalidVarietyCodeError(CatalogueError):
+    def __init__(self, variety_code: str) -> None:
+        super().__init__(f"Variety code {variety_code!r} is not two letters and four digits")
+        self.variety_code = variety_code
 
 
 # CORRECT — a ValueError too, so pydantic reports it as a validation error at the field
-class InvalidIsbnError(LibraryError, ValueError):
-    def __init__(self, isbn: str) -> None:
-        super().__init__(f"ISBN {isbn!r} has a wrong check digit")
-        self.isbn = isbn
+class InvalidVarietyCodeError(CatalogueError, ValueError):
+    def __init__(self, variety_code: str) -> None:
+        super().__init__(f"Variety code {variety_code!r} is not two letters and four digits")
+        self.variety_code = variety_code
 
 
-def _check_isbn(isbn: str) -> str:
-    if not _has_valid_check_digit(isbn):
-        raise InvalidIsbnError(isbn)
-    return isbn
+def _check_variety_code(variety_code: str) -> str:
+    if not _VARIETY_CODE_PATTERN.fullmatch(variety_code):
+        raise InvalidVarietyCodeError(variety_code)
+    return variety_code
 
 
-type Isbn = Annotated[str, AfterValidator(_check_isbn)]
+type VarietyCode = Annotated[str, AfterValidator(_check_variety_code)]
 ```
 
 ## Performance
@@ -220,7 +218,7 @@ discriminator instead of trying every member.
 ## Settings
 
 **Before defining a `BaseSettings` or a credential field, read [settings.md](settings.md)** — built
-once at the root and validated at startup, `SecretStr` for credentials, `extra="ignore"` on
+validated at startup, `SecretStr` for credentials, `extra="ignore"` on
 classes that share a `.env` file.
 
 ## With Other Libraries
