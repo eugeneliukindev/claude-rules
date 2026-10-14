@@ -9,9 +9,9 @@
 
 This is how to lay the configuration out, not a contract: the versions, the rule selection and the
 ignores are a start the owner adapts. What carries over is the shape — the floor stated once, strict
-mypy with extra codes, `select = ["ALL"]` with every ignore argued on its line. Coverage settings
-are `python-pytest`'s; the import-linter contracts join when the package has a second layer
-(`python-layers`). `.gitignore` adds every cache these tools create to what `uv init` writes.
+mypy with extra codes, `select = ["ALL"]` with every ignore argued on its line; the import-linter
+contracts join when the package has a second layer. `.gitignore` adds every cache these tools
+create to what `uv init` writes.
 
 ## The Starting `pyproject.toml`
 
@@ -19,7 +19,7 @@ Kept below the build backend `uv init` wrote, the file is complete.
 
 ```toml
 [project]
-name = "pantry"
+name = "unitconv"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pantry = "pantry.cli:main"
+unitconv = "unitconv.cli:main"
 
 [dependency-groups]
 dev = [
@@ -85,7 +85,7 @@ testpaths = ["tests"]
 filterwarnings = ["error"]
 
 [tool.coverage.run]
-source = ["pantry"]
+source = ["unitconv"]
 
 [tool.coverage.report]
 show_missing = true
@@ -108,9 +108,9 @@ against an ownerless `TODO` — is the owner's call, made the same way.
 ### mypy enables the error codes `strict` leaves off, and is the only type checker
 
 **Why:** `strict` does not turn on `explicit-override`, `exhaustive-match` or `ignore-without-code`,
-and those three enforce rules `python-types` otherwise only asks for. mypy and pyright side by side
-each want different suppressions, and a codebase checked by both ends up switching off the check
-that reports a suppression nobody needs.
+and those three enforce what `types.md`, `control-flow.md` and `core.md` otherwise only ask for.
+mypy and pyright side by side each want different suppressions, and a codebase checked by both ends
+up switching off the check that reports a suppression nobody needs.
 
 **Example:**
 ```toml

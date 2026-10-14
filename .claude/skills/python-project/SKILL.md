@@ -14,15 +14,18 @@ paths:
 # Starting and Maintaining a Project
 
 An existing repository's tool configuration is its owner's choice, and it wins; these defaults are
-for the directory where nobody has chosen yet. Tests and coverage are `python-pytest`.
+for the directory where nobody has chosen yet. Tests and coverage are `python-pytest`, a package's
+public surface and its extras `python-packaging`, the import-linter contracts `python-layers`, and
+an audit of the image's operating-system packages `python-container`.
 
 ### An application starts from `uv init --package`, a library from `uv init --lib`: the src layout
 
-**Why:** with the package beside the tests, `import pantry` in a test imports the working tree, so a
-module missing from the built package still passes every test; under `src/` the tests import the
-installed package, what users get. `--lib` also writes `py.typed`, without which every consumer's
-type checker treats the library as untyped. `tests/` sits beside `src/`, and a helper the package
-must not ship lives there. The build backend `uv init` writes stays unless there is a reason.
+**Why:** with the package beside the tests, `import unitconv` in a test imports the working tree,
+so a module missing from the built package still passes every test; under `src/` the tests import
+the installed package, what users get. `--lib` also writes `py.typed`, without which every
+consumer's type checker treats the library as untyped. `tests/` sits beside `src/`, and a helper
+the package must not ship lives there. The build backend `uv init` writes stays unless there is a
+reason.
 
 ### `requires-python` is the floor, and `[tool.mypy] python_version` repeats it
 
@@ -84,7 +87,7 @@ instead.
 
 **Why:** `[dependency-groups]` (PEP 735) is what `uv sync` installs and the published package does
 not carry. An extra — `[project.optional-dependencies]` — is a feature a user opts into, and lives
-in the one module that imports it (`python-packaging`).
+in the one module that imports it.
 
 ## Upgrades and Audits
 

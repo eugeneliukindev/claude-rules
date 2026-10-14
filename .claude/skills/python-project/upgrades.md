@@ -27,8 +27,7 @@ uv sync --resolution lowest-direct && uv run pytest
 under `uvx` that is its own tool environment — measured: 28 packages and "No known vulnerabilities
 found" in a project locking `requests==2.25.0`, whose export reports four `urllib3` advisories.
 Exported from the lock with hashes, `--disable-pip` checks exactly the versions that ship, without
-installing them. Vulnerabilities in the image's operating system packages are a container scan's
-(`python-container`).
+installing them; the image's operating-system packages are a container scan's.
 
 **Example:**
 ```bash
