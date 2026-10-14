@@ -8,23 +8,25 @@ The WebSocket limits are in [streaming.md](streaming.md); the container start co
 **Why:** `uvicorn --factory` calls a function with no arguments, so the app module would have to
 read the environment itself — the one place allowed to read it is the entry point, which builds the
 settings once, unpacks the fields the factory takes, and runs `uvicorn.Server` with the app and the
-server's own options; tests call the factory with their own values.
+server's own options. Host, port and drain are a settings class apart from the application's, so the
+app never sees them; tests call the factory with their own values.
 
 **Example:**
 ```python
 # WRONG — `uvicorn --factory bike_share.api:api_from_environment`: the app module reads it
 def api_from_environment() -> FastAPI:
-    settings = Settings()
-    return build_bike_share_api(database_url=settings.database_url)
+    bike_share = BikeShareSettings()
+    return build_bike_share_api(database_url=bike_share.database_url)
 
 
 # CORRECT — `bike-share-api = "bike_share.server:main"`: the entry point reads, the app receives
 def main() -> None:
-    settings = Settings()
+    bike_share = BikeShareSettings()
+    server = ApiServerSettings()
     config = uvicorn.Config(
-        build_bike_share_api(database_url=settings.database_url),
-        host=settings.host,
-        port=settings.port,
+        build_bike_share_api(database_url=bike_share.database_url),
+        host=server.host,
+        port=server.port,
     )
     uvicorn.Server(config).run()
 ```
@@ -38,23 +40,25 @@ orchestrator's grace period into `SIGKILL`, so the lifespan's shutdown never run
 ```python
 # WRONG — the drain waits for every open request
 def main() -> None:
-    settings = Settings()
+    bike_share = BikeShareSettings()
+    server = ApiServerSettings()
     config = uvicorn.Config(
-        build_bike_share_api(database_url=settings.database_url),
-        host=settings.host,
-        port=settings.port,
+        build_bike_share_api(database_url=bike_share.database_url),
+        host=server.host,
+        port=server.port,
     )
     uvicorn.Server(config).run()
 
 
 # CORRECT — open requests get the drain, inside Kubernetes' default 30 seconds, then the lifespan
 def main() -> None:
-    settings = Settings()
+    bike_share = BikeShareSettings()
+    server = ApiServerSettings()
     config = uvicorn.Config(
-        build_bike_share_api(database_url=settings.database_url),
-        host=settings.host,
-        port=settings.port,
-        timeout_graceful_shutdown=settings.drain_seconds,
+        build_bike_share_api(database_url=bike_share.database_url),
+        host=server.host,
+        port=server.port,
+        timeout_graceful_shutdown=server.drain_seconds,
     )
     uvicorn.Server(config).run()
 ```
