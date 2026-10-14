@@ -1,11 +1,11 @@
 ---
 name: python-wiring
 description: >-
-  Designs construction and configuration: one composition root, default collaborators, scopes,
-  resource lifetime, settings, constants, parameter objects. Use when writing an entry point or
-  an application factory, deciding where an object is built, opening a pool or a client, adding
-  a settings field or a constant, or removing a global. Not for which layer imports which
-  (python-layers).
+  Designs construction and configuration: one composition root, scopes, resource lifetime,
+  settings, constants. Use when writing an entry point or an
+  application factory, deciding where an object is built, opening a pool or a client, adding a
+  settings field or a constant, or removing a global or an import that opens a connection. Not for
+  which layer imports which (python-layers).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
