@@ -1,29 +1,30 @@
 # Testing cashews
 
-The cache contract suite is in `python-caching`; the service's unit tests run on its fake.
+### The adapter is tested against real redis, set up with the production options
 
-### The adapter joins the contract suite against real redis, with the production `setup()`
-
-**Why:** the suite holds `CashewsCache` to the same promises as every implementation, and only the
-root's own options — the null pickler, `suppress=False`, the timeouts — show what production does.
-It is the `cashews` parameter of the suite, with the integration marker.
+**Why:** only the root's own options — the null pickler, `suppress=False`, the timeouts — show what
+production does: that a value comes back as `bytes`, that an outage is a miss within the timeout,
+that every written key carries a TTL. The fixture sets up its instance with the same function the
+root calls, under the integration marker.
 
 **Example:**
 ```python
 # WRONG — a cache set up with the defaults: pickle, suppressed errors, five-second connects
 @pytest.fixture
-async def cashews_cache(redis_url: str) -> AsyncIterator[Cache]:
+async def seat_map_cache(redis_url: str) -> AsyncIterator[SeatMapCache]:
     cache = cashews.Cache(name="test")
     cache.setup(redis_url)
-    yield CashewsCache(cache)
+    yield SeatMapCache(cache=cache)
     await cache.close()
 
 
-# CORRECT — the root's own builder, so the suite tests what production runs
+# CORRECT — the root's own options, so the test runs what production runs
 @pytest.fixture
-async def cashews_cache(redis_url: str) -> AsyncIterator[Cache]:
-    async with managed_cashews(url=redis_url, timeout_seconds=_TIMEOUT_SECONDS) as cache:
-        yield CashewsCache(cache)
+async def seat_map_cache(redis_url: str) -> AsyncIterator[SeatMapCache]:
+    cache = cashews.Cache(name="test")
+    set_up_seat_map_cache(cache, url=redis_url, timeout_seconds=_TIMEOUT_SECONDS)
+    yield SeatMapCache(cache=cache)
+    await cache.close()
 ```
 
 ### A decorator is proven against redis, never by `mem://` alone

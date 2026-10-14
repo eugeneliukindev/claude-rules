@@ -1,7 +1,7 @@
 # Locks and Invalidation
 
-A lock in a cache saves work and guarantees nothing; correctness comes from the resource
-(`python-caching`).
+A lock in a cache saves work and guarantees nothing; correctness comes from the resource — a unique
+constraint, a version column.
 
 ### `@cache.locked` is given `wait=False`, and a `ttl`
 
@@ -12,21 +12,21 @@ the first call against redis. And when redis is down the function runs unlocked 
 **Example:**
 ```python
 # WRONG — a second worker spins against redis for as long as the first one runs
-@report_cache.locked(ttl=_REPORT_LOCK_SECONDS, key="nightly-report")
-async def build_nightly_report(*, reports: ReportBuilder) -> None:
-    await reports.build_nightly()
+@box_office_cache.locked(ttl=_LAYOUT_IMPORT_LOCK_SECONDS, key="auditorium-layouts")
+async def import_auditorium_layouts(*, layouts: LayoutImporter) -> None:
+    await layouts.import_all()
 
 
 # CORRECT — a second worker gets LockedError at once, and its caller skips the run
-@report_cache.locked(ttl=_REPORT_LOCK_SECONDS, key="nightly-report", wait=False)
-async def build_nightly_report(*, reports: ReportBuilder) -> None:
-    await reports.build_nightly()
+@box_office_cache.locked(ttl=_LAYOUT_IMPORT_LOCK_SECONDS, key="auditorium-layouts", wait=False)
+async def import_auditorium_layouts(*, layouts: LayoutImporter) -> None:
+    await layouts.import_all()
 ```
 
 ### `@cache.invalidate` decorates the method whose return means committed
 
 **Why:** it deletes after the decorated function returns (*measured*), so on a repository method
-inside a transaction it deletes before the commit, and a concurrent miss re-caches the old row.
+inside a transaction it deletes before the commit, and a concurrent miss re-caches the old seat map.
 A template with `*` scans the keyspace on every call. Tags keep a redis set per tag, written beside
 every tagged value; `client_side=True` keeps a bounded in-process copy — 10,000 entries — that
 redis invalidates by broadcast and clears when the connection breaks, the one in-process cache a
@@ -36,24 +36,24 @@ write reaches in every worker.
 ```python
 # WRONG — the repository's method returns inside the transaction, so the delete comes first
 @final
-class ProfileRepository:
-    def __init__(self, *, connection: DatabaseConnection) -> None:
+class SeatHolds:
+    def __init__(self, *, connection: BoxOfficeConnection) -> None:
         self._connection = connection
 
-    @profile_cache.invalidate("profile:v2:{user_id}")
-    async def set_display_name(self, user_id: UserId, display_name: str) -> None:
-        await self._connection.execute(_RENAME_PROFILE, user_id, display_name)
+    @box_office_cache.invalidate("seat-map:v2:{screening_id}")
+    async def hold(self, screening_id: ScreeningId, seat_label: str) -> None:
+        await self._connection.execute(_HOLD_SEAT, screening_id, seat_label)
 
 
 # CORRECT — the service method closes the transaction, so its return means committed
 @final
-class ProfileEditing:
-    def __init__(self, *, database: Database, profiles: ProfileRepository) -> None:
-        self._database = database
-        self._profiles = profiles
+class SeatSelection:
+    def __init__(self, *, box_office: BoxOfficeDatabase, holds: SeatHolds) -> None:
+        self._box_office = box_office
+        self._holds = holds
 
-    @profile_cache.invalidate("profile:v2:{user_id}")
-    async def rename(self, user_id: UserId, display_name: str) -> None:
-        async with self._database.transaction():
-            await self._profiles.set_display_name(user_id, display_name)
+    @box_office_cache.invalidate("seat-map:v2:{screening_id}")
+    async def hold(self, screening_id: ScreeningId, seat_label: str) -> None:
+        async with self._box_office.transaction():
+            await self._holds.hold(screening_id, seat_label)
 ```

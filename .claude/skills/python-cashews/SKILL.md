@@ -1,10 +1,10 @@
 ---
 name: python-cashews
 description: >-
-  cashews mechanics behind the application's cache contract: setup in the composition root, safe
-  defaults, the adapter, decorator traps, locks, invalidation, tests. Use when code imports
-  cashews, calls cache.setup, or decorates a function with @cache, @cache.locked or
-  @cache.invalidate. Not for cache design (python-caching).
+  cashews mechanics: an instance the composition root sets up and closes, safe setup options, bytes
+  under the null pickler, an adapter that turns failures into misses, decorator traps, locks,
+  invalidation, tests. Use when code imports cashews, calls cache.setup, or decorates a function
+  with @cache, @cache.locked or @cache.invalidate. Not for cache design (python-caching).
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
@@ -13,19 +13,19 @@ paths:
 # cashews
 
 Checked against cashews 7.6 with redis-py 8.1, against redis 8; everything marked *measured* was run
-against a real server. What a cache must do whatever the library — the `Cache` contract, keys, TTLs,
-the wire format, stampedes, invalidation after commit — is `python-caching`. The redis-py client
-underneath is `python-redis`. `import cashews` and write `cashews.Cache`: the application's contract
-is also named `Cache`, and the prefix keeps the two apart in the one file that sees both.
+against a real server. What a cache must do whatever the library — keys, TTLs, stampedes,
+invalidation after commit — is `python-caching`; the redis-py client underneath is `python-redis`.
+`import cashews` and write `cashews.Cache`, so the library's class is never confused with a cache
+class of the application's own.
 
 ## Setup
 
-### The root sets up a `cashews.Cache` of its own, never the package's global `cashews.cache`
+### The root sets up a `cashews.Cache` of its own and closes it, never the package's global
 
-**Why:** the README calls `cache.setup(...)` on the global at import time — the settings read on
-import that `modules.md` forbids, and one object every test shares. The root builds the instance,
-calls `setup()` with the URL from settings, and awaits `close()` on shutdown; `setup()` does not
-connect, the first command does.
+**Why:** the README calls `cache.setup(...)` on the global `cashews.cache` at import time — the
+settings read on import that `modules.md` forbids, and one object every test shares. `cashews.Cache`
+is not a context manager: the root builds the instance, calls `setup()` with the URL from settings,
+and awaits `close()` in a `finally`; `setup()` does not connect, the first command does.
 
 **Example:**
 ```python
@@ -34,14 +34,16 @@ cashews.cache.setup(os.environ["CACHE_URL"])
 
 
 # CORRECT — the root's own instance, set up from settings and closed on the way out
-@asynccontextmanager
-async def managed_cashews(*, url: str, timeout_seconds: float) -> AsyncIterator[cashews.Cache]:
-    cache = cashews.Cache(name="profiles")
-    cache.setup(url, **_setup_options(timeout_seconds=timeout_seconds))
+async def main() -> None:
+    settings = Settings()
+    seat_maps = cashews.Cache(name="seat-maps")
+    set_up_seat_map_cache(
+        seat_maps, url=settings.cache_url, timeout_seconds=settings.cache_timeout_seconds
+    )
     try:
-        yield cache
+        await serve_box_office(seat_maps=SeatMapCache(cache=seat_maps))
     finally:
-        await cache.close()
+        await seat_maps.close()
 ```
 
 ### Four defaults are overridden in the one `setup()` call
@@ -54,25 +56,33 @@ is caught. The connect timeout is redis-py's five seconds — cashews sets only 
 and *measured*, with redis unreachable a decorated call took ten seconds. The pool holds ten
 connections and waits ten seconds for one. cashews builds its pool through `from_url`, so no
 retry is added underneath (*measured*), and `retry=` is passed anyway so a later default cannot.
+The tests set up their instance with the same function.
 
 **Example:**
 ```python
 # WRONG — pickle, an ERROR log per failed command, five seconds to give up, ten pooled connections
-def _setup_options(*, timeout_seconds: float) -> dict[str, object]:
-    return {}
+def set_up_seat_map_cache(cache: cashews.Cache, *, url: str, timeout_seconds: float) -> None:
+    cache.setup(url)
 
 
 # CORRECT — bytes only, failures raised to the code that counts them, every wait bounded
-def _setup_options(*, timeout_seconds: float) -> dict[str, object]:
-    return {
-        "pickle_type": "null",
-        "suppress": False,
-        "socket_connect_timeout": timeout_seconds,
-        "socket_timeout": timeout_seconds,
-        "retry": Retry(NoBackoff(), retries=0),
-        "max_connections": _CACHE_MAX_CONNECTIONS,
-        "wait_for_connection_timeout": timeout_seconds,
-    }
+def set_up_seat_map_cache(
+    cache: cashews.Cache,
+    *,
+    url: str,
+    timeout_seconds: float,
+    max_connections: int = _CACHE_MAX_CONNECTIONS,
+) -> None:
+    cache.setup(
+        url,
+        pickle_type="null",
+        suppress=False,
+        socket_connect_timeout=timeout_seconds,
+        socket_timeout=timeout_seconds,
+        retry=Retry(NoBackoff(), retries=0),
+        max_connections=max_connections,
+        wait_for_connection_timeout=timeout_seconds,
+    )
 ```
 
 ## Values
@@ -86,99 +96,89 @@ the fix: it signs entries and rejects a forged one by raising `UnSecureDataError
 (*measured*), and the values are still pickles. `pickle_type="json"` hands back dicts, and a value
 json cannot encode raises `TypeError` out of the decorated call itself (*measured*).
 `cashews.serialize.register_type` keeps a process-wide registry keyed by the bare class name, so
-two `Profile` classes in two modules collide.
+two `SeatMap` classes in two modules collide.
 
 **Example:**
 ```python
 # WRONG — pickled: a renamed class breaks the reader, and a forged entry runs on get
-async def store_profile(profile: Profile, *, cache: cashews.Cache) -> None:
-    await cache.set(_profile_key(profile.user_id), profile, expire=_PROFILE_TTL)
+async def store_seat_map(
+    seat_map: SeatMap, *, cache: cashews.Cache, ttl: timedelta = _SEAT_MAP_TTL
+) -> None:
+    await cache.set(_seat_map_key(seat_map.screening_id), seat_map, expire=ttl)
 
 
 # CORRECT — the payload's bytes, the shape versioned in the key
-async def store_profile(profile: Profile, *, cache: cashews.Cache) -> None:
-    payload = _profile_to_payload(profile)
-    await cache.set(_profile_key(profile.user_id), payload, expire=_PROFILE_TTL)
+async def store_seat_map(
+    seat_map: SeatMap, *, cache: cashews.Cache, ttl: timedelta = _SEAT_MAP_TTL
+) -> None:
+    payload = _seat_map_to_payload(seat_map)
+    await cache.set(_seat_map_key(seat_map.screening_id), payload, expire=ttl)
 ```
 
-## The Default Shape: `CashewsCache`
+## The Adapter
 
-### `CashewsCache` implements the application's `Cache`, one `except` per method
+### A class of the application's own wraps `cashews.Cache`, one `except` per call
 
-**Why:** an adapter keeps every rule of `python-caching` as written — the key function, the
-jittered TTL, the service's shielded single-flight, invalidation after commit, the fake and the
-contract suite — and a failure is a counted miss. `get` is typed `Any`; under the null pickler only
-`bytes` come back, and anything else is a miss. cashews sends a TTL as milliseconds, so a
-sub-second `timedelta` survives — but **a TTL of zero writes a key that never expires** (*measured*:
-`ttl` answered `-1`), so a computed TTL never reaches zero. It lives in `cache/cashews.py`, the one
-module that imports cashews.
+**Why:** the cache is an optimization, so a backend failure is a counted miss — a read answers
+`None`, a write does nothing — and the box office serves from the source. `get` is typed `Any`;
+under the null pickler only `bytes` come back, and anything else is a miss. cashews sends a TTL as
+milliseconds, so a sub-second `timedelta` survives — but **a TTL of zero writes a key that never
+expires** (*measured*: `ttl` answered `-1`), so a computed TTL never reaches zero. It lives in the
+one module that imports cashews, and only it sees a `cashews.Cache`.
 
 **Example:**
 ```python
-# WRONG — a backend failure raises through every operation into the service
+# WRONG — a backend failure raises through every call into the box office
 @final
-class CashewsCache(Cache):
-    def __init__(self, cache: cashews.Cache) -> None:
+class SeatMapCache:
+    def __init__(self, *, cache: cashews.Cache, ttl: timedelta = _SEAT_MAP_TTL) -> None:
         self._cache = cache
+        self._ttl = ttl
 
-    @override
-    async def get(self, key: str) -> bytes | None:
-        value = await self._cache.get(key)
-        return value if isinstance(value, bytes) else None
+    async def find(self, screening_id: ScreeningId) -> SeatMap | None:
+        value = await self._cache.get(_seat_map_key(screening_id))
+        return _seat_map_from_payload(value) if isinstance(value, bytes) else None
 
-    @override
-    async def set(self, key: str, value: bytes, *, ttl: timedelta) -> None:
-        await self._cache.set(key, value, expire=ttl)
+    async def store(self, seat_map: SeatMap) -> None:
+        payload = _seat_map_to_payload(seat_map)
+        await self._cache.set(_seat_map_key(seat_map.screening_id), payload, expire=self._ttl)
 
-    @override
-    async def add(self, key: str, value: bytes, *, ttl: timedelta) -> bool:
-        return await self._cache.set(key, value, expire=ttl, exist=False)
-
-    @override
-    async def delete(self, key: str) -> None:
-        await self._cache.delete(key)
+    async def forget(self, screening_id: ScreeningId) -> None:
+        await self._cache.delete(_seat_map_key(screening_id))
 
 
-# CORRECT — each operation answers as an empty cache would, and the failure is counted
+# CORRECT — each call answers as an empty cache would, and the failure is counted
 @final
-class CashewsCache(Cache):
-    def __init__(self, cache: cashews.Cache) -> None:
+class SeatMapCache:
+    def __init__(self, *, cache: cashews.Cache, ttl: timedelta = _SEAT_MAP_TTL) -> None:
         self._cache = cache
+        self._ttl = ttl
 
-    @override
-    async def get(self, key: str) -> bytes | None:
+    async def find(self, screening_id: ScreeningId) -> SeatMap | None:
         try:
-            value = await self._cache.get(key)
+            value = await self._cache.get(_seat_map_key(screening_id))
         except CacheBackendInteractionError as error:
-            _count_failure("get", error)
+            _count_seat_map_failure("get", error)
             return None
-        return value if isinstance(value, bytes) else None
+        return _seat_map_from_payload(value) if isinstance(value, bytes) else None
 
-    @override
-    async def set(self, key: str, value: bytes, *, ttl: timedelta) -> None:
+    async def store(self, seat_map: SeatMap) -> None:
+        payload = _seat_map_to_payload(seat_map)
         try:
-            await self._cache.set(key, value, expire=ttl)
+            await self._cache.set(_seat_map_key(seat_map.screening_id), payload, expire=self._ttl)
         except CacheBackendInteractionError as error:
-            _count_failure("set", error)
+            _count_seat_map_failure("set", error)
 
-    @override
-    async def add(self, key: str, value: bytes, *, ttl: timedelta) -> bool:
+    async def forget(self, screening_id: ScreeningId) -> None:
         try:
-            return await self._cache.set(key, value, expire=ttl, exist=False)
+            await self._cache.delete(_seat_map_key(screening_id))
         except CacheBackendInteractionError as error:
-            _count_failure("add", error)
-            return True
-
-    @override
-    async def delete(self, key: str) -> None:
-        try:
-            await self._cache.delete(key)
-        except CacheBackendInteractionError as error:
-            _count_failure("delete", error)
+            _count_seat_map_failure("delete", error)
 
 
-def _count_failure(operation: str, error: CacheBackendInteractionError) -> None:
-    _CACHE_FAILURES.add(1, {"operation": operation, "error.type": type(error.__cause__).__name__})
+def _count_seat_map_failure(operation: str, error: CacheBackendInteractionError) -> None:
+    error_type = type(error.__cause__).__name__
+    _SEAT_MAP_CACHE_FAILURES.add(1, {"operation": operation, "error.type": error_type})
 ```
 
 ## Decorators
@@ -186,8 +186,8 @@ def _count_failure(operation: str, error: CacheBackendInteractionError) -> None:
 **Before decorating a function with `@cache(...)`, `@cache.early`, `@cache.soft` or `@cache.hit`,
 or adding a cashews middleware, read [decorators.md](decorators.md)** — when the decorator shape is
 worth it, the failure-counting middleware, explicit key templates, `condition=NOT_NONE`, no `None`
-TTL, no `jwt` key filter, single-flight without a shield, the shapes that need pickle, the
-middlewares that let a client clear the cache.
+TTL, no `jwt` key filter, single-flight without a shield, the shapes that need pickle, `failover`
+and `circuit_breaker` options.
 
 ## Locks and Invalidation
 
@@ -197,9 +197,9 @@ invalidation after the function returns, what tags and the client-side cache cos
 
 ## Testing
 
-**Before testing code that uses cashews, read [testing.md](testing.md)** — the adapter in the
-contract suite against redis, why `mem://` proves nothing about serialization, `disabling()`, and
-the deprecated `close()` under warnings as errors.
+**Before testing code that uses cashews, read [testing.md](testing.md)** — the adapter against
+redis with the production options, why `mem://` proves nothing about serialization, `disabling()`,
+and the deprecated `close()` under warnings as errors.
 
 ## With Other Libraries
 
