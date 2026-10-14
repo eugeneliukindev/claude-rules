@@ -43,8 +43,9 @@ def free_rooms(stay: Stay, *, rooms: RoomRepository) -> list[Room]:
 ### What every caller would repeat lives inside the function
 
 **Why:** a parameter is for a value callers actually vary; a retry, an encoding or a reshaping that
-every caller passes or does the same way belongs in the body, written once. A setting of a
-factory or of a class the root builds is defaulted in its signature instead (below).
+every caller passes or does the same way belongs in the body, written once. A setting is the
+exception: it is defaulted in the signature, so no caller repeats it and a test still varies it
+(below).
 
 
 ## Parameters
@@ -151,14 +152,17 @@ def is_expired(token: AccessToken, *, now: datetime, lifetime: timedelta) -> boo
     return now > token.issued_at + lifetime
 ```
 
-### A setting of a factory or of a class the root builds is a keyword parameter with a default
+### A setting a function or a method reads is a keyword parameter defaulted to a module constant
 
-**Why:** a limit, a path, a name, a TTL — the factory or the constructor is where a test or a
-second entry point builds the object, so a value read inside it instead can be changed only by
-patching the module; defaulted in the signature, the root passes nothing and a test passes what it
-needs. Inside an ordinary function a constant stays, as what every caller would repeat.
-**Except:** a value fixed by a format or a protocol — a file's magic bytes, a header's name — is not
-a setting, and stays in the body.
+**Why:** a timeout, a limit, a TTL, a size, a retry count, a deadline, an interval, a path — read in
+the body, it can be changed only by patching the module; defaulted in the signature
+(`*, timeout_seconds: float = _TIMEOUT_SECONDS`), a caller passes nothing and a test passes what it
+needs. A constructor takes it the same way and keeps it in a field.
+**Except:** the root (`main`, `run`, `lifespan`), a test, a fixture and a signature a framework
+parses — a route, a WebSocket endpoint, a broker subscriber, a GraphQL resolver, where a defaulted
+parameter is an input the client sets — read the constant where they stand. A decorator's argument
+is evaluated at import, and a value fixed by a format or a protocol — a file's magic bytes, a
+header's name — is not a setting; both stay as they are.
 
 **Example:**
 ```python
