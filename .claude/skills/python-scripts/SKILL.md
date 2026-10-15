@@ -127,8 +127,7 @@ logger.warning("isbn not in the catalogue, skipped: %s", isbn)
   the count reported at the end, and a non-zero exit code when it is not zero;
 - subprocess argument lists and parameterized SQL;
 - a key written to a shared cache carries a TTL and never holds a pickle;
-- annotated signatures (`types.md`) — the cheapest part of a later promotion, and mypy still finds
-  the `None` passed where a value was required.
+- annotated signatures (`types.md`) — the cheapest part of a later promotion.
 
 **Example:**
 ```python
