@@ -1,7 +1,7 @@
 ---
 name: python-review
 description: >-
-  Reviews Python changes against these rules: the tools first, then the Definition of Done checks
+  Reviews Python changes against these rules: the project's checks first, then the Definition of Done checks
   per changed unit, reported as findings. ALWAYS invoke this skill when asked to review Python code,
   a diff, a branch or a pull request, or to check that Python work is done. Do not review Python
   changes directly.
@@ -12,7 +12,7 @@ paths:
 
 # Reviewing Python Changes
 
-`core.md` ends with the checks no tool makes, and they are skipped first under pressure. This is
+`core.md` ends with eight checks, and they are skipped first under pressure. This is
 the procedure that runs them. It reviews a **diff**: what changed, against these files — not the
 whole repository, and not the code's taste.
 
@@ -30,16 +30,10 @@ List the changed files and, in each, the changed **units** — the functions, cl
 modules the diff adds or edits. A check below applies to a changed unit, never to its neighbours
 (`core.md`: what the task writes obeys the rules, what it only passes stays as it is).
 
-## 2. Run the Tools the Project Runs
+## 2. Run the Project's Checks
 
-Which tools a project runs is its own business: read `pyproject.toml`, the pre-commit
-configuration, the CI workflow or the task runner, and run what they run, in this order — the
-formatter in check mode, the linters, the type checker, the tests. Do not install a tool the
-project does not use, and do not substitute your own configuration for its.
-
-Each failure is a finding. A new suppression in the diff — `# noqa`, `# type: ignore`, a
-per-file ignore, a raised limit — is a finding unless it carries its rule code and reason on its
-line (`core.md`).
+Run what the project's CI already runs, the tests included; do not install a tool the project does
+not use. Each failure is a finding.
 
 ## 3. The Checks, Unit by Unit
 
