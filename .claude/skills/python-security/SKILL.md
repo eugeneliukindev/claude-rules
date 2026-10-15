@@ -1,11 +1,10 @@
 ---
 name: python-security
 description: >-
-  Handles input from outside and who may act on it: parameterized SQL, subprocess arguments, safe
-  parsers, paths, uploads, archives, SSRF, size limits, passwords, tokens, permissions. ALWAYS
-  invoke this skill when code handles a request body, a filename, an upload, a URL, an Authorization
-  header, a cookie or a subprocess argument, or checks a role or an owner. Do not handle such input
-  directly.
+  Handles input from outside and who may act on it: parameterized SQL, safe parsers, paths, uploads,
+  archives, SSRF, size limits, passwords, tokens, permissions. ALWAYS invoke this skill when code
+  handles a request body, a filename, an upload, a URL, an Authorization header or a cookie, or
+  checks a role or an owner. Do not handle such input directly.
 paths:
   - "**/*.py"
   - "**/pyproject.toml"
