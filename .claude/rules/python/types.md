@@ -9,34 +9,26 @@ paths:
 
 ### Every value takes its narrowest honest type
 
-**Why:** a wider type is a runtime check you owe later, in a place nobody will remember to write it
-— any string is a status, any dict a target; `Any` stops checking at the first subscript, where the
-recursive `Json` alias keeps every level a union to narrow. How an id or an alias is named is
-`naming.md`.
+**Why:** a wider type is a runtime check owed later, where nobody writes it; `Any` stops checking
+at the first subscript, where `Json` keeps every level a union to narrow. A closed set, an id, a
+primitive with rules and a dict you don't own each have a rule below.
 
-| Instead of | Use | When |
-|---|---|---|
-| `str` for a closed set | `Literal["fits", "csv"]` | 2–4 values, one or two signatures |
-| `Literal` reused across signatures | `Enum` / `StrEnum` | a name, behaviour, or 3+ users |
-| `str`, `int` that must not be mixed | `NewType` | identity only, no rules |
-| a primitive with rules | frozen dataclass value object | validation, invariants, operations |
-| `dict[str, Any]` you don't own | `TypedDict` | fixed keys, external JSON shape |
-| `dict[str, Any]` crossing a boundary | a validating boundary model | untrusted input |
-| `dict` with homogeneous dynamic keys | `Mapping[TargetId, Exposure]` | keys are data, not fields |
-| `Any` for genuinely unknown JSON | `type Json = str \| int \| float \| bool \| None \| list[Json] \| dict[str, Json]` | the shape is truly free-form |
-| `tuple[Any, ...]` | frozen dataclass | any record — never `NamedTuple` |
-| several `bool` fields | one `Enum` state | the flags encode a state machine |
+| Instead of | Use |
+|---|---|
+| `dict[str, Any]` inbound | a validating boundary model |
+| `dict` keyed by data | `Mapping[TargetId, Exposure]` |
+| `Any` for free-form JSON | `type Json = str \| int \| float \| bool \| None \| list[Json] \| dict[str, Json]` |
+| `tuple[Any, ...]` | a frozen dataclass, never `NamedTuple` |
+| several `bool` fields | one `Enum` state |
 
 ### Parameters take the narrowest `collections.abc` type; returns are concrete
 
-**Why:** `Mapping[str, int]` in accepts every mapping and handles variance; `dict[str, int]` out
-tells the caller what it can do with the result. Iterate once — `Iterable`; length or index —
-`Sequence`; lookup — `Mapping`; membership — `Set`; mutate — `MutableSequence`, `MutableMapping`;
-bytes or text — `typing.IO[bytes]`, `typing.TextIO`; a real number — `float`, which accepts `int`.
-A return hides its container only on purpose: `-> Mapping[...]` for a read-only view,
-`-> Iterator[Frame]` for a generator, which says "read once" where an `Iterable` return invites a
-second loop that silently sees nothing. A read-only attribute or field is a `Sequence` or a
-`Mapping` too. A contract of your own is written only when no standard ABC names the capability.
+**Why:** `Mapping[str, int]` in accepts every mapping; `dict[str, int]` out tells the caller what
+it can do. Iterate once — `Iterable`; index — `Sequence`; membership — `Set`; mutate —
+`MutableMapping`; a stream — `typing.IO[bytes]`. A return hides its container
+only on purpose: `-> Iterator[Frame]` from a generator says "read once", where `Iterable` invites a
+second loop that sees nothing. A read-only field is a `Sequence` or a `Mapping` too; a contract of
+your own is written only when no ABC names the capability.
 
 ### Arguments are never mutated, and internal state is never handed out
 
@@ -82,11 +74,10 @@ transfer = Transfer(sender_id=sender_id, recipient_id=recipient_id, amount=amoun
 ### A primitive with rules is a frozen value object, valid by construction
 
 **Why:** a rule checked at the call sites is checked at some of them. A value with no rules stays a
-plain `str`, `int` or `Decimal`; identity only is a `NewType` (`naming.md`) — a `type` alias is a
-name for the reader, and the checker accepts any `str` for it; validation, invariants or operations
-make a frozen dataclass, validated in `__post_init__` with the package's own error, after which no
-function re-validates it. A `NewType` that grows its first rule becomes a value object everywhere.
-Value objects compare by value, are hashable and carry no I/O.
+plain `str`, `int` or `Decimal`; identity only is a `NewType` — a `type` alias accepts any `str`;
+rules make a frozen dataclass, validated in `__post_init__` with the package's own error, after
+which nothing re-validates it. A `NewType` that grows a rule becomes one everywhere. Value objects
+compare by value, are hashable and carry no I/O.
 
 **Example:**
 ```python
@@ -142,10 +133,9 @@ first use as a set member raises `TypeError`.
 
 ### Dict-shaped data that stays a dict is a `TypedDict`, turned into a domain object where it enters
 
-**Why:** a JSON payload you don't own, a `**kwargs` bundle, a driver row, a file read back — the
-`TypedDict` names the keys so `entry["designation"]` stops being `Any`, at no runtime cost. A file
-read back stays dicts: converting every row costs more than it returns when most of the file is
-only counted or filtered. It has no validation, methods or `isinstance`, so it is never a domain
+**Why:** a JSON payload you don't own, a `**kwargs` bundle, a file read back — the `TypedDict`
+names the keys so `entry["designation"]` stops being `Any`, at no runtime cost; a file mostly
+counted is not worth converting row by row. With no validation or methods it is never a domain
 type. Keys are marked `NotRequired[...]` or `Required[...]`, not `total=False`; `ReadOnly[...]` for
 keys consumers must not change; `Unpack[Options]` types a forwarded `**kwargs`.
 
@@ -182,14 +172,11 @@ in a service body means the boundary leaked.
 
 ### A closed set is a `Literal` in one or two signatures and an `Enum` once reused; a string used twice is a constant, and a member is compared to a member
 
-**Why:** the checker rejects `"votable"` at the call site, where a `str` lets the function raise in
-the caller's process, and a literal repeated at two call sites drifts into two spellings. Promote to
-`Enum` at three users, or earlier when the set needs iteration, behaviour, or crosses a boundary
-where wire and code values may diverge. `Final` keeps a constant's exact value —
-`DEFAULT_CURVE_FORMAT: Final = "fits"` passes where the `Literal` is expected. `StrEnum` serializes
-as its value with no `.value`; `IntEnum` equals the integer codes it replaces; a plain `Enum` with
-`auto()` has no wire form to leak. A comparison with a raw literal survives a renamed value and
-turns false without an error.
+**Why:** the checker rejects `"votable"` at the call site, where a `str` raises at runtime, and a
+literal repeated twice drifts into two spellings. Promote to `Enum` at three users, or earlier for
+behaviour or a wire value that may diverge — `StrEnum` serializes as its value.
+`DEFAULT_CURVE_FORMAT: Final = "fits"` passes where the `Literal` is expected. A comparison with a raw literal turns silently false once the
+value is renamed.
 
 **Example:**
 ```python
@@ -213,7 +200,7 @@ def export_light_curve(curve: LightCurve, file_format: Literal["fits", "csv"]) -
 **Why:** a status beside optional fields lets an observed visit have no observation time. Variants
 make that combination unconstructable, and a class pattern in `match` narrows each one, closed with
 `assert_never` (`control-flow.md`). A union of `TypedDict`s narrows on a `Literal` field —
-`kind: Literal["observed"]` — the same field a validator dispatches serialized data on. A batch
+`kind: Literal["observed"]`, as a validator does. A batch
 whose normal output mixes successes and failures is such a union too — `ParsedLine | RejectedLine`
 — never a generic `Result` wrapper; any other failure is an exception.
 
@@ -336,13 +323,11 @@ def reject(invoice: Invoice) -> Never:
 
 **Why:** on a 3.12 floor, `def load_frames[T: Frame](frame_type: type[T]) -> list[T]` scopes the
 parameter to its one function, where a module-level `TypeVar` is shared by accident; an unbounded
-parameter whose body reads an attribute promises callers more than it can keep. The floor in
-`requires-python` decides, once, the syntax and the names that came with it —
-`typing_extensions.override` until 3.12, `typing_extensions.TypeIs` until 3.13, a parameter default
-(`class Catalogue[T = Star]`) only from 3.13 — and below 3.12 `TypeVar` and `Generic` are not a
-lapse. The bound carries the meaning, so the letter need not — `T`, `K` and `V`, `P` and `R` for
-`ParamSpec` and return; three or more parameters are spelled out. A `TypeVar` is a private
-module-level name with the PEP 484 suffix — `_T`, `_KT`, `_P`, `_FrameT`, `_FrameT_co`.
+parameter whose body reads an attribute promises more than it keeps. `requires-python` decides the
+spelling — `typing_extensions.override` below 3.12, `TypeIs` below 3.13, a default
+(`class Catalogue[T = Star]`) from 3.13; below 3.12 `TypeVar` and `Generic` are no lapse. The bound
+carries the meaning: `T`, `K`/`V`, `P`/`R`; three or more are spelled out. A `TypeVar` is `_T`,
+`_FrameT_co`.
 
 ### A decorator keeps the signature it wraps, through `ParamSpec`
 
