@@ -74,6 +74,29 @@ and the other inlined, the asymmetry suggests a difference that is not there; a 
 what is shared, what is built from it and what is assembled.
 **Except:** a trivial conversion or a literal — `str(order_id)`, `Decimal("0.2")` — stays inline.
 
+**Example:**
+```python
+# WRONG — one channel named, its sibling built inside the constructor call, no blocks
+def build_sensor_pipeline(
+    *, site: str, serial_port: str, station_name: str = _STATION_NAME
+) -> SensorPipeline:
+    station = StationIdentity(name=station_name, site=site)
+    readings = open_reading_stream(station, port=serial_port)
+    return SensorPipeline(readings, open_alarm_channel(station, port=serial_port))
+
+
+# CORRECT — what is shared, what is built from it, what is assembled: one block each
+def build_sensor_pipeline(
+    *, site: str, serial_port: str, station_name: str = _STATION_NAME
+) -> SensorPipeline:
+    station = StationIdentity(name=station_name, site=site)
+
+    readings = open_reading_stream(station, port=serial_port)
+    alarms = open_alarm_channel(station, port=serial_port)
+
+    return SensorPipeline(readings, alarms)
+```
+
 ## Extraction
 
 ### A helper is extracted only when it pays
