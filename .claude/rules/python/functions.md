@@ -39,19 +39,12 @@ is whether the branches share a body.
 
 ### A function reads only its parameters; a clock, randomness and a setting arrive as parameters, a setting defaulted to its module constant — never the settings object
 
-**Why:** global mutable state, an imported `settings`, a clock or randomness read inside are inputs
-no caller can see and no test can fix — a timeout, a limit, a TTL, a size, a width, a duration, a
-retry count, the set of statuses worth retrying or a path read in the body changes only by patching
-the module. The time arrives as `now` or an injected clock; a setting defaulted in the signature
-lets a caller pass nothing and a test pass what it needs, and a constructor keeps each in a field.
-`settings: Settings` hides what a function reads and makes a test build the whole tree; the entry
-point unpacks it into plain values, or a frozen config dataclass for a group that travels together.
-**Except:** the root (`main`, `run`, `lifespan`), a test, a fixture and a signature a framework
-parses — a route, a subscriber, a resolver, where a defaulted parameter is an input the client
-sets — read the constant where they stand. A value a format or a protocol fixes, a query, a
-dispatch table and a security allowlist are code, not settings, and stay in the body. A fresh
-identifier whose value no test compares, and a monotonic reading that only measures a duration, are
-made inside.
+**Why:** a clock or a setting read inside — a timeout, a TTL, the statuses worth retrying — is an
+input no test fixes without patching. A default in the signature, or a constructor's, lets a test
+pass what it needs; `settings: Settings` makes it build the whole tree.
+**Except:** the root, a test, a fixture and a framework-parsed signature (a route) read the
+constant; a value a protocol fixes, a query, a dispatch table, a security allowlist, an uncompared
+identifier and a monotonic duration stay in the body.
 
 **Example:**
 ```python
