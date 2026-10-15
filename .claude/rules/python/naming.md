@@ -30,11 +30,10 @@ in float seconds as the stdlib uses it — needs none.
 
 ### The prefix tells the cost and the side effect; the return type tells the failure
 
-**Why:** `get_` is a cheap local lookup, `find_` a search that may find nothing, `fetch_` and
-`load_` do I/O, `compute_` is CPU work, `save_`, `send_`, `publish_` announce a write — never a
-write or I/O behind a `get_` or a property. A query has no side effect; a command returns `None` or
-the outcome of its own effect, the id it assigned. A generic verb — `process`, `handle`, `manage` —
-means the unit does not know what it is for.
+**Why:** `get_` is a cheap lookup, `find_` a search that may find nothing, `fetch_` and
+`load_` do I/O, `compute_` is CPU work, `save_`, `send_`, `publish_` write — never I/O behind a
+`get_` or a property. A query has no side effect; a command returns `None` or what its effect
+assigned. A generic verb — `process`, `handle` — means the unit does not know what it is for.
 **Except:** a method of a store contract keeps its family's verbs — a repository's `get` raises when
 the row is missing and its `find` returns `None`; a cache's `get` returns `None` on a miss.
 
@@ -57,11 +56,10 @@ branches.
 
 ### A name says what the thing is or does — never its history, place, caller or neighbour
 
-**Why:** every call site spells the name out, so it costs more to fix than a comment. The relocation
-test: move the unit to another package and read its name with the neighbours hidden — the
-argument's history (`merged`, `cleaned`) turns false for the next caller; a place in this project
-(`runs`, `data_dir`) names one repository's layout; the caller's intent (`for_nightly_job`) breaks
-for a second caller; a vendor in a schema's name outlives two replacements of the vendor.
+**Why:** every call site spells the name out. Read it moved to another package — the argument's
+history (`merged`) turns false for the next caller; a place (`data_dir`) names one repository's
+layout; the caller (`for_nightly_job`) breaks for a second; a vendor in a schema's name outlives
+the vendor.
 **Except:** an implementation *is* named for what makes it concrete — `SlackNotifier`,
 `PostgresUserRepository`.
 
