@@ -44,7 +44,7 @@ is not obvious.
 1. **Names** — every new identifier follows `naming.md` and survives the
    relocation test: no history, place, caller or neighbour in the name.
 2. **Actors** — every new module and class answers to one actor. Name who would ask to change each
-   function; two answers are two modules (`classes.md`).
+   function; two answers are two modules (`principles.md`).
 3. **Reasons to exist** — every new helper has a reason from `functions.md` and fails
    none of the shallow-helper tests; every new class has a trigger from `classes.md`.
 4. **Surface** — constants at the top of the module; every top-level name used by nothing outside
