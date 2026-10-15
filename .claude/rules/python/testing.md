@@ -58,15 +58,11 @@ uv run pytest tests/unit/shipping/test_rates.py
 
 ### A contract a unit test depends on has an in-memory fake, the test asserts the outcome, and only a process boundary you do not own is mocked, against the real class
 
-**Why:** a fake exercises the contract; a `MagicMock` accepts methods that do not exist, so a
-renamed method keeps every mocked test green, and an `assert_called_once_with` chain mirrors the
-implementation and breaks on every refactor. The fake lives in `tests/fakes.py`, inherits the
-contract and passes the same contract suite as the real implementations; the test checks the return
-value or the fake's state. Patching your own module — `patch("library.registration._send")` — means
-the dependency should have been a constructor parameter. The network and the broker sit behind a
-third-party class no contract of yours describes; there
-`mocker.create_autospec(smtplib.SMTP, instance=True)` makes a method it lacks or a wrong argument
-fail the test. The clock is never mocked — it is injected (Determinism, below).
+**Why:** a `MagicMock` accepts methods that do not exist, so a renamed method keeps every test
+green, and an `assert_called_once_with` chain breaks on every refactor. The fake inherits the
+contract and passes its contract suite. Patching your own module means a missing constructor
+parameter. A third-party class gets `mocker.create_autospec(smtplib.SMTP, instance=True)`; the
+clock is injected.
 **Except:** a contract only integration tests reach needs no fake until a unit test does.
 
 **Example:**
