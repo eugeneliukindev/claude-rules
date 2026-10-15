@@ -212,9 +212,9 @@ paths:
 
 ### The skills hold design, and no skill is about a library
 
-**Why:** the always-loaded core holds what every edit needs, and eight skills hold the design
-decisions only some work reaches — types, contracts, wiring, boundaries, security, scripts, and the
-review and authoring procedures. Library skills — fifteen of them, with integration files for the
+**Why:** the always-loaded core holds what every edit needs — typing included, since every
+file has types — and seven skills hold the design decisions only some work reaches — contracts,
+wiring, boundaries, security, scripts, and the review and authoring procedures. Library skills — fifteen of them, with integration files for the
 pairs — went stale faster than they were checked: an API changes with every release, and a claim
 written from memory taught `orjson` serialising `Decimal`. A library's traps come from its current
 documentation, fetched at the time (context7), and from the tests that run against it; a design
