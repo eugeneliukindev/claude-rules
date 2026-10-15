@@ -161,6 +161,10 @@ reached only the work that named a type. The skill was merged into the always-lo
 duplicate rules folded into one and the examples the model gets right without them dropped; the
 every-`.py` set went from 42 rules and about 8,960 tokens to 55 and about 12,370.
 
+**A rule's prose got a ceiling of 700 characters, aim 600, by the user's decision** — rules had
+grown to 1,400 by accreting clauses; cutting them took the every-`.py` set from about 12,450 tokens
+to about 11,660.
+
 ## Reproducing the Measurements
 
 The runs above were made outside the repository, which keeps only what a user of the rules needs.
