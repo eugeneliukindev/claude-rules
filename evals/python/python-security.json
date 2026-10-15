@@ -8,9 +8,6 @@
         "media/__init__.py": "",
         "media/convert.py": "\"\"\"Convert uploaded media.\"\"\"\n"
       },
-      "skills": [
-        "python-security"
-      ],
       "code": [
         {
           "files": "**/*.py",
