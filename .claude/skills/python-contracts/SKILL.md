@@ -21,14 +21,13 @@ where implementations and fakes live.
 
 ### `Protocol` is for code you cannot make inherit, or a project that chose it once
 
-**Why:** a third-party type, a duck-typed shape someone else's code produces, a callback signature —
-none of them can inherit your class. A Protocol reports a missing method where the object is passed,
-not where the class is written; a project may still choose structural typing throughout, so that
-implementations import nothing from the contract, but it chooses once for the whole project, never
-contract by contract.
-**Except:** a published extension point is not that case — a plugin written for your library can
-inherit the ABC you ship; a web framework that published its plugin points as Protocols replaced
-them with ABCs in its next major.
+**Why:** a third-party type, a shape someone else's code produces, a callback signature — none can
+inherit your class. A Protocol reports a missing method where the object is passed, not where the
+class is written. A project may choose structural typing throughout — once for the whole project,
+never per contract.
+**Except:** a published extension point — a plugin for your library can inherit the ABC you ship; a
+web framework that published its plugin points as Protocols replaced them with ABCs in its next
+major.
 
 **Example:**
 ```python
@@ -267,17 +266,15 @@ def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount
 
 ## Naming
 
-How a contract is declared and what its methods look like are in `SKILL.md`.
 
 ### A contract is named after the capability, an implementation for what makes it concrete, and neither for its mechanism
 
-**Why:** `TranslationEngine`, `TranslatorDirectory`, `Comparable` — an agent noun or an "-able"
-adjective says what the thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared,
-which no caller cares about, and `DefaultTranslationEngine` or `TranslationEngineImpl` says
-nothing. The implementations carry the qualifier that distinguishes them — the driver, the
-transport or the storage: `DeepLTranslationEngine`, `LdapTranslatorDirectory`. If nothing
-distinguishes an implementation, there was no contract worth writing. Stdlib ABCs keep their
-stdlib names.
+**Why:** an agent noun or an "-able" adjective — `TranslationEngine`, `Comparable` — says what the
+thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared,
+which no caller cares about, and `Default…` or `…Impl` says nothing. Implementations carry the
+qualifier that distinguishes them — driver, transport or storage: `DeepLTranslationEngine`,
+`LdapTranslatorDirectory`; if nothing distinguishes one, there was no contract worth writing.
+Stdlib ABCs keep their names.
 
 **Example:**
 ```python
@@ -317,19 +314,15 @@ contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
 ## Layout
 
-How a contract is declared and what its methods look like are in `SKILL.md`.
 
-### A contract and its implementations are one directory, nothing else is, and no contract means no directory
+### A contract and its implementations are one directory holding nothing else; no contract, no directory
 
-**Why:** the contract is the reason the implementations exist; one directory per capability, the
-contract in `base.py`, one module per implementation named for what makes it concrete, and an
-`__init__.py` exporting the contract and the implementations — so a new implementation is a new
-file and no existing file changes. An implementation that will only ever be the only one is a
-single module named concretely, with no `base.py` above it; the group appears when the second
-implementation does, or when a test needs a fake — the same threshold that earns the contract.
+**Why:** the contract in `base.py`, one module per implementation, an `__init__.py` exporting both
+— so a new implementation is a new file and no existing file changes. A lone implementation is one
+concretely named module with no `base.py`; the group appears with the second implementation or a
+test's fake — the threshold that earns the contract.
 **Except:** an implementation whose driver is an optional extra is reached through its builder, so
-importing the contract never imports the driver (the extras reason for a function-level import,
-`modules.md`).
+importing the contract never imports the driver (`modules.md`).
 
 ### `base.py` is a position, not a `Base` class
 
