@@ -65,7 +65,7 @@ is not obvious.
 
 Then the skills the diff reaches: an outbound call, a file or a payload against
 `python-boundaries`, outside input or an access check against `python-security`, a settings field
-or an entry point against `python-wiring`, a new representation against `python-types`, a contract
+or an entry point against `python-wiring`, a contract
 or a fake against `python-contracts`. A call into a library is read against that library's current
 documentation, not from memory. A test file is read against `testing.md`.
 
