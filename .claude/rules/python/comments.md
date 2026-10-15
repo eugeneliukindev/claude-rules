@@ -5,8 +5,7 @@ paths:
 
 # Python — Comments and Docstrings
 
-Which names need a docstring is the linter's decision; what goes inside one, and whether a comment
-is written at all, is not.
+What goes inside a docstring, and whether a comment is written at all.
 
 ### A comment is one line, in one of four forms; commented-out code, banners, stamps and change logs are deleted
 
