@@ -96,5 +96,4 @@ request; a result is returned, never written into a parameter. What is fixed is 
 
 ### A string that is user-facing or used twice is a constant or an `Enum` member
 
-**Why:** the linter catches a magic *number*; a repeated literal string it does not, and the two
-spellings drift.
+**Why:** a literal string repeated at two call sites drifts into two spellings.
