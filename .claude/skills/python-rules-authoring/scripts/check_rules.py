@@ -48,6 +48,8 @@ _SKILL_MAX_LINES: Final = 500
 # 6,000 leaves the tail of a one-file skill short.
 _SKILL_MAX_TOKENS: Final = 6_000
 _SKILL_PREFIX: Final = "python-"
+# A rule's prose — heading, Why, Except — past 700 characters is two rules or a lecture; aim at 600.
+_RULE_MAX_CHARACTERS: Final = 700
 # Skills about the skills themselves, which name the others by design.
 _META_SKILLS: Final = frozenset({"python-rules-authoring", "python-review"})
 _SECTION_HEADING: Final = re.compile(r"^#{2,3} ")
@@ -298,6 +300,11 @@ def run(*, root: Path) -> int:
         *(
             finding
             for document in (*rules, *skill_files)
+            for finding in _rule_size_findings(document)
+        ),
+        *(
+            finding
+            for document in (*rules, *skill_files)
             for finding in _library_api_findings(document)
         ),
         *(
@@ -523,6 +530,23 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
         yield from _skill_names_past_introduction(document)
 
 
+def _rule_size_findings(document: _Document) -> Iterator[_Finding]:
+    # Prose only: the example is code the model copies, and other checks hold it.
+    code_lines = _code_line_numbers(document.lines)
+    start = 0
+    size = 0
+    for line_number, line in enumerate((*document.lines, "## end"), start=1):
+        if _SECTION_HEADING.match(line):
+            if start and size > _RULE_MAX_CHARACTERS:
+                yield _Finding(
+                    path=document.path,
+                    line=start,
+                    message=f"rule is {size} characters of prose, ceiling {_RULE_MAX_CHARACTERS}",
+                )
+            start = line_number if line.startswith("### ") else 0
+            size = 0
+        if start and line_number not in code_lines and line.strip() != "**Example:**":
+            size += len(line.strip()) + 1
 
 
 def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Finding]:
