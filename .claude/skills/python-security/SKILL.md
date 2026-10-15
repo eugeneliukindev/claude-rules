@@ -185,16 +185,13 @@ def require_public_artwork_url(url: str) -> None:
 
 ## A Token Becomes a Caller
 
-### The application verifies tokens through one contract that returns a frozen caller, and a service takes that caller, never the token or the claims
+### Tokens are verified through one contract returning a frozen caller, and a service takes the caller, never the token or the claims
 
-**Why:** the application never sees a token library. `verify(token)` returns who the token speaks
-for, or raises one of two errors: rejected credentials — malformed, forged, expired, another
-audience, an unknown key: the client's mistake — or unreachable signing keys: the service's
-failure. Every library exception is translated inside the implementation, and both fail closed.
-Each implementation is the only module importing its library, and the unit tests take a fake. A
-service handed the token decodes it again with its own idea of the algorithms; one handed the
-claims trusts whatever dict it was given, from a test or a queue message alike; with the caller, a
-worker or a test builds it directly.
+**Why:** `verify(token)` returns who the token speaks for, or raises one of two errors: rejected
+credentials — malformed, forged, expired, another audience, an unknown key — or unreachable signing
+keys. Every library exception is translated inside the implementation, the only module importing
+its library, and both errors fail closed. A service handed the token decodes it again with its own
+idea of the algorithms; one handed the claims trusts whatever dict it gets.
 
 **Example:**
 ```python
@@ -262,17 +259,14 @@ def read_portal_claims(claims: Mapping[str, object]) -> PortalClaims:
 
 ## Authorization
 
-### Whether this caller may touch this resource is checked in the service — next to the load for one, in the query for a list
+### Access to a resource is checked in the service — next to the load for one, in the query for a list
 
-**Why:** the edge establishes who is calling, once for every route, with the public routes as the
-reviewed exception; it has not loaded the resource, so it cannot know whether the caller may touch
-it. A route guarded by "is logged in" or by a role lets every pupil read every submission whose id
-they can guess or enumerate — IDOR, the most common access-control flaw. Opaque ids make guessing
-harder; they do not make the check optional. Where the resource's existence is itself the secret,
-someone else's submission is answered exactly like a missing one; a 403 would confirm the id is
-real. A list filtered after the query lets pagination, counts and totals see rows the caller may
-not — page one holds three submissions of fifty, and the total gives away the rest — so the
-repository takes the pupil.
+**Why:** the edge establishes who is calling, for every route but the reviewed public ones; it has
+not loaded the resource, so it cannot judge access. A route guarded by "is logged in" or a role
+lets every pupil read every submission whose id they can guess (IDOR), opaque ids or not. Where
+existence is itself the secret, someone else's submission is answered like a missing one — a 403
+confirms the id. A list filtered after the query leaks through pagination counts and totals, so
+the repository takes the pupil.
 
 **Example:**
 ```python
@@ -334,13 +328,12 @@ class SubmissionDesk:
 
 ### No valid credentials is 401, a valid caller refused is 403, unreachable signing keys are 503
 
-**Why:** 401 carries `WWW-Authenticate: Bearer` and tells a client to authenticate again; 403 says
-the credentials are fine and the action is not. A key set that cannot be fetched answered as 401
-makes every client drop its session against an outage, and the alert says "pupils failing to sign
-in". Every rejected token gets the same body: "Signature has expired" against "Invalid audience"
-tells someone probing with a stolen token which checks passed. The reason goes to the server's
-records — the chained cause, and a counter with a `reason` attribute — at `INFO` at most, since a
-rejected token is an expected client mistake.
+**Why:** 401 carries `WWW-Authenticate: Bearer` and tells a client to sign in again: a key set
+outage answered as 401 makes every client drop its session, and the alert says "pupils failing to
+sign in". Every rejected token gets the same body: "Signature has expired" against "Invalid
+audience" tells someone probing with a stolen token which checks passed. The reason goes to the
+server's records — the chained cause, a counter with a `reason` attribute — at `INFO` at most: a
+rejection is an expected client mistake.
 
 ### A token travels in a header, and the access log records an allowlist of headers
 
@@ -389,12 +382,11 @@ lives in the shared cache with the window as its TTL.
 ### Each service has its own credential, and the token names the service it is for
 
 **Why:** one static key shared by every caller cannot be rotated without a coordinated deploy or
-revoked for one caller alone; a client-credentials token, a workload identity or mutual TLS is per
-service. The token's `aud` names the receiving service, which verifies it like any other — a token
-minted for one service and replayed against another is rejected. A user's token is not forwarded
-across a trust boundary: inside one, the next service verifies it with its own audience in the
-list or exchanges it; across one, the call uses the service's own credential. The client secret
-comes from the environment or a secret manager.
+revoked for one caller; a client-credentials token, a workload identity or mutual TLS is per
+service. The token's `aud` names the receiving service, so a token minted for one service and
+replayed against another is rejected. A user's token is not forwarded across a trust boundary:
+inside one, the next service verifies it with its own audience in the list or exchanges it; across
+one, the call uses the service's own credential.
 
 ### An outbound token is fetched once and reused until shortly before its `exp`
 
@@ -404,16 +396,14 @@ renews a safety margin before expiry.
 
 ## Testing
 
-### A fake verifier issues opaque tokens and can lose its signing keys, and every implementation hands the one contract suite a harness that does both
+### A fake verifier issues opaque tokens and can lose its keys, and one contract suite drives every implementation through both
 
-**Why:** a real verifier needs keys, a clock and a key set server; a fake that accepts every token
-lets no test reach a rejection. The fake maps the tokens it issued back to their callers and stops
-answering when its keys are cut off, so both failures of the contract are reachable from a unit
-test. Issuing a token and cutting off the keys differ per implementation — a dict for the fake, a
-generated key and a local key set server for a JWT verifier — so each fixture hands the tests a
-harness with both, and the tests are written once. A third contract test sends a token nobody
-issued and expects `RejectedCredentialsError`; rejections only one implementation can produce — an
-expired JWT, `alg` `none` — are that implementation's own tests.
+**Why:** a fake that accepts every token lets no test reach a rejection; one that maps the tokens it
+issued to callers and goes dark when its keys are cut off reaches both failures in a unit test.
+Issuing and cutting off differ per implementation — a local key set server for a JWT verifier —
+so each fixture hands the suite a harness with both. The suite also expects
+`RejectedCredentialsError` for a token nobody issued; rejections only one implementation can
+produce — an expired JWT, `alg` `none` — are its own tests.
 
 **Example:**
 ```python
