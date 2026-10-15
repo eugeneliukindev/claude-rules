@@ -16,7 +16,7 @@ paths:
 Input from outside the process, and who may act on what it asks for, whatever library reads it:
 untrusted data, decisions that fail closed, authentication, authorization, issued tokens and service
 credentials. The rules name the function, because the function is what gets copied. Where a secret
-lives is `python-wiring`; keeping it out of a `repr` and a `LiteralString` check are `python-types`.
+lives is `python-wiring`; keeping it out of a `repr` is `types.md`.
 
 ## Untrusted Data
 
