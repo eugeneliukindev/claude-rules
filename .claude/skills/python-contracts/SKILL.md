@@ -48,11 +48,9 @@ class SupportsRead(Protocol):
 
 ### `@abstractmethod` alone gives the static guarantee; `ABC` adds the runtime one, and a metaclass
 
-**Why:** mypy reports `Cannot instantiate abstract class` from the decorators alone; `ABCMeta` adds
+**Why:** the decorators alone make instantiating an abstract class a type error; `ABCMeta` adds
 the refusal at construction time, and costs a metaclass — a class that already has a library's
-metaclass (an ORM model, a framework base) cannot also be an `ABC`. Compiled with mypyc an `ABC`
-builds and keeps `ABCMeta`, but the runtime refusal is gone: measured on mypy 2.4, the abstract
-class instantiated without the error the interpreted module raised.
+metaclass (an ORM model, a framework base) cannot also be an `ABC`.
 **Except:** decide once per project and say which — `ABC` where no foreign metaclass is in play, a
 plain base with `@abstractmethod` where one is; never both shapes in one tree.
 
@@ -147,8 +145,7 @@ class SqlGlossaryStore(KeyedStore[GlossaryEntry]):
 
 ### A template method — the base's skeleton calling abstract steps — is `@final`
 
-**Why:** a subclass then fills in the steps and cannot replace the skeleton; mypy reports
-`Cannot override final attribute`.
+**Why:** a subclass then fills in the steps and cannot replace the skeleton.
 
 **Example:**
 ```python
@@ -183,8 +180,8 @@ class GlossaryExport(ABC):
 **Why:** the Law of Demeter, applied to collaborators — a function that calls
 `machine_translation.session.translate_text(...)` depends on the transport its engine hides, cannot
 run against the fake, and breaks when the transport changes. The parameter typed as the contract
-enforces it: mypy answers the reach with `[attr-defined]`, so the leak always starts with an
-annotation naming the implementation.
+enforces it: the reach is a type error, so the leak always starts with an annotation naming the
+implementation.
 **Except:** data — `segment.unit.project.source_language` reads a frozen structure and couples to
 nothing that behaves.
 
@@ -203,8 +200,9 @@ def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) ->
 
 ### A subclass accepts at least what its parent accepts and returns nothing wider
 
-**Why:** code written against the parent must work with the subclass; mypy's `[override]` checks the
-types, and nothing checks the behaviour — no new precondition, no dropped promise, no new exception.
+**Why:** code written against the parent must work with the subclass; a signature mismatch is a type
+error, and nothing checks the behaviour — no new precondition, no dropped promise, no new
+exception.
 
 **Example:**
 ```python
