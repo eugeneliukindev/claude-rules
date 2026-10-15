@@ -11,9 +11,9 @@ paths:
 
 **Why:** a broad `except` swallows the bug along with the expected failure, a `try` around
 everything hides which line failed, a driver's error re-raised without `from` loses its cause, and
-`None`, `False` or `-1` for an error lets the caller carry on with nonsense — `-> User | None` is for
-a lookup where absence is normal. Only the layer that retries, falls back, converts or reports
-catches; one that can only log and re-raise adds a second log line and handles nothing.
+`None` or `-1` for an error lets the caller carry on with nonsense — `-> User | None` is for a
+lookup where absence is normal. Only a layer that retries, falls back, converts or reports catches;
+one that can only log and re-raise adds a second log line.
 
 **Example:**
 ```python
@@ -76,11 +76,10 @@ class TicketNotTransferableError(TicketingError):
 
 ### One root exception per package; a leaf names the failure and inherits what stdlib catches
 
-**Why:** `CatalogError(Exception)` lets a caller catch "anything from the catalog" with one clause,
-and is the one name that carries the package's prefix — a leaf says what went wrong, not where. A
-leaf is earned by a caller who catches it alone, and inherits `LookupError`, `ValueError` or
-`TypeError` where stdlib code catches it — a `Mapping`'s missing key must be a `KeyError`, or `in`
-and `.get()` break.
+**Why:** `CatalogError(Exception)` lets a caller catch the whole package in one clause, and alone
+carries its prefix — a leaf says what went wrong. A leaf is earned by a caller who catches it alone,
+and inherits `LookupError`, `ValueError` or `TypeError` where stdlib code catches it — a
+`Mapping`'s missing key must be a `KeyError`, or `in` and `.get()` break.
 **Except:** never an `OSError` subtype — `PermissionError`, `TimeoutError` carry errno semantics,
 and an `except OSError` around a socket swallows the domain failure.
 
