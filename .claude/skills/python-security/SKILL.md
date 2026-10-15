@@ -46,7 +46,7 @@ def queued_print_jobs(
     order_clause = _PRINT_JOB_ORDER[sort_by]
     query = (
         "SELECT job_id, title FROM print_jobs WHERE press_id = ?"
-        f" ORDER BY {order_clause}"  # noqa: S608  # allowlisted identifier
+        f" ORDER BY {order_clause}"  # allowlisted identifier
     )
     return connection.execute(query, (press_id,)).fetchall()
 ```
