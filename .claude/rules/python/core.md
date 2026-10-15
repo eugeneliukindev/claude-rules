@@ -9,7 +9,6 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 
 | Skill | When |
 |---|---|
-| `python-types` | choosing between `Literal`/`Enum`/`NewType`/`TypedDict`/a value object, replacing a `dict[str, Any]`, writing a generic or a typed decorator, narrowing an unknown, reaching for `collections.abc` |
 | `python-contracts` | an ABC or `Protocol`, a subclass or mixin, what a consumer is handed, a second implementation, a test fake, where implementations live |
 | `python-wiring` | an entry point or an application factory, where an object is built, opening a pool or a client, a settings field or a constant, removing a global |
 | `python-boundaries` | HTTP, queues, caches, files, serialization, validation at the edge, timeouts, retries, idempotency, time, money, identifiers |
