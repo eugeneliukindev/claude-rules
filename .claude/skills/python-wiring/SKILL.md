@@ -13,7 +13,7 @@ paths:
 # Wiring: Composition Root, Resource Lifetime
 
 In an ASGI service the composition root is the application's lifespan. Collaborators arrive
-through the constructor (`classes.md`), plain values instead of the settings object
+through the constructor (`principles.md`), plain values instead of the settings object
 (`functions.md`), nothing runs at import (`modules.md`), and a test hands in fakes instead of
 patching (`testing.md`).
 
