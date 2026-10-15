@@ -19,17 +19,14 @@ patching (`testing.md`).
 
 ## Composition Root
 
-### All construction happens in plain code in one place — the composition root — and a container, if one is used at all, never leaves it
+### All construction is plain code in the composition root, and a container never leaves it
 
-**Why:** the entry point of a worker or CLI, or the application factory of a service, is the one
-place that knows every concrete class; a function below it that opens its own resources is a second
-root, and no test or second entry point can hand it another. A container is unnecessary until
-wiring is measured in hundreds of objects, and one handed below the root is a service locator: the
-signature no longer lists what the class needs, and a test must register every lookup before the
-first call.
-**Except:** module-level names that hold nothing until the root configures them (`modules.md`) —
-and the task-queue app object tasks are decorated with, whose pools the worker's startup hook
-builds.
+**Why:** a worker's or CLI's entry point, or a service's application factory, is the one place that
+knows every concrete class; a function below it that opens its own resources is a second root no
+test can hand another. A container earns its place only at hundreds of objects; handed below the
+root it is a service locator, and the signature no longer lists what the class needs.
+**Except:** module-level names that hold nothing until the root configures them (`modules.md`), and
+the task-queue app tasks are decorated with, its pools built by the worker's startup hook.
 
 **Example:**
 ```python
@@ -88,9 +85,9 @@ class ReturnReminders:
 
 ### A default collaborator is what production runs, and needs no setting
 
-**Why:** `clock: Clock | None = None` then `clock or WallClock()` is what pydantic
-(`ns_resolver or NsResolver()`) and the OpenTelemetry SDK (`span_limits or SpanLimits()`) do: the
-parameter is a seam for a test or a second root, and the default costs the caller nothing. A default
+**Why:** `clock: Clock | None = None` then `clock or WallClock()` is what pydantic and the
+OpenTelemetry SDK do: the parameter is a seam for a test or a second root, and the default costs
+the caller nothing. A default
 that needs a setting wastes that setting whenever the collaborator is passed.
 **Except:** `is None` instead of `or` when a valid value can be falsy — an empty mapping, `0`. A
 plain value — a path, a limit — is no collaborator: it is defaulted in the signature
@@ -191,11 +188,10 @@ def main() -> None:
 ### A known set of resources is one `with` or `async with` statement, an item per resource, and an async root runs once under `asyncio.run`
 
 **Why:** the parenthesized form closes them in reverse order exactly as nesting would, and shows
-what is open; `ExitStack` and `AsyncExitStack` are for a count known only at runtime — one
-connection per configured lender archive — and hide that for two or three fixed resources. A pool
-created with a bare `await` and never entered is closed by nobody: the process exits with its
-connections open and the server logs them as dropped. In a web service the framework's startup and
-shutdown hook is this root.
+what is open; `ExitStack` and `AsyncExitStack` are for a count known only at runtime, and hide
+that for two or three fixed resources. A pool created with a bare `await` and never entered is
+closed by nobody: the process exits with its connections open and the server logs them as dropped.
+In a web service the framework's startup and shutdown hook is this root.
 
 **Example:**
 ```python
