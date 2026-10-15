@@ -252,8 +252,8 @@ def summarize_visit(visit: TargetVisit) -> str:
 
 **Why:** in a PATCH-style update `None` cannot tell "not provided" from "explicitly cleared". A
 public `class NotGiven(Enum): NOT_GIVEN = auto()` with `NOT_GIVEN: Final = NotGiven.NOT_GIVEN`
-gives absence its own value — `common_name: str | None | NotGiven = NOT_GIVEN` — and mypy narrows
-`is NOT_GIVEN` on an enum member in every branch, a plain-class instance only in the `if`.
+gives absence its own value — `common_name: str | None | NotGiven = NOT_GIVEN` — and `is NOT_GIVEN`
+narrows an enum member in every branch, a plain-class instance only in the `if`.
 
 ## Narrowing
 
@@ -297,13 +297,13 @@ check, since both are sequences.
 nothing is reused by accident; below 3.12 the syntax does not exist. The same floor decides the
 names that came with it — `typing_extensions.override` until 3.12, `typing_extensions.TypeIs` until
 3.13 — and a parameter default (PEP 696, `class Catalogue[T = Star]`), which is a syntax error on
-3.12 that mypy reports against `python_version`. A project states its floor once, in
+3.12. A project states its floor once, in
 `requires-python`, and every one of these choices follows from it rather than being argued per file.
 The bound carries the meaning (`[T: Frame]`), so the letter need not — `T`, `K` and `V`, `P` and `R`
 for `ParamSpec` and return; only a generic with three or more parameters spells them out. A
 `TypeVar` is a module-level name, so it is private and takes the PEP 484 suffix — `_T`, `_KT`,
 `_VT`, `_P`, `_R`; where several share a module, the role goes in front of the suffix — `_FrameT`,
-`_TargetT` — and variance after it, `_FrameT_co`, which ruff's `PLC0105` checks.
+`_TargetT` — and variance after it, `_FrameT_co`.
 
 ### A type parameter is declared in the signature that uses it, and bounded when the body relies on it
 
@@ -383,8 +383,3 @@ once" where an `Iterable` return invites a second loop that silently sees nothin
 dataclass fields follow the same rule: `exposures: Sequence[Exposure]` when read-only. A contract
 of your own is written only when no standard ABC names the capability.
 
-## Enforcement
-
-`strict = true` leaves off `warn_unreachable`, `strict_equality_for_none` and the error codes
-`explicit-override`, `exhaustive-match` and `ignore-without-code`; enabling them in `[tool.mypy]`
-turns three rules into errors, and a rule the checker holds is one nobody has to remember.
