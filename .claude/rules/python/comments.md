@@ -9,11 +9,10 @@ What goes inside a docstring, and whether a comment is written at all.
 
 ### A comment is one line, in one of four forms; commented-out code, banners, stamps and change logs are deleted
 
-**Why:** anything else restates the code or is history version control keeps better, and either goes
-stale the first time the code changes; a name explained in a comment is a name to fix instead. The
-four forms: a **caption** ending in a colon, indexing the lines below; a **reason** — why *this*
-value, never what the line does; a **`TODO`** naming the condition that removes it; a **`NOTE`** for
-a coupling the code cannot express. A paragraph is earned only by enumerated cases, a rejected
+**Why:** anything else restates the code or is history git keeps, and goes stale with the first
+change; a name a comment explains is a name to fix. The four forms: a **caption** ending in a
+colon, indexing the lines below; a **reason** — why *this* value, never what the line does; a
+**`TODO`** naming the condition that removes it; a **`NOTE`** for a coupling the code cannot express. A paragraph is earned only by enumerated cases, a rejected
 alternative or an honest limitation.
 
 **Example:**
