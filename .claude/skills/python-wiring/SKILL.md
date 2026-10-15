@@ -354,12 +354,12 @@ def worker_main() -> None:
 
 # CORRECT — each entry point builds what it runs, and the worker knows nothing of the server
 def serve_main() -> None:
-    listener_settings = ListenerSettings()
+    server_settings = ServerSettings()
     registry_settings = LoanRegistrySettings()
     serve_http(
         build_loan_api(registry_url=registry_settings.registry_url),
-        host=listener_settings.host,
-        port=listener_settings.port,
+        host=server_settings.host,
+        port=server_settings.port,
     )
 
 def worker_main() -> None:
