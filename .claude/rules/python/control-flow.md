@@ -8,8 +8,7 @@ paths:
 ### A condition becomes a named predicate when its operands together name a concept
 
 **Why:** the reader would otherwise reconstruct the concept from the operands every time —
-`_is_renewable(loan, today=today)` over three `and`-ed fields; the linter counts operands and cannot
-name them.
+`_is_renewable(loan, today=today)` over three `and`-ed fields.
 **Except:** a condition that already reads as what it means stays inline, whatever its length —
 `if user is None or user.is_blocked`.
 
