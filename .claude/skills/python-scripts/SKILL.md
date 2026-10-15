@@ -30,12 +30,11 @@ fakes and tests arrive with the second implementation or the first test, as they
 
 ### A script calls its one implementation directly: no contract, no fake, no composition root
 
-**Why:** an ABC with a single implementation in a file nobody imports is ceremony — the swappable
-behaviour of `classes.md` has nothing to swap — and so are the fakes of `testing.md`, layers,
-`__init__.py`, `__all__` and the `_` prefix, which `modules.md` already waives for a script. A
-function reads its constants where it stands: the defaulted setting of `functions.md` is for code a
-test calls. A script is verified by running it — on a copy of the data, or dry-run first; a
-function in it subtle enough to need a test is the first sign of a promotion. The module docstring
+**Why:** an ABC with one implementation in a file nobody imports is ceremony, and so are fakes
+(`testing.md`), layers, `__init__.py`, `__all__` and the `_` prefix (`modules.md`). A function
+reads its constants where it stands: the defaulted setting of `functions.md` is for code a test
+calls. A script is verified by running it — on a copy of the data, or dry-run first; a function
+subtle enough to need a test is the first sign of a promotion. The module docstring
 says in one line what it does and how it is run.
 
 **Example:**
@@ -75,13 +74,12 @@ and uses it inside a `with`, so the file can be imported by a test or promoted w
 
 ### The standard library comes first, and any other package is declared in the script's own header
 
-**Why:** `json` rather than `orjson`, `argparse` rather than a CLI framework; a dependency is worth
-it when it replaces real code — a spreadsheet writer, a database driver. Declared in the PEP 723
-block, it runs anywhere with one command and never against whatever happens to be installed:
-`uv run script.py` builds an isolated environment from the block,
-`uv add --script script.py 'openpyxl>=3.1'` edits it, `uv lock --script script.py` writes
-`script.py.lock` for a script that must give the same result in a month.
-`#!/usr/bin/env -S uv run --script` as the first line makes the file executable.
+**Why:** a dependency earns its place by replacing real code — a spreadsheet writer, a database
+driver, never `orjson` for `json`. Declared in the PEP 723 block, it runs anywhere with one
+command, never against whatever is installed: `uv run script.py` builds an isolated environment
+from the block, `uv add --script script.py 'openpyxl>=3.1'` edits it, `uv lock --script script.py`
+pins a script that must give the same result in a month.
+`#!/usr/bin/env -S uv run --script` as the first line makes it executable.
 
 **Example:**
 ```python
@@ -115,19 +113,18 @@ logger.warning("isbn not in the catalogue, skipped", extra={"isbn": isbn})
 logger.warning("isbn not in the catalogue, skipped: %s", isbn)
 ```
 
-### What fails on exactly the run that mattered never relaxes
+### What fails on the run that mattered never relaxes
 
-**Why:** a script is the code most often run once against production data. What holds there:
+**Why:** a script is the code most often run once against production data:
 - a timeout on every network call;
-- secrets from the environment, never in the file — scripts get pasted into chats and committed;
+- secrets from the environment — scripts get pasted and committed;
 - `encoding="utf-8"` on every text file, `Decimal` for money, aware UTC datetimes;
-- the narrow `except` of `errors.md` — a script that "finished" after silently skipping half the
-  rows is worse than one that crashed;
-- the failure boundary of `principles.md`: one row, one file, one request recorded and counted,
-  the count reported at the end, and a non-zero exit code when it is not zero;
+- the narrow `except` (`errors.md`) — a run that "finished" skipping half the rows is worse than
+  a crash;
+- each failed item counted (`principles.md`), and a non-zero exit when any failed;
 - subprocess argument lists and parameterized SQL;
-- a key written to a shared cache carries a TTL and never holds a pickle;
-- annotated signatures (`types.md`) — the cheapest part of a later promotion.
+- a TTL and no pickle on a shared-cache key;
+- annotated signatures (`types.md`).
 
 **Example:**
 ```python
