@@ -5,8 +5,7 @@ paths:
 
 # Naming
 
-No tool judges the meaning a name carries; case, length and the filler-word blacklist are the
-linters' job.
+No tool judges the meaning a name carries.
 
 ## Words
 
