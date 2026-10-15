@@ -1,6 +1,6 @@
 # What Broke, and When
 
-The incidents and measurements behind the conventions in `SKILL.md`. The conventions stand on
+The incidents and measurements behind the conventions in the `python-rules-authoring` skill. The conventions stand on
 their own; this file is the evidence for an argument about changing one of them.
 
 ## Loading
@@ -92,6 +92,14 @@ after compaction, which a long skill lost its end to — and 300 lines are about
 room for code lines longer than the average. Three skills were longer at the time; each moved a
 branch into a reference file.
 
+**Reference files were inlined, and the ceiling went to 500 lines and 6,000 tokens, by the user's
+decision.** The model opens a linked file in a minority of runs — in the evals the integration file
+was read in one or two runs of eight — so a branch moved out was a branch most runs never saw, and a
+separate skill would compete for invocation instead. Every skill is now one `SKILL.md` with no links
+to other `.md` files; what does not fit is cut, not moved. 6,000 tokens is past the 5,000 Claude
+Code re-attaches after compaction by a short tail, the price of one file; the checker reports any
+other `.md` file in a skill, and this history moved out of the skills to `docs/`.
+
 ## Skills Taught Each Other
 
 **`managed_*` was one skill's convention that every library skill copied.** `python-wiring` named a
@@ -100,7 +108,7 @@ their library the same way: `managed_redis`, `managed_cashews`, `managed_grpc_se
 `managed_carrier_session`. The model learned the prefix and wrote wrappers around libraries whose
 own `with` already did the job. The checker's factory pattern lost the prefix, a lifetime is now
 recognised by its `@contextmanager` decorator, and a library skill enters the library's own context
-manager (`layering.md`).
+manager.
 
 **An audit of every skill against the rules found 273 findings at the start**: 136 references to a
 neighbour skill outside an introduction, about 130 names shared between skills or between a skill
@@ -150,7 +158,7 @@ the checker's required clause changed with it.
 ## Reproducing the Measurements
 
 The runs above were made outside the repository, which keeps only what a user of the rules needs.
-Each one followed the test in `evaluation.md`: a realistic task that never
+Each one followed the evaluation test in `python-rules-authoring`: a realistic task that never
 mentions the rule, a file to read first, a fresh session without the rule and then with it, a few
 runs each, the produced code read against the rule. To repeat one, rebuild its task from the
 description here — the scenario, the file it reads, the behaviour counted — and run both arms

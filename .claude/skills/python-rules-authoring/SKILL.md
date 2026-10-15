@@ -15,7 +15,7 @@ These files are read while writing code, under time pressure, by someone already
 different problem in their head. A rule that is technically correct and easy to misread will be
 misread; a rule breaking one of the conventions below is a defect **in this document**, fixed here
 rather than worked around in code. The incidents behind the conventions are in
-[history.md](history.md).
+docs/rules-history.md in the repository, evidence for people rather than instructions.
 
 ### Every rule is a heading and a `**Why:**`, and an `**Example:**` only where it earns its place
 
@@ -51,7 +51,6 @@ cut: an explanation the example already shows, a restatement, the history of the
 class IceCoreArchive:
     def __init__(self, *, engine: AsyncEngine) -> None:
         self._cores = PostgresCoreSampleRepository(engine)
-
 
 # CORRECT — it arrives from the composition root
 @final
@@ -89,19 +88,6 @@ with the fields and constructor it uses, and a body is the real one wherever the
 A `WRONG` that also lacks annotations, uses a global and swallows an error leaves eight differences,
 and the reader copies all eight. Imports and the declarations of names an example uses are omitted
 in every file.
-
-**Example:**
-```python
-# WRONG — a fragment, and a WRONG that differs from its CORRECT in three ways at once
-def __init__(self):
-    self.repo = PostgresCoreSampleRepository(ENGINE)
-
-# CORRECT — the whole class, the way the rule's own pair shows it
-@final
-class IceCoreArchive:
-    def __init__(self, *, cores: CoreSampleRepository) -> None:
-        self._cores = cores
-```
 
 ### A `CORRECT` obeys every other rule here, parses, and passes `mypy --strict`
 
@@ -149,8 +135,8 @@ protects data, money or a credential joins the second.
 ### `scripts/check_rules.py` runs before every commit
 
 **Why:** a budget counted by eye was broken by six lines before anyone noticed. The script checks
-the always-loaded budgets and each `SKILL.md`'s 300 lines and 5,000 tokens; that every `python`
-block parses; that every skill and `.md` file a document names exists, and that `core.md` names
+the always-loaded budgets and each `SKILL.md`'s 500 lines and 6,000 tokens, and that a skill holds
+no other `.md` file; that every `python` block parses; that every skill and `.md` file a document names exists, and that `core.md` names
 every skill; every front matter — `name`, `paths`, a `description` of at most 400 characters with
 `ALWAYS invoke`; that a skill names another only in a file's introduction; that no example is
 written in a library's API; that no name an example defines or calls lives in a second skill or a rule file; and that every `CORRECT` keeps the
@@ -162,46 +148,274 @@ stays a step of its own.
 
 ## Where a Rule Lives
 
-**Before adding a rule, moving one between files, splitting a skill or adding a reference file,
-read [placement.md](placement.md)** — what loads when, `paths` on every skill, the always-loaded
-budget and the `SKILL.md` ceilings, a reference file per branch, and what holds a rule up.
+Two mechanisms, and which one a file lives in is the decision:
 
-- What applies to every edit is a rule file with `paths: "**/*.py"`, one topic per file
-- `new-files.md` is the one file with no front matter, and the exception is measured
-- Every skill carries `paths`, so a session lists only the skills of its language
-- The skills hold design, and no skill is about a library
-- The always-loaded set holds what is universal and behaviour-changing, with its examples
-- Tool configuration belongs to the repository; the rules hold what survives the choice of tool
-- An addition displaces something, and a ceiling is raised only by an argument on record
-- A skill grows by a reference file per branch, never by a second skill for the same trigger
-- A rule no tool checks either becomes a check or is deleted, once it is broken in bulk
+| | rule, `paths:` in front matter | rule, no front matter | skill |
+|---|---|---|---|
+| lives in | `~/.claude/rules/` | `~/.claude/rules/` | `~/.claude/skills/<name>/SKILL.md` |
+| enters context | when a matching file is read | at launch, every session, every language | listed once a file matching its `paths` is read or written; loaded when its `description` matches the work, or by `/name` |
+| always costs | nothing | its whole length | its `description`, and only after `paths` match |
+
+The always-loaded set has a hard budget, counted in what costs adherence — instruction-following
+falls as the number of instructions grows, and an example is tokens but not an instruction:
+
+| what | ceiling |
+|---|---|
+| **rules loaded on every `.py`** — `###` headings, or top-level bold bullets in a file not yet in that format | **100** |
+| **tokens loaded on every `.py`**, estimated at four characters each | **22,000** |
+| rules loaded on a test file — the set above plus `testing.md` | 120 |
+| tokens loaded on a test file | 28,000 |
+| lines in any one `SKILL.md`, after the front matter | 500 |
+| tokens in any one `SKILL.md`, after the front matter | 6,000 |
+
+Anthropic's authoring guidance and the Agent Skills specification ask for under 500 lines and 5,000
+tokens, which Claude Code re-attaches after compaction; 6,000 leaves only a short tail to lose, the
+price of keeping a skill in one file.
+
+### What applies to every edit is a rule file with `paths: "**/*.py"`, one topic per file
+
+**Why:** a rule with no front matter is the documented instruction to load it into every session in
+every language, and it is the easy mistake: sixteen files once sat there at once, and
+nothing noticed. The always-loaded files — `core.md`, `naming.md`, `types.md` and the rest — load
+together on the first read, `testing.md` on its own test-file globs; splitting them by topic changes
+the organisation, not the cost, so one splits only to give a rule its own address.
+
+### `new-files.md` is the one file with no front matter, and the exception is measured
+
+**Why:** a path-scoped rule loads when a matching file is *read*; a task that writes `x.py` into an
+empty directory reads nothing, and in measured runs such tasks went without the rules. Its six lines
+cost every session in every language; they buy the rules for the one case the glob cannot see.
+
+### Every skill carries `paths`, so a session lists only the skills of its language
+
+**Why:** without it every description sits in every session's listing — the Go skills in a Python
+repository — where a better-matching wrong description displaces the right one, and past the
+listing's budget descriptions are dropped. Measured on Claude Code 2.1.118: a skill with
+`paths: "**/*.py"` is absent from the listing, and `Unknown skill` when called, until a `.py` file
+is read *or written*. The default is `**/*.py` and `**/pyproject.toml`; a skill whose work lives in
+other files adds them, and `/name` works whatever `paths` says.
+
+**Example:**
+```yaml
+# WRONG — no paths: listed in every session, in every language
+name: python-scripts
+description: ...
+
+# CORRECT — listed once Python or a notebook is touched
+name: python-scripts
+description: ...
+paths:
+  - "**/*.py"
+  - "**/pyproject.toml"
+  - "**/*.ipynb"
+```
+
+### The skills hold design, and no skill is about a library
+
+**Why:** the always-loaded core holds what every edit needs, and eight skills hold the design
+decisions only some work reaches — types, contracts, wiring, boundaries, security, scripts, and the
+review and authoring procedures. Library skills — fifteen of them, with integration files for the
+pairs — went stale faster than they were checked: an API changes with every release, and a claim
+written from memory taught `orjson` serialising `Decimal`. A library's traps come from its current
+documentation, fetched at the time (context7), and from the tests that run against it; a design
+skill's example stays written against its own contracts, so it holds whatever library serves it.
+
+### The always-loaded set holds what is universal and behaviour-changing, with its examples
+
+**Why:** every edit pays for an always-loaded rule, so it earns that by being universal — every
+Python file could break it — and behaviour-changing — without it the obvious default is wrong. A
+rule only some paths reach (a boundary, an untrusted input, a script) is a skill with a row in the
+map. But a skill
+loads only when the work names its topic: with the examples for functions, classes, errors and
+comments moved into skills, the measured layout lost almost every run and none of those skills was
+opened. What moves to a skill is what a concrete signal in the task points at — an outbound call,
+an entry point, an untrusted input, a one-off script.
+
+### Tool configuration belongs to the repository; the rules hold what survives the choice of tool
+
+**Why:** which linters a project runs and how its hooks are wired changes from repository to
+repository, and its owner owns those files. What belongs here is the discipline around suppressions
+and limits and, where a checker can hold a rule, the name of the check.
+
+### An addition displaces something, and a ceiling is raised only by an argument on record
+
+**Why:** without a fixed number every addition looks free, and a file once grew to three thousand
+lines one paragraph at a time. A new rule finds what it makes redundant, the example that has
+stopped earning its tokens, or the section that belongs in a skill, and cuts that first; if nothing
+can be cut, it becomes a skill. The budget counts the set, not the file. Raising a ceiling is
+allowed once per good argument, written into docs/rules-history.md with the arithmetic — a ceiling adjusted
+to fit the current size is not a ceiling.
+
+### A skill is one `SKILL.md`, and what does not fit is cut, not moved
+
+**Why:** the model opens a linked file in a minority of runs — in our evals the integration file
+was read in one or two runs of eight — so a rule moved into a reference file is a rule most runs
+never see, and a pointer to it is an instruction that does not arrive. A second skill for the same
+trigger is no better: its description competes for invocation in a listing Claude Code caps at 1% of
+the context window, dropping the least-invoked first. A second skill is for a second trigger; halves
+that one task needs together stay one skill, with no link to another `.md` file. A body past 500
+lines or 6,000 tokens loses what the model does unprompted, the rules that say the same thing twice
+and the examples whose heading already shows the code, until it fits.
+
+**Example:**
+````markdown
+<!-- WRONG — the rule moved into a file the model opens in a minority of runs -->
+## Time
+
+**Before writing code that creates or compares a `datetime`, read time.md.**
+
+<!-- CORRECT — the rule itself, in the body that loads -->
+## Time
+
+### A `datetime` is aware and in UTC
+
+**Why:** a naive one is compared with an aware one and raises, or is stored in local time.
+````
+
+### A rule no tool checks either becomes a check or is deleted, once it is broken in bulk
+
+**Why:** the tools decide syntax, imports and formatting; the type checker decides what survives a
+rename; everything else rests on attention, and nothing fails when it is skipped. A rule broken by
+the dozen is a wish, not a standard: write the check, or delete the rule. Between the two sits a
+procedure — the Definition of Done in `core.md`, which `python-review` walks over a diff — and a
+rule that belongs on that list is added to both.
 
 ## One Rule, One Home
 
-**Before writing a rule another file already touches, naming another skill, or writing an example
-that opens a resource or calls a library, read [layering.md](layering.md)** — one home per rule, a
-neighbour named only in the introduction, the library's own context manager, examples against
-contracts of their own.
+### A rule is written in exactly one file, and a skill never restates a rule file
 
-- A rule is written in exactly one file, and a skill never restates a rule file
-- A skill names a neighbour only in its introduction, once, as a route
-- A library's lifetime is the library's own context manager
-- An example is written against its own contracts, never a library's API
+**Why:** three copies of the retry policy drift into three policies; two files that disagree about
+where a test fake lives get one of them followed at random. The rule files load on every `.py`, so
+a skill assumes them: where it relies on one, it cites the file in a clause — "(`errors.md`)" — and
+repeats none of it, and where a skill contradicts a rule, the rule wins and the skill is fixed.
+Between two skills a rule has one owner; the other drops it, and a case where it differs is an
+`**Except:**` of its own rule.
+
+### A skill names a neighbour only in its introduction, once, as a route
+
+**Why:** naming a skill does not load it — Anthropic's guidance says skills cannot reference each
+other — so a "see python-x" inside a rule points the reader at text they do not have, and the
+rule reads as incomplete. The introduction, between the title and the first heading below it,
+routes work that started in the wrong skill; a carve-out is an `**Except:**` sentence in the rule it
+qualifies. `scripts/check_rules.py` reports a skill named anywhere else.
+
+### A library's lifetime is the library's own context manager
+
+**Why:** `python-wiring` once named a resource's context manager for its lifetime — `managed_pool` —
+and the skills of the time repeated the shape with a wrapper of their own, `managed_redis`,
+`managed_grpc_server`; the model learned the prefix and wrapped libraries that already had one. The
+root enters what the library ships — `async with asyncpg.create_pool(...)`, `async with broker:`. A
+hand-written `@contextmanager` or `@asynccontextmanager` is for a library that has none, and is
+named for what it yields, never with a fixed prefix.
+
+**Example:**
+```python
+# WRONG — a wrapper around a context manager the library already has, under a house prefix
+@asynccontextmanager
+async def managed_survey_pool(*, dsn: str) -> AsyncIterator[asyncpg.Pool]:
+    pool = await asyncpg.create_pool(dsn)
+    try:
+        yield pool
+    finally:
+        await pool.close()
+
+# CORRECT — the root enters the library's own
+async def main() -> None:
+    settings = Settings()
+    async with asyncpg.create_pool(settings.database_url) as pool:
+        await serve_soundings(pool=pool)
+```
+
+### An example is written against its own contracts, never a library's API
+
+**Why:** the model copies examples, the surface included: a unit of work shown in eight skills and
+an `AsyncSession` in the caching skill taught one storage design to every task that touched a cache,
+a stream or a route. Each skill's examples run against contracts in its own domain — a
+`KeeperRoster`, a `BeaconLog` — so they hold whatever library serves them, and a library's own
+calls come from its current documentation. `scripts/check_rules.py` reports the
+API of the libraries it knows inside any example.
+
+**Example:**
+```python
+# WRONG — the skill's example is written in SQLAlchemy
+@final
+class KeeperLookup:
+    def __init__(self, *, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+# CORRECT — the skill's example knows only its own contracts
+@final
+class KeeperLookup:
+    def __init__(self, *, keepers: KeeperRoster) -> None:
+        self._keepers = keepers
+```
 
 ## Descriptions
 
-**Before writing or changing a skill's `description`, read [descriptions.md](descriptions.md)** —
-what it does, `ALWAYS invoke this skill when` the signals a task contains, and `Do not … directly`.
+### A description is what the skill does, `ALWAYS invoke this skill when` and the signals, then `Do not … directly`
 
-- A description is what the skill does, `ALWAYS invoke this skill when` and the signals, then `Do not … directly`
-- Neighbouring descriptions are told apart in their own words
+**Why:** the `description` is all the model sees of a skill until it decides to load it, and a
+skill it judges optional it skips — it writes the code itself. In a 650-trial test of descriptions,
+the directive form — what the skill does, then "ALWAYS invoke this skill when …" with the signals,
+then "Do not … directly" — was the one that activated every time; a passive "Use when …" left the
+choice to the model
+([source](https://medium.com/@ivan.seleznov1/why-claude-code-skills-dont-activate-and-how-to-fix-it-86f679409af1)).
+The signals are words a task actually contains — "one-off", "Authorization header", "environment
+variables", "in-memory one for the tests" — never the rules the skill holds, which no task names.
+`scripts/check_rules.py` holds every description to 400 characters and an `ALWAYS invoke`
+clause; the listing every session pays for is capped at 1% of the context window.
+
+**Example:**
+```yaml
+# WRONG — a table of contents, a passive trigger, and the signals are the skill's own words
+description: >-
+  Covers composition roots, scopes, resource lifetime, settings and constants. Use when relevant
+  to construction.
+
+# CORRECT — what it does, the signals a task contains, and the instruction not to go around it
+description: >-
+  Designs construction and configuration: one composition root, resource lifetime, settings.
+  ALWAYS invoke this skill when a task writes an entry point or main(), opens a pool or a client,
+  or reads environment variables. Do not wire objects directly.
+```
+
+### Neighbouring descriptions are told apart in their own words
+
+**Why:** the listing is read as a whole, and a description that matches better than the right one
+wins — on a public benchmark, wrong selection grew with the size of the library and caused most of
+the loss. Two skills whose descriptions both match the same work load the same text twice. Each
+names the signals only it should answer — an outbound call for boundaries, an `Authorization`
+header for security, a script run once for scripts — and where a neighbour still matches the same
+words, a closing `Not for … (python-x).` names it for the near miss.
 
 ## Evaluation
 
-**Before adding, moving or cutting a rule, or deciding whether one earns its place, read
-[evaluation.md](evaluation.md)** — what the model would not do unprompted, and the with-and-without
-test.
+### A rule earns its place by something the model would not do unprompted
 
-- A rule earns its place by something the model would not do unprompted
-- A rule is tested with a realistic task that never mentions it, without the rule first
-- A rule leaves a skill's body only after its case passes without it there
+**Why:** general practice the model already follows — `pathlib` over `os.path`, a large body
+streamed instead of built — costs tokens in every session that loads it and dilutes the rules beside
+it. What earns a place is a measured fact, a library's trap, a decision this project made, or the
+correction of a default the model gets wrong; and a rule homed elsewhere is not written twice.
+Anthropic's guidance asks it of every paragraph: does it justify its token cost?
+
+### A rule is tested with a realistic task that never mentions it, without the rule first
+
+**Why:** a rule is a hypothesis that the model behaves differently with it than without it. Run the
+task in a fresh session without the rule and then with it, a few times each, and read the produced
+code against the rule; a rule whose task passes without it restates the default and is deleted.
+Path-scoped rules arrive on a read, so the task is seeded with a file to read, and its prompt holds
+no request that outranks the rule — "make sure it is well documented" overrides any rule about
+comments, by design. The cases live in `evals/python/` at the repository root, and
+`evals/run.py --arm both` runs them in both arms with what they check: the skills invoked, the
+files read, the code written.
+
+### A rule leaves a skill's body only after its case passes without it there
+
+**Why:** the model follows what is in its context — the always-loaded rules and the body of the skill
+it invoked — and copies the example it sees. Deduplicated into a pointer to `principles.md`, the
+semaphore left the async skill's body and the bounded fan-out went from passing to one run in
+three; with the server's settings shown as one class in the web framework's skill, the split in
+`python-wiring` stopped arriving. A move, a merge or a cut runs the rule's case before and after, a
+few times each, against the commit the change starts from; a rule that loses there keeps a line and
+its `CORRECT` in the body it left.
+
