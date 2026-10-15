@@ -36,12 +36,10 @@ them with ABCs in its next major.
 class QualityCheck(Protocol):
     def inspect(self, segment: Segment) -> list[QualityIssue]: ...
 
-
 # CORRECT — the plugin inherits the ABC, and a forgotten method fails at the plugin's own class
 class QualityCheck(ABC):
     @abstractmethod
     def inspect(self, segment: Segment) -> list[QualityIssue]: ...
-
 
 # CORRECT — a shape produced by code you do not control stays a Protocol
 class SupportsRead(Protocol):
@@ -64,7 +62,6 @@ plain base with `@abstractmethod` where one is; never both shapes in one tree.
 class FileFilter(EditorExtension, ABC):
     @abstractmethod
     def extract(self, source: bytes) -> list[Segment]: ...
-
 
 # CORRECT — the metaclass slot is taken, so the plain base keeps the checker's guarantee only
 class FileFilter(EditorExtension):
@@ -96,12 +93,10 @@ class EditFeed(ABC):
     @abstractmethod
     async def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
 
-
 # CORRECT — plain def returning AsyncIterator; implementations write `async def … yield`
 class EditFeed(ABC):
     @abstractmethod
     def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
-
 
 @final
 class InMemoryEditFeed(EditFeed):
@@ -138,7 +133,6 @@ class SqlKeyedStore[T](KeyedStore[T]):
     def get(self, key: str) -> T:
         raise NotImplementedError
 
-
 # CORRECT — the parameter is bound, and the body knows its table
 @final
 class SqlGlossaryStore(KeyedStore[GlossaryEntry]):
@@ -168,7 +162,6 @@ class GlossaryExport(ABC):
 
     @abstractmethod
     def rows(self) -> str: ...
-
 
 # CORRECT — the skeleton is final; subclasses supply the steps only
 class GlossaryExport(ABC):
@@ -203,7 +196,6 @@ def pretranslate(segment: Segment, *, machine_translation: HttpTranslationEngine
         segment.source_text, target=segment.target_language
     )
 
-
 # CORRECT — typed as the contract: the call it declares is the only one there is
 def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) -> str:
     return machine_translation.translate(segment.source_text, into=segment.target_language)
@@ -220,7 +212,6 @@ class TranslationMemory(ABC):
     @abstractmethod
     def store(self, segment: Segment) -> StoredUnit: ...
 
-
 # WRONG — narrows the parameter: a caller passing any Segment to a TranslationMemory fails here
 @final
 class SqlTranslationMemory(TranslationMemory):
@@ -232,7 +223,6 @@ class SqlTranslationMemory(TranslationMemory):
     def store(self, segment: ReviewedSegment) -> StoredUnit:
         unit_id = self._units.insert(self._memory_code, segment.source_text, segment.target_text)
         return StoredUnit(unit_id=unit_id)
-
 
 # CORRECT — accepts what the parent accepts, and promises something narrower back
 @final
@@ -265,16 +255,13 @@ class Glossary(ABC):
     @abstractmethod
     def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
 
-
 def count_terms(language: LanguageCode, *, glossary: Glossary) -> TermCount:
     return TermCount(language=language, term_count=len(glossary.terms_in(language)))
-
 
 # CORRECT — the term count depends on the one capability it uses
 class GlossaryTerms(ABC):
     @abstractmethod
     def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
-
 
 def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount:
     return TermCount(language=language, term_count=len(glossary.terms_in(language)))
@@ -282,24 +269,148 @@ def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount
 
 ## Naming
 
-**Before naming a contract, a base class or an implementation, read [naming.md](naming.md)**:
+How a contract is declared and what its methods look like are in `SKILL.md`.
 
-- A contract is named after the capability, an implementation for what makes it concrete, and neither for its mechanism
-- `Base` means "inherit me", never "implement me"
+### A contract is named after the capability, an implementation for what makes it concrete, and neither for its mechanism
+
+**Why:** `TranslationEngine`, `TranslatorDirectory`, `Comparable` — an agent noun or an "-able"
+adjective says what the thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared,
+which no caller cares about, and `DefaultTranslationEngine` or `TranslationEngineImpl` says
+nothing. The implementations carry the qualifier that distinguishes them — the driver, the
+transport or the storage: `DeepLTranslationEngine`, `LdapTranslatorDirectory`. If nothing
+distinguishes an implementation, there was no contract worth writing. Stdlib ABCs keep their
+stdlib names.
+
+**Example:**
+```python
+# WRONG — the mechanism as the name, and Base on a class that hands nothing down
+class TranslatorDirectoryProtocol(Protocol):
+    def find(self, email: str) -> Translator | None: ...
+
+class BaseTranslatorDirectory(ABC):
+    @abstractmethod
+    def find(self, email: str) -> Translator | None: ...
+
+# CORRECT — the contract names the capability; the implementation names what makes it concrete
+class TranslatorDirectory(ABC):
+    @abstractmethod
+    def find(self, email: str) -> Translator | None: ...
+
+@final
+class LdapTranslatorDirectory(TranslatorDirectory):
+    def __init__(self, *, connection: LdapConnection) -> None:
+        self._connection = connection
+
+    @override
+    def find(self, email: str) -> Translator | None:
+        entry = self._connection.search_one(f"(mail={email})")
+        if entry is None:
+            return None
+        return Translator(translator_id=TranslatorId(entry.uid), email=email)
+```
+
+### `Base` means "inherit me", never "implement me"
+
+**Why:** the prefix is earned by a class that carries shared *implementation* down — fields,
+defaults, ready methods — as `BaseHTTPRequestHandler` and `BaseException` do; a contract hands
+nothing down. The test is mechanical: delete the base and see what the subclasses lose — fields or
+working methods make it a `Base`, only a promise the checker was already making makes it a
+contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
 ## Layout
 
-**Before creating the module or directory for a contract or a new implementation, or deciding where
-a helper one implementation uses goes, read [layout.md](layout.md)**:
+How a contract is declared and what its methods look like are in `SKILL.md`.
 
-- A contract and its implementations are one directory, nothing else is, and no contract means no directory
-- `base.py` is a position, not a `Base` class
-- The contract's module imports nothing any implementation needs
-- A helper only one implementation uses is private and stays in the group
+### A contract and its implementations are one directory, nothing else is, and no contract means no directory
+
+**Why:** the contract is the reason the implementations exist; one directory per capability, the
+contract in `base.py`, one module per implementation named for what makes it concrete, and an
+`__init__.py` exporting the contract and the implementations — so a new implementation is a new
+file and no existing file changes. An implementation that will only ever be the only one is a
+single module named concretely, with no `base.py` above it; the group appears when the second
+implementation does, or when a test needs a fake — the same threshold that earns the contract.
+**Except:** an implementation whose driver is an optional extra is reached through its builder, so
+importing the contract never imports the driver (the extras reason for a function-level import,
+`modules.md`).
+
+### `base.py` is a position, not a `Base` class
+
+**Why:** the module sits at the base of the group; the class inside it is still named for the
+capability — `TranslationEngine`, never `BaseTranslationEngine`. One rule is about a file, the other
+about a class.
+
+### The contract's module imports nothing any implementation needs
+
+**Why:** an import of a driver in `base.py` silently makes every consumer of the contract depend on
+that driver, and the split stops paying.
+
+**Example:**
+```python
+# WRONG — machine_translation/base.py imports the SDK one implementation uses
+from deepl import DeepLClient
+
+class TranslationEngine(ABC):
+    @abstractmethod
+    def translate(self, text: str, *, into: LanguageCode) -> str: ...
+
+# CORRECT — machine_translation/deepl_engine.py is the only file that knows the SDK exists
+from deepl import DeepLClient
+
+from machine_translation.base import TranslationEngine
+
+@final
+class DeepLTranslationEngine(TranslationEngine):
+    def __init__(self, *, client: DeepLClient, formality: str = DEFAULT_FORMALITY) -> None:
+        self._client = client
+        self._formality = formality
+
+    @override
+    def translate(self, text: str, *, into: LanguageCode) -> str:
+        result = self._client.translate_text(text, target_lang=into, formality=self._formality)
+        return str(result)
+```
+
+### A helper only one implementation uses is private and stays in the group
+
+**Why:** `_glossary_upload.py` beside `deepl_engine.py` is found by whoever edits `deepl_engine.py`;
+the same code in a shared `utils` is found by nobody and imported by everybody.
 
 ## Fakes
 
-**Before writing a fake of a contract for a test, or the tests every implementation must pass, read
-[fakes.md](fakes.md)**:
+That a contract a unit test depends on has an in-memory fake in `tests/fakes.py`, inheriting the
+contract, is in `testing.md`; this is the suite the fake and the real implementations pass.
 
-- One parametrized fixture runs the contract suite against every implementation
+### One parametrized fixture runs the contract suite against every implementation
+
+**Why:** the tests are written once against the contract; the real implementations carry the
+integration marker, so the unit run still takes the fake. A fake not held to the same tests drifts,
+and the unit tests then prove the fake.
+
+**Example:**
+```python
+# WRONG — the fake is tested by nothing, and the real glossary by its own separate tests
+def test_in_memory_glossary_lists_added_term() -> None:
+    glossary = InMemoryGlossary()
+    entry = make_glossary_entry(language=LanguageCode("de"))
+    glossary.add(entry)
+    assert glossary.terms_in(LanguageCode("de")) == [entry]
+
+# CORRECT — one suite, every implementation
+@pytest.fixture(
+    params=[
+        pytest.param("memory", id="memory"),
+        pytest.param("sql", id="sql", marks=pytest.mark.integration),
+    ]
+)
+def glossary(request: pytest.FixtureRequest) -> Glossary:
+    implementation: Glossary = request.getfixturevalue(f"{request.param}_glossary")
+    return implementation
+
+def test_added_term_is_listed_in_its_language(glossary: Glossary) -> None:
+    entry = make_glossary_entry(language=LanguageCode("de"))
+
+    glossary.add(entry)
+
+    assert glossary.terms_in(LanguageCode("de")) == [entry]
+```
+
