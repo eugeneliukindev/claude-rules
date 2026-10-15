@@ -19,28 +19,6 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 
 The principles and YAGNI, KISS and DRY are in `principles.md`.
 
-## The Tools Decide Style
-
-### Nothing here restates what a tool decides; where they disagree, the tool wins
-
-**Why:** style, layout and complexity belong to the formatter, the linters and the type checker the
-project picks; a rule that restates one drifts from it. They already hold: `mypy --strict` and
-ruff's `UP` (every annotation, the modern spelling), `ANN401` (no `Any`), `FBT` (no positional
-boolean), `PLC0415` (an import inside a function), `TC` (an annotation-only import under
-`TYPE_CHECKING`), `ERA001` (commented-out code), `G004` (a formatted log message), `PT011` (a
-`pytest.raises` too broad).
-
-### A suppression carries its rule code and its reason on its line
-
-**Why:** a bare `# type: ignore` or `# noqa` hides every future error on that line too, and nobody
-can tell whether it is still needed; the count only ratchets down.
-**Except:** directly above the line, when the reason will not fit.
-
-### A limit is named, not raised
-
-**Why:** one module with fifteen members must not buy every other module the right to fifteen; the
-limit stays and the file is named, with a checkable reason.
-
 ## When Rules Conflict
 
 1. An explicit instruction from the person you are working with, for this task — about *how* the
@@ -59,8 +37,7 @@ and left goes in the summary or the PR description, never copied into the new co
 
 ## Definition of Done
 
-The formatter, the linters, the strict type checker and the tests run first, in that order, each
-clean with no new suppression. Then the eight checks no tool makes, skipped first under pressure —
+The tests run first, and pass. Then the eight checks, skipped first under pressure —
 `/python-review` runs the whole list over a diff:
 
 - [ ] Every new identifier follows `naming.md` and survives the relocation test
