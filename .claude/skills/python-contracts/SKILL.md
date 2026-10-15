@@ -13,9 +13,10 @@ paths:
 # Contracts and Implementations
 
 That a class is written only when triggered, that it inherits a contract and reuses by composition,
-are in `classes.md`; `@override` and `@final` on every implementation are in `types.md`. What comes
-after: when a `Protocol` fits, what a contract's methods look like, what a consumer is handed, and
-where implementations and fakes live.
+are in `classes.md`; that a subclass keeps its parent's promises and a contract holds only what its
+consumer calls, in `principles.md`; `@override` and `@final` on every implementation, in `types.md`.
+What comes after: when a `Protocol` fits, what a contract's methods look like, what a consumer is
+handed, and where implementations and fakes live.
 
 ## Declaring a Contract
 
@@ -195,73 +196,6 @@ def pretranslate(segment: Segment, *, machine_translation: HttpTranslationEngine
 # CORRECT — typed as the contract: the call it declares is the only one there is
 def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) -> str:
     return machine_translation.translate(segment.source_text, into=segment.target_language)
-```
-
-### A subclass accepts at least what its parent accepts and returns nothing wider
-
-**Why:** code written against the parent must work with the subclass; a signature mismatch is a type
-error, and nothing checks the behaviour — no new precondition, no dropped promise, no new
-exception.
-
-**Example:**
-```python
-class TranslationMemory(ABC):
-    @abstractmethod
-    def store(self, segment: Segment) -> StoredUnit: ...
-
-# WRONG — narrows the parameter: a caller passing any Segment to a TranslationMemory fails here
-@final
-class SqlTranslationMemory(TranslationMemory):
-    def __init__(self, *, units: UnitTable, memory_code: str) -> None:
-        self._units = units
-        self._memory_code = memory_code
-
-    @override
-    def store(self, segment: ReviewedSegment) -> StoredUnit:
-        unit_id = self._units.insert(self._memory_code, segment.source_text, segment.target_text)
-        return StoredUnit(unit_id=unit_id)
-
-# CORRECT — accepts what the parent accepts, and promises something narrower back
-@final
-class SqlTranslationMemory(TranslationMemory):
-    def __init__(self, *, units: UnitTable, memory_code: str) -> None:
-        self._units = units
-        self._memory_code = memory_code
-
-    @override
-    def store(self, segment: Segment) -> CountedUnit:
-        unit_id = self._units.insert(self._memory_code, segment.source_text, segment.target_text)
-        return CountedUnit(unit_id=unit_id, word_count=segment.word_count)
-```
-
-### A contract holds only what its consumer calls
-
-**Why:** a consumer handed more depends on it — its fake must implement it, and a change to a method
-it never calls reaches it anyway. One class may implement several contracts; the split is in what
-the consumer is given, not in the storage.
-**Except:** split when a consumer that needs a different set exists, not in advance — a glossary
-every caller uses whole stays one contract.
-
-**Example:**
-```python
-# WRONG — the term count receives the whole glossary, writes included
-class Glossary(ABC):
-    @abstractmethod
-    def add(self, entry: GlossaryEntry) -> None: ...
-
-    @abstractmethod
-    def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
-
-def count_terms(language: LanguageCode, *, glossary: Glossary) -> TermCount:
-    return TermCount(language=language, term_count=len(glossary.terms_in(language)))
-
-# CORRECT — the term count depends on the one capability it uses
-class GlossaryTerms(ABC):
-    @abstractmethod
-    def terms_in(self, language: LanguageCode) -> list[GlossaryEntry]: ...
-
-def count_terms(language: LanguageCode, *, glossary: GlossaryTerms) -> TermCount:
-    return TermCount(language=language, term_count=len(glossary.terms_in(language)))
 ```
 
 ## Naming
