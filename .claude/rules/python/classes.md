@@ -11,20 +11,16 @@ Functions are the default; a class is an upgrade that must be triggered.
 
 ### A class is written only when one of seven triggers holds
 
-**Why:** a module is already a namespace with "methods"; a class without a trigger — `__init__`
-plus one method over values it was handed, only `@staticmethod`s, a box for constants — adds `self`
-and a constructor to code that needed neither. A partial, a closure or an options dataclass gives
-the one thing needed without a lifecycle.
+**Why:** a class without one — `__init__` plus one method, only `@staticmethod`s, a box for
+constants — adds `self` and a constructor a module or a closure did not need.
 
-1. **State survives between calls** — a token bucket, a pool, an accumulator, an open session.
-2. **Invariants tie values together** — `Money`, `DateRange`: a frozen dataclass with methods.
-3. **The behaviour must be swappable** — two implementations behind one contract, or a test fake.
-4. **Several operations share the same dependencies** — three or more functions taking the same two
-   or more collaborators.
-5. **There is a lifecycle** — acquire and release, `__enter__`/`__exit__`, `close()`.
-6. **A framework demands it** — `Enum`, `Exception`, a dataclass.
-7. **The composition root builds it with collaborators** — a service or an adapter that takes its
-   dependencies and settings in its constructor.
+1. **State survives between calls** — a pool, a session.
+2. **Invariants tie values together** — `Money`: a frozen dataclass.
+3. **The behaviour is swappable** — behind a contract, or for a fake.
+4. **Three or more functions share two collaborators.**
+5. **There is a lifecycle** — acquire and release.
+6. **A framework demands it** — `Enum`, `Exception`.
+7. **The root builds it with collaborators** — a service, an adapter.
 
 ## One Actor per Module and Class
 
