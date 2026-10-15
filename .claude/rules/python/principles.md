@@ -77,9 +77,57 @@ async def fetch_statements(
     return [task.result() for task in tasks]
 ```
 
+## SOLID
+
+### A module or a class answers to one actor — whoever asks for its changes
+
+**Why:** SRP is about the actor — the person or role who asks for changes — and holds for a module
+and a class alike; "does one thing" is the rule for a function, not this one. Code answering to two
+actors ships the fix one of them asks for to the other; the test is *who*, not *which layer*.
+**Except:** knowledge both actors share — what counts as regular hours — lives once, on the data; if
+they come to mean different things, those are two rules with two names.
+
+**Example:**
+```python
+# WRONG — one module, two actors: a pay fix finance asks for ships with HR's hours report
+def _regular_hours(timesheet: Timesheet, *, week_hours: Decimal = REGULAR_WEEK_HOURS) -> Decimal:
+    return min(timesheet.hours_worked, week_hours)
+
+
+def calculate_pay(timesheet: Timesheet) -> Decimal:  # finance
+    return _regular_hours(timesheet) * timesheet.hourly_rate
+
+
+def report_hours(timesheet: Timesheet, *, working_days: int) -> HoursReport:  # HR
+    regular = _regular_hours(timesheet)
+    return HoursReport(regular=regular, total=timesheet.hours_worked, working_days=working_days)
+
+
+# CORRECT — timesheet.py: the rule both actors share, on the data
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Timesheet:
+    hours_worked: Decimal
+    hourly_rate: Decimal
+
+    def regular_hours(self, *, week_hours: Decimal = REGULAR_WEEK_HOURS) -> Decimal:
+        return min(self.hours_worked, week_hours)
+
+
+# CORRECT — payroll.py, finance's module
+def calculate_pay(timesheet: Timesheet) -> Decimal:
+    return timesheet.regular_hours() * timesheet.hourly_rate
+
+
+# CORRECT — hours_report.py, HR's module
+def report_hours(timesheet: Timesheet, *, working_days: int) -> HoursReport:
+    regular = timesheet.regular_hours()
+    return HoursReport(regular=regular, total=timesheet.hours_worked, working_days=working_days)
+```
+
 ### A new case is data or a new file, never a new branch in something that works
 
-**Why:** a branch added to working code is a change to code that worked; kind in, implementation
+**Why:** this is OCP: a branch added to working code is a change to code that worked; kind in, implementation
 out through a mapping the root builds — adding a kind is one entry, deleting one as easy.
 
 **Example:**
@@ -97,6 +145,106 @@ def notify(
     recipient: Recipient, message: Message, *, notifiers: Mapping[Channel, Notifier]
 ) -> None:
     notifiers[recipient.preferred_channel].send(recipient, message)
+```
+
+### A subclass accepts at least what its parent accepts and returns nothing wider
+
+**Why:** this is LSP: code written against the parent must work with the subclass. A signature
+mismatch is a type error, and nothing checks the behaviour — no new precondition, no dropped
+promise, no new exception.
+
+**Example:**
+```python
+class ReadingSink(ABC):
+    @abstractmethod
+    def record(self, reading: MeterReading) -> RecordedReading: ...
+
+
+# WRONG — narrows the parameter: a caller passing any MeterReading to a ReadingSink fails here
+@final
+class SqlReadingSink(ReadingSink):
+    def __init__(self, *, readings: ReadingTable, utility_code: str) -> None:
+        self._readings = readings
+        self._utility_code = utility_code
+
+    @override
+    def record(self, reading: VerifiedReading) -> RecordedReading:
+        reading_id = self._readings.insert(self._utility_code, reading.meter_id, reading.kwh)
+        return RecordedReading(reading_id=reading_id)
+
+
+# CORRECT — accepts what the parent accepts, and promises something narrower back
+@final
+class SqlReadingSink(ReadingSink):
+    def __init__(self, *, readings: ReadingTable, utility_code: str) -> None:
+        self._readings = readings
+        self._utility_code = utility_code
+
+    @override
+    def record(self, reading: MeterReading) -> BilledReading:
+        reading_id = self._readings.insert(self._utility_code, reading.meter_id, reading.kwh)
+        return BilledReading(reading_id=reading_id, billing_period=reading.billing_period)
+```
+
+### A contract holds only what its consumer calls
+
+**Why:** this is ISP: a consumer handed more depends on it — its fake must implement it, and a
+change to a method it never calls reaches it anyway. One class may implement several contracts; the
+split is in what the consumer is given, not in the storage.
+**Except:** split when a consumer that needs a different set exists, not in advance — a catalogue
+every caller uses whole stays one contract.
+
+**Example:**
+```python
+# WRONG — the specimen count receives the whole catalogue, writes included
+class SpecimenCatalogue(ABC):
+    @abstractmethod
+    def add(self, specimen: Specimen) -> None: ...
+
+    @abstractmethod
+    def specimens_of(self, genus: Genus) -> list[Specimen]: ...
+
+
+def count_specimens(genus: Genus, *, catalogue: SpecimenCatalogue) -> SpecimenCount:
+    return SpecimenCount(genus=genus, specimen_count=len(catalogue.specimens_of(genus)))
+
+
+# CORRECT — the specimen count depends on the one capability it uses
+class SpecimenLookup(ABC):
+    @abstractmethod
+    def specimens_of(self, genus: Genus) -> list[Specimen]: ...
+
+
+def count_specimens(genus: Genus, *, catalogue: SpecimenLookup) -> SpecimenCount:
+    return SpecimenCount(genus=genus, specimen_count=len(catalogue.specimens_of(genus)))
+```
+
+### Collaborators arrive through the constructor, never built inside
+
+**Why:** this is dependency inversion by injection: the class depends on the contract, and the
+composition root decides the implementation. One built inside cannot be replaced in a test, and the
+signature hides what it needs.
+
+**Example:**
+```python
+# WRONG — the repository is built inside: no test can hand in a fake
+@final
+class DocumentService:
+    def __init__(self, pool: DatabasePool) -> None:
+        self._documents = PostgresDocumentRepository(pool)
+
+    def archive(self, document_id: DocumentId) -> None:
+        self._documents.mark_archived(document_id)
+
+
+# CORRECT — it arrives from the composition root
+@final
+class DocumentService:
+    def __init__(self, *, documents: DocumentRepository) -> None:
+        self._documents = documents
+
+    def archive(self, document_id: DocumentId) -> None:
+        self._documents.mark_archived(document_id)
 ```
 
 ## YAGNI, KISS, DRY
