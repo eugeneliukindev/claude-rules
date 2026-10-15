@@ -18,7 +18,7 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
   mechanics come from its current documentation;
 - a function, class or constant defined in one skill's examples is defined in no other skill's,
   and in none of the rules';
-- every `###` heading of a skill's reference file is listed in that skill's `SKILL.md`.
+- a skill is one `SKILL.md`, and any other `.md` file in it is reported.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -43,9 +43,10 @@ _EXIT_INTERRUPTED: Final = 130
 
 # Close enough for English prose and code to set a ceiling by; a real tokenizer is not a dependency.
 _CHARACTERS_PER_TOKEN: Final = 4
-_SKILL_MAX_LINES: Final = 300
-# Claude Code re-attaches the first 5,000 tokens of an invoked skill after compaction.
-_SKILL_MAX_TOKENS: Final = 5_000
+_SKILL_MAX_LINES: Final = 500
+# Claude Code re-attaches about the first 5,000 tokens of an invoked skill after compaction;
+# 6,000 leaves the tail of a one-file skill short.
+_SKILL_MAX_TOKENS: Final = 6_000
 _SKILL_PREFIX: Final = "python-"
 # Skills about the skills themselves, which name the others by design.
 _META_SKILLS: Final = frozenset({"python-rules-authoring", "python-review"})
@@ -294,7 +295,6 @@ def run(*, root: Path) -> int:
         *_map_findings(rules_directory / "core.md", skill_names),
         *_layering_findings(rules_directory / "core.md", skill_files),
         *_shared_definition_findings((*rules, *skill_files)),
-        *_router_findings(skill_files),
         *(
             finding
             for document in (*rules, *skill_files)
@@ -360,6 +360,13 @@ def _budget_findings(
     for skill_file in skill_files:
         if skill_file.path.name == "SKILL.md":
             yield from _skill_budget_findings(skill_file)
+        else:
+            # The model opens a linked file in a minority of runs: a skill is its SKILL.md alone.
+            yield _Finding(
+                path=skill_file.path,
+                line=1,
+                message="a skill holds one SKILL.md; move this into it",
+            )
 
 
 def _skill_budget_findings(skill_file: _Document) -> Iterator[_Finding]:
@@ -516,27 +523,6 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
         yield from _skill_names_past_introduction(document)
 
 
-def _router_findings(skill_files: Sequence[_Document]) -> Iterator[_Finding]:
-    # A reference file is read only sometimes; its rule headings stay in the SKILL.md that loads.
-    routers = {
-        document.path.parent: "\n".join(document.lines)
-        for document in skill_files
-        if document.path.name == "SKILL.md"
-    }
-    for document in skill_files:
-        router = routers.get(document.path.parent, "")
-        if document.path.name == "SKILL.md" or not router:
-            continue
-        code_lines = _code_line_numbers(document.lines)
-        for line_number, line in enumerate(document.lines, start=1):
-            if line.startswith("### ") and line_number not in code_lines:
-                heading = line.removeprefix("### ")
-                if heading not in router:
-                    yield _Finding(
-                        path=document.path,
-                        line=line_number,
-                        message="heading missing from SKILL.md; list it under the link",
-                    )
 
 
 def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Finding]:
