@@ -19,12 +19,12 @@ documentation.
 
 ### Validating models live at the process boundary; frozen dataclasses live inside
 
-**Why:** two families, two jobs. A validating model — a request or response, a message payload,
-settings, a row from an untrusted source — parses external data, and it is the only place that
-happens; domain code never imports the validation library. The edge validates once and passes a
-domain object inward, so a check repeated in a service means the boundary leaked. Boundary models
-are strict: no `"1"` coerced to `1`, no unknown field quietly dropped. A bare collection is
-validated through one adapter instance built once — constructing the validator is the cost.
+**Why:** a validating model — a request or response, a message payload, settings, a row from an
+untrusted source — is the only place external data is parsed; domain code never imports the
+validation library. The edge validates once and passes a domain object inward, so a check repeated
+in a service means the boundary leaked. Boundary models are strict: no `"1"` coerced to `1`, no
+unknown field dropped. A bare collection is validated through one adapter built once —
+constructing the validator is the cost.
 
 **Example:**
 ```python
@@ -109,22 +109,14 @@ outage into your own: a server that accepts the connection and never answers hol
 forever. Client defaults are set once where the client is built; a call overrides them only with a
 named constant.
 
-### Only a transient failure is retried, at one level — the adapter that classifies it — and the outermost boundary owns the deadline
+### Only a transient failure is retried, and the adapter classifies it
 
-**Why:** a connect or read timeout, a rate limit, a server error, a broker disconnect pass with
-time; a business rejection, a validation error or an auth failure does not, and retrying a conflict
-is a loop, not resilience. The adapter translates upstream errors (`errors.md`) into a transient and
-a permanent type, and the retry policy keys on the type — bounded, exponential and jittered, with
-the numbers named in the adapter; a pool that let the event loop's own timeout escape untranslated
-broke every caller that caught the library's documented timeout error. Budgets nest
-multiplicatively — four attempts inside a caller that also makes four is sixteen, and a five-second
-budget becomes eighty — so a service sees one call that succeeded or raised a final error; a
-client's built-in retry policy, where it has one, is that level. When a dependency keeps failing,
-the adapter stops calling it and raises an unavailability error, so callers degrade deliberately
-instead of queueing timeouts.
-**Except:** a cache read is not retried even when the failure is transient — the source is its
-fallback; a deadlock or serialization failure is retried above the adapter, by rerunning the whole
-transaction.
+**Why:** a timeout, a rate limit, a 5xx, a broker disconnect pass with time; a business rejection,
+a validation error or an auth failure does not. The adapter translates upstream errors
+(`errors.md`) into a transient and a permanent type, and the retry policy — bounded, jittered
+backoff, numbers named in the adapter — keys on the type; a pool whose timeout escaped
+untranslated broke every caller catching the documented one.
+**Except:** a cache read is never retried — the source is its fallback.
 
 **Example:**
 ```python
@@ -154,6 +146,16 @@ def _raise_for_tide_status(
     if status_code >= HTTPStatus.BAD_REQUEST:
         raise PermanentTideError(f"tides for {harbour}: service answered {status_code}")
 ```
+
+### Retries live at one level, the adapter, and the outermost boundary owns the deadline
+
+**Why:** budgets nest multiplicatively — four attempts under a caller making four is sixteen, and
+a five-second budget becomes eighty — so a service sees one call that succeeded or failed for
+good; a client's built-in retry policy, if any, is that level. A dependency that keeps failing is
+no longer called; the adapter raises an unavailability error, so callers degrade, not queue
+timeouts.
+**Except:** a deadlock or serialization failure is retried above the adapter, by rerunning the
+transaction.
 
 ### A write is retried only with an idempotency key the operation minted before its first attempt
 
@@ -284,16 +286,13 @@ def publish_timetable(path: Path, timetable: bytes) -> None:
 
 ## Time
 
-### A datetime is aware UTC: refused at the boundary without an offset, stored as ISO-8601, local only at the presentation edge
+### A datetime is aware UTC: refused without an offset at the boundary, stored as ISO-8601, local only for display
 
 **Why:** a naive `datetime.now()` shifts with the server's zone and cannot be ordered against an
-aware value; `datetime.utcnow()` is naive too, and deprecated. `"2026-03-01T09:00:00"` is an
-instant in no zone at all, and whichever zone the reader assumes is a guess; a driver may not
-reject one — one writes a naive `datetime` into `timestamptz` as the client machine's local time.
-Stored and serialized, an instant is `.isoformat()` and `datetime.fromisoformat`; epoch numbers are
-for machine-to-machine metrics. Conversion to local time uses `zoneinfo.ZoneInfo`, never a
-hand-written offset. `datetime.now(UTC)` appears in exactly one place, the system clock; everything
-else asks an injected `Clock` (`testing.md`).
+aware value; `utcnow()` is naive too. `"2026-03-01T09:00:00"` is an instant in no zone, and one
+driver writes it into `timestamptz` in the client's local time. Epoch numbers are for metrics;
+local time comes from `zoneinfo.ZoneInfo`, never a hand-written offset. `datetime.now(UTC)` appears only in the system clock; everything else asks an
+injected `Clock` (`testing.md`).
 
 **Example:**
 ```python
