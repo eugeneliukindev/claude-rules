@@ -16,7 +16,7 @@ Every Python edit loads this directory, tests also `testing.md`; everything else
 | `python-scripts` | a one-off script, a notebook, a backfill or data fix — what relaxes there |
 | `python-review`, `python-rules-authoring` | reviewing a diff against these rules; editing these rules or skills |
 
-The principles and YAGNI, KISS and DRY are in `principles.md`.
+The principles, SOLID, and YAGNI, KISS and DRY are in `principles.md`.
 
 ## When Rules Conflict
 
@@ -41,6 +41,7 @@ The tests run first, and pass. Then the eight checks, skipped first under pressu
 
 - [ ] Every new identifier follows `naming.md` and survives the relocation test
 - [ ] Every new module and class answers to one actor — name who would ask to change it
+      (`principles.md`)
 - [ ] Every helper has a reason from `functions.md`, every class a trigger from `classes.md`
 - [ ] **Every name used only inside its module or class is prefixed** with an underscore
 - [ ] No generically named unit contains concrete logic; no concrete rule lives in two places
