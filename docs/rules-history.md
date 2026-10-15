@@ -155,6 +155,12 @@ this skill when" the signals, "Do not … directly" — the one that activated e
 ([source](https://medium.com/@ivan.seleznov1/why-claude-code-skills-dont-activate-and-how-to-fix-it-86f679409af1));
 the checker's required clause changed with it.
 
+**`python-types` became part of `types.md`, by the user's decision.** Typing applies to every
+Python file, and a skill is invoked only when its description matches the task, so its rules
+reached only the work that named a type. The skill was merged into the always-loaded file, its
+duplicate rules folded into one and the examples the model gets right without them dropped; the
+every-`.py` set went from 42 rules and about 8,960 tokens to 55 and about 12,370.
+
 ## Reproducing the Measurements
 
 The runs above were made outside the repository, which keeps only what a user of the rules needs.

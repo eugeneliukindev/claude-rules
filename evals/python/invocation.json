@@ -50,18 +50,6 @@
       ]
     },
     {
-      "id": "invoke-types",
-      "prompt": "The recipe dicts in cocktails/menu.py keep causing KeyErrors and typos like \"garnsh\". Give the recipes a real type.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
-        "cocktails/__init__.py": "",
-        "cocktails/menu.py": "from typing import Any\n\n\ndef negroni() -> dict[str, Any]:\n    return {\n        \"name\": \"Negroni\",\n        \"glass\": \"rocks\",\n        \"ingredients\": {\"gin\": 30, \"campari\": 30, \"vermouth\": 30},\n        \"garnish\": \"orange peel\",\n    }\n\n\ndef describe(recipe: dict[str, Any]) -> str:\n    return f\"{recipe['name']} in a {recipe['glass']} glass, garnished with {recipe['garnish']}\"\n"
-      },
-      "skills": [
-        "python-types"
-      ]
-    },
-    {
       "id": "invoke-wiring",
       "prompt": "Importing planetarium/shows.py opens a connection to the booking server, so the tests can't even import it. Fix that.",
       "files": {
