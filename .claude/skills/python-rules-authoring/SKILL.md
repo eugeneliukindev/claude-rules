@@ -20,7 +20,7 @@ docs/rules-history.md in the repository, evidence for people rather than instruc
 ### Every rule is a heading and a `**Why:**`, and an `**Example:**` only where it earns its place
 
 **Why:** a fixed hierarchy lets the reader find the part they need without reading the rest, the way
-a linter documents a check. The heading is the rule, one sentence, `###` under the topic's `##`. The
+a style guide documents a rule. The heading is the rule, one sentence, `###` under the topic's `##`. The
 `**Why:**` is what breaks, and when — Anthropic's guidance asks for the motivation because the model
 generalises from it, and a measured incident goes here in a clause. The `**Example:**` is the pair,
 `# WRONG` and `# CORRECT`; a carve-out is one more `# CORRECT`, or one `**Except:**` sentence before
@@ -89,7 +89,7 @@ A `WRONG` that also lacks annotations, uses a global and swallows an error leave
 and the reader copies all eight. Imports and the declarations of names an example uses are omitted
 in every file.
 
-### A `CORRECT` obeys every other rule here, parses, and passes `mypy --strict`
+### A `CORRECT` obeys every other rule here, parses, and runs
 
 **Why:** where a rule and an example disagree, the model has two instructions and picks one
 arbitrarily — `kw_only`, `@override`, `Final`, the `_` prefix, units in names and injected
@@ -143,7 +143,7 @@ written in a library's API; that no name an example defines or calls lives in a 
 mechanical rules — `Final`, the dataclass flags, the modern typing spelling, no naive `now()`, no
 mutable default, no bare `except`, no settings object below the root, no setting read in a body
 instead of defaulted in the signature. Exit code 1 means a finding, printed as `path:line:
-message`. What it cannot check — that a `CORRECT` passes `mypy --strict` against its library —
+message`. What it cannot check — that a `CORRECT` runs against the library version it names —
 stays a step of its own.
 
 ## Where a Rule Lives
@@ -231,12 +231,6 @@ comments moved into skills, the measured layout lost almost every run and none o
 opened. What moves to a skill is what a concrete signal in the task points at — an outbound call,
 an entry point, an untrusted input, a one-off script.
 
-### Tool configuration belongs to the repository; the rules hold what survives the choice of tool
-
-**Why:** which linters a project runs and how its hooks are wired changes from repository to
-repository, and its owner owns those files. What belongs here is the discipline around suppressions
-and limits and, where a checker can hold a rule, the name of the check.
-
 ### An addition displaces something, and a ceiling is raised only by an argument on record
 
 **Why:** without a fixed number every addition looks free, and a file once grew to three thousand
@@ -274,8 +268,7 @@ and the examples whose heading already shows the code, until it fits.
 
 ### A rule no tool checks either becomes a check or is deleted, once it is broken in bulk
 
-**Why:** the tools decide syntax, imports and formatting; the type checker decides what survives a
-rename; everything else rests on attention, and nothing fails when it is skipped. A rule broken by
+**Why:** a rule nothing checks rests on attention, and nothing fails when it is skipped. A rule broken by
 the dozen is a wish, not a standard: write the check, or delete the rule. Between the two sits a
 procedure — the Definition of Done in `core.md`, which `python-review` walks over a diff — and a
 rule that belongs on that list is added to both.
