@@ -54,6 +54,35 @@ python -c "from shipping.rates import parcel_rate; print(parcel_rate(sample_parc
 uv run pytest tests/unit/shipping/test_rates.py
 ```
 
+## Structure
+
+### A test is Arrange–Act–Assert with one act, and its name states the behaviour as given, when, then
+
+**Why:** a failing test should read as the broken specification. `test_<when>_<then>`, or
+`test_given_…_when_…_then_…` where the setup decides it, names the behaviour; `test_renew` names a
+function. The body is three phases separated by blank lines — arrange, one act, assert — so the call
+under test is found at a glance; a second act is a second test.
+
+**Example:**
+```python
+# WRONG — named for the function, two acts, no phases: a failure says only that renew broke
+def test_renew() -> None:
+    loan = make_loan(due_on=date(2026, 6, 1))
+    loan.renew(days=14)
+    assert loan.due_on == date(2026, 6, 15)
+    loan.renew(days=14)
+    assert loan.renewal_count == 2
+
+
+# CORRECT — the name is the specification, and one act sits between its phases
+def test_renewing_loan_moves_due_date_by_requested_days() -> None:
+    loan = make_loan(due_on=date(2026, 6, 1))
+
+    loan.renew(days=14)
+
+    assert loan.due_on == date(2026, 6, 15)
+```
+
 ## Fakes, Not Mocks
 
 ### A contract a unit test depends on has an in-memory fake, the test asserts the outcome, and only a process boundary you do not own is mocked, against the real class
