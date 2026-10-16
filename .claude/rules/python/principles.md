@@ -30,12 +30,11 @@ Weigh five principles in this order; when two rules conflict, the earlier princi
 
 ## SOLID
 
-- **Make a module or a class answer to one actor, whoever asks for its changes.** Code answering to two actors ships the fix one asks for to the other; ask *who*, not *which layer*, and keep "does one thing" for functions. Keep knowledge both actors share once, on the data, and split it into two named rules once they mean different things.
-- **Add a new case as data or a new file, never as a new branch in code that works.** Map kind to implementation through a mapping the root builds, so adding a kind is one entry and deleting one is as easy.
-- **Make a subclass accept at least what its parent accepts, and return nothing wider.** Code written against the parent must work with the subclass; the checker catches a signature mismatch, and nothing checks behaviour.
-- **Add no precondition, drop no promise and raise no new exception in a subclass.** Raise only what the contract names, or a kind of it.
-- **Put in a contract only what its consumer calls.** A consumer handed more depends on it: its fake must implement it, and a change to a method it never calls reaches it. Split in what the consumer is given, not in the storage, and only once a consumer needing a different set exists; a catalogue every caller uses whole stays one contract.
-- **Pass collaborators through the constructor, never build them inside.** The class depends on the contract and the composition root picks the implementation; one built inside cannot be replaced in a test, and the signature hides what it needs.
+- **S - give a module or a class one actor: the person or role who asks for its changes.** Name who would ask to change each function; two names mean two modules. Signs: a module mixing pricing with reporting, a class whose methods different callers use apart. Keep knowledge both actors share once, on the data; "does one thing" is the rule for a function, not this one.
+- **O - add a new kind as data or a new file, never as a new `if`/`elif`/`match` branch in code that works.** Sign: an `if kind == ...` chain that every new kind edits. Map the kind to its implementation in a mapping the root builds, so adding a kind is one entry.
+- **L - in a subclass, accept every type the parent accepts and return the same type or a subtype.** Never narrow a parameter (`Wine` to `SparklingWine`), add a check that rejects input the parent took, drop a promise, or raise an exception the contract does not name; raise a subclass of the one it names. Sign: a caller that `isinstance`-checks which subclass it got.
+- **I - give a consumer a contract with only the methods it calls.** Signs: a fake that must implement methods its test never calls, an implementation that raises `NotImplementedError`, a consumer using two of eight methods. Split by what each consumer is given, once such a consumer exists; a contract every caller uses whole stays one.
+- **D - take collaborators in the constructor, keyword-only after `*`, typed as the contract, and never build them inside.** Signs: `__init__` calls a concrete class (`SqlRepository(...)`), a domain module imports a driver or an HTTP client. The composition root builds the implementation and passes it in, so a test passes a fake.
 
 ## YAGNI, KISS, DRY
 
