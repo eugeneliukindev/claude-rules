@@ -40,7 +40,6 @@ In an ASGI service the composition root is the application's lifespan. Collabora
 ## Settings
 
 - **Read configuration into typed settings, built once at the root and unpacked there into the fields each part needs.** Below the root nothing takes the settings object (`functions.md`); `os.environ` read across the code is a dependency nobody declared, and a cached accessor behind `@lru_cache` is a global by another name, changed in a test only through `cache_clear()` and the environment.
-- **Keep the server's settings in a class apart from the application's, and let each entry point build the classes of the parts it runs.** One class makes a worker supply a port it never binds, and lets the application's fields grow server knobs.
 - **Never branch behaviour on the deployment environment's name; make each difference a setting of its own.** A branch on the name runs for the first time in the environment it guards, and every new environment must be added to every branch; use the name only as metadata, like a trace resource attribute or a log field.
 - **Validate configuration at startup, before serving.** A missing or malformed variable then stops the process with a clear message instead of failing the first request hours later.
 - **Make a feature flag a typed field read once and injected, never queried deep in the call stack.**
