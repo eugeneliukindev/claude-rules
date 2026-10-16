@@ -30,7 +30,7 @@ the task-queue app tasks are decorated with, its pools built by the worker's sta
 
 **Example:**
 ```python
-# WRONG — a second root below main: the intake opens its own pool from a URL it was handed
+# WRONG - a second root below main: the intake opens its own pool from a URL it was handed
 def run_loan_intake(*, registry_url: str, batch_size: int) -> None:
     with RegistryPool(registry_url) as pool:
         office = LoanOffice(agreements=PostgresAgreementLedger(pool))
@@ -40,7 +40,7 @@ def main() -> None:
     settings = Settings()
     run_loan_intake(registry_url=settings.registry_url, batch_size=settings.intake_batch_size)
 
-# CORRECT — main builds settings, resources, adapters and services, and hands them down
+# CORRECT - main builds settings, resources, adapters and services, and hands them down
 def main() -> None:
     settings = Settings()
     with RegistryPool(settings.registry_url) as pool:
@@ -56,7 +56,7 @@ flag to reach the fake.
 
 **Example:**
 ```python
-# WRONG — the channel is chosen inside, from values the reminders should not know
+# WRONG - the channel is chosen inside, from values the reminders should not know
 @final
 class ReturnReminders:
     def __init__(
@@ -71,7 +71,7 @@ class ReturnReminders:
         for agreement in self._agreements.ending_on(today):
             self._lender_channel.send(agreement.lender_id, f"Loan {agreement.number} ends today")
 
-# CORRECT — the root chose and built the channel; the reminders take the contract
+# CORRECT - the root chose and built the channel; the reminders take the contract
 @final
 class ReturnReminders:
     def __init__(self, *, agreements: AgreementLedger, lender_channel: LenderChannel) -> None:
@@ -89,13 +89,13 @@ class ReturnReminders:
 OpenTelemetry SDK do: the parameter is a seam for a test or a second root, and the default costs
 the caller nothing. A default
 that needs a setting wastes that setting whenever the collaborator is passed.
-**Except:** `is None` instead of `or` when a valid value can be falsy — an empty mapping, `0`. A
-plain value — a path, a limit — is no collaborator: it is defaulted in the signature
+**Except:** `is None` instead of `or` when a valid value can be falsy - an empty mapping, `0`. A
+plain value - a path, a limit - is no collaborator: it is defaulted in the signature
 (`functions.md`).
 
 **Example:**
 ```python
-# WRONG — the default needs a URL, so courier_api_url is wasted whenever couriers are passed
+# WRONG - the default needs a URL, so courier_api_url is wasted whenever couriers are passed
 @final
 class CourierScheduler:
     def __init__(
@@ -111,7 +111,7 @@ class CourierScheduler:
     def book_courier(self, agreement: LoanAgreement) -> CourierSlot:
         return self._couriers.book(agreement.exhibit_id, earliest=self._clock.now())
 
-# CORRECT — the clock defaults to what production runs; the couriers are built by the root
+# CORRECT - the clock defaults to what production runs; the couriers are built by the root
 @final
 class CourierScheduler:
     def __init__(self, *, couriers: CourierBooking, clock: Clock | None = None) -> None:
@@ -129,7 +129,7 @@ built per request exhausts the pool.
 
 **Example:**
 ```python
-# WRONG — one request's glossary built once: the first request's language answers every request
+# WRONG - one request's glossary built once: the first request's language answers every request
 @final
 class WallLabelWriter:
     def __init__(self, *, glossary: LabelGlossary) -> None:
@@ -138,7 +138,7 @@ class WallLabelWriter:
     def write_label(self, exhibit: Exhibit) -> str:
         return self._glossary.caption(exhibit.title_key, lender=exhibit.lender_name)
 
-# CORRECT — the writer holds the factory; each request builds the glossary for its own locale
+# CORRECT - the writer holds the factory; each request builds the glossary for its own locale
 @final
 class WallLabelWriter:
     def __init__(self, *, glossary_for: Callable[[Locale], LabelGlossary]) -> None:
@@ -154,7 +154,7 @@ The root acquires, so the root releases; everything below it borrows.
 
 ### A resource enters through its own context manager
 
-**Why:** a pool, a client or a session that is already a context manager needs no wrapper — a
+**Why:** a pool, a client or a session that is already a context manager needs no wrapper - a
 hand-written one around it is one more name to learn, and copied into every project it becomes a
 house convention nobody chose.
 **Except:** an object with only `close()` enters through `contextlib.closing`; an acquire and
@@ -164,7 +164,7 @@ besides those two.
 
 **Example:**
 ```python
-# WRONG — a wrapper around a pool that is already a context manager
+# WRONG - a wrapper around a pool that is already a context manager
 @contextmanager
 def registry_pool_scope(registry_url: str) -> Iterator[RegistryPool]:
     pool = RegistryPool(registry_url)
@@ -178,7 +178,7 @@ def main() -> None:
     with registry_pool_scope(settings.registry_url) as pool:
         print_loan_schedule(agreements=PostgresAgreementLedger(pool))
 
-# CORRECT — the pool's own with
+# CORRECT - the pool's own with
 def main() -> None:
     settings = Settings()
     with RegistryPool(settings.registry_url) as pool:
@@ -195,7 +195,7 @@ In a web service the framework's startup and shutdown hook is this root.
 
 **Example:**
 ```python
-# WRONG — an ExitStack for two fixed resources hides what is open and in which order it closes
+# WRONG - an ExitStack for two fixed resources hides what is open and in which order it closes
 def main() -> None:
     settings = Settings()
     with ExitStack() as resources:
@@ -203,7 +203,7 @@ def main() -> None:
         client = resources.enter_context(ValuationClient(base_url=settings.valuation_url))
         import_valuations(agreements=PostgresAgreementLedger(pool), valuations=client)
 
-# CORRECT — one with item per resource, closed in reverse order
+# CORRECT - one with item per resource, closed in reverse order
 def main() -> None:
     settings = Settings()
     with (
@@ -220,7 +220,7 @@ a store that built its own client and never closed it leaked a connection per in
 
 **Example:**
 ```python
-# WRONG — close() also shuts down an executor the caller passed in, and every other user of it
+# WRONG - close() also shuts down an executor the caller passed in, and every other user of it
 @final
 class FacsimileRenderer:
     def __init__(
@@ -234,7 +234,7 @@ class FacsimileRenderer:
     def close(self) -> None:
         self._executor.shutdown()
 
-# CORRECT — remembers whether it built the executor, and shuts down only its own
+# CORRECT - remembers whether it built the executor, and shuts down only its own
 @final
 class FacsimileRenderer:
     def __init__(
@@ -254,12 +254,12 @@ class FacsimileRenderer:
 ### Cleanup never raises over the block's own error
 
 **Why:** `__exit__` propagates by default, and a release that fails replaces the error the caller
-needed — a failed two-phase commit once tried to roll back, a state guard refused the rollback, and
+needed - a failed two-phase commit once tried to roll back, a state guard refused the rollback, and
 the guard's error was all the caller ever saw.
 
 **Example:**
 ```python
-# WRONG — a failed release replaces the block's own error, and the caller's except misses it
+# WRONG - a failed release replaces the block's own error, and the caller's except misses it
 @contextmanager
 def gallery_hold(gallery_id: GalleryId, *, holds: GalleryHolds) -> Iterator[GalleryHold]:
     hold = holds.place(gallery_id)
@@ -268,7 +268,7 @@ def gallery_hold(gallery_id: GalleryId, *, holds: GalleryHolds) -> Iterator[Gall
     finally:
         holds.lift(hold)
 
-# CORRECT — the release failure is logged on its own, and the block's error propagates intact
+# CORRECT - the release failure is logged on its own, and the block's error propagates intact
 @contextmanager
 def gallery_hold(gallery_id: GalleryId, *, holds: GalleryHolds) -> Iterator[GalleryHold]:
     hold = holds.place(gallery_id)
@@ -283,8 +283,8 @@ def gallery_hold(gallery_id: GalleryId, *, holds: GalleryHolds) -> Iterator[Gall
 
 ### No process-wide mutation in library or service code
 
-**Why:** a context manager that flips process state — `chdir`, an environment variable, logging
-configuration — changes every other caller for its duration; it belongs to tests and entry points
+**Why:** a context manager that flips process state - `chdir`, an environment variable, logging
+configuration - changes every other caller for its duration; it belongs to tests and entry points
 only.
 
 ## Constants
@@ -307,7 +307,7 @@ global, and changed in a test only through `cache_clear()` and the environment.
 
 **Example:**
 ```python
-# WRONG — a global behind a function: every caller reaches it, and no test can hand in another
+# WRONG - a global behind a function: every caller reaches it, and no test can hand in another
 @lru_cache
 def loan_settings() -> Settings:
     return Settings()
@@ -316,7 +316,7 @@ def fetch_insured_value(exhibit_id: ExhibitId, *, valuations: ValuationClient) -
     settings = loan_settings()
     return valuations.insured_value(exhibit_id, currency=settings.insurance_currency)
 
-# CORRECT — built once by the root, which unpacks the fields each part needs
+# CORRECT - built once by the root, which unpacks the fields each part needs
 def fetch_insured_value(
     exhibit_id: ExhibitId, *, valuations: ValuationClient, currency: str
 ) -> Decimal:
@@ -336,12 +336,12 @@ def main() -> None:
 
 **Why:** the host, the port and the drain configure the process that serves; the registry URL and
 the limits configure what it serves. One class holding both makes every entry point supply all of
-it — a worker running the same use cases cannot start without a port it never binds — and lets the
+it - a worker running the same use cases cannot start without a port it never binds - and lets the
 application's fields grow server knobs. Each entry point builds the classes of the parts it runs.
 
 **Example:**
 ```python
-# WRONG — one class: the worker needs HOST and PORT set before it starts
+# WRONG - one class: the worker needs HOST and PORT set before it starts
 def serve_main() -> None:
     settings = Settings()
     serve_http(
@@ -352,7 +352,7 @@ def worker_main() -> None:
     settings = Settings()
     run_loan_worker(registry_url=settings.registry_url)
 
-# CORRECT — each entry point builds what it runs, and the worker knows nothing of the server
+# CORRECT - each entry point builds what it runs, and the worker knows nothing of the server
 def serve_main() -> None:
     server_settings = ServerSettings()
     registry_settings = LoanRegistrySettings()
@@ -370,14 +370,14 @@ def worker_main() -> None:
 ### Behaviour never branches on the deployment environment's name; each difference is a setting
 
 **Why:** `if environment == "production"` is code that runs for the first time in the environment it
-guards, and every new environment — a staging copy, a customer's install — must be added to every
-such branch. Each difference becomes a setting of its own — a URL, a flag, a limit — that the entry
+guards, and every new environment - a staging copy, a customer's install - must be added to every
+such branch. Each difference becomes a setting of its own - a URL, a flag, a limit - that the entry
 point reads with the rest and hands in. The environment's name is metadata only: a resource
 attribute on traces and metrics, a log field.
 
 **Example:**
 ```python
-# WRONG — the sandbox is chosen by the environment's name, untested until production
+# WRONG - the sandbox is chosen by the environment's name, untested until production
 def main() -> None:
     settings = Settings()
     if settings.environment == "production":
@@ -386,7 +386,7 @@ def main() -> None:
         insurer = TransitInsurer(base_url="https://sandbox.insurer.example.com")
     run_loan_intake(insurer=insurer)
 
-# CORRECT — the difference is a setting of its own; every environment runs the same code
+# CORRECT - the difference is a setting of its own; every environment runs the same code
 def main() -> None:
     settings = Settings()
     run_loan_intake(insurer=TransitInsurer(base_url=settings.insurer_url))
@@ -400,15 +400,15 @@ def main() -> None:
 failing the first request hours later; a feature flag is a typed field read once and injected,
 never queried deep in the call stack. The settings class is tested alone, with
 `monkeypatch.setenv` and `delenv`: a loader reads the environment even when it skips the `.env`
-file — measured, a variable left in the shell filled a field the test never set.
+file - measured, a variable left in the shell filled a field the test never set.
 
 **Example:**
 ```python
-# WRONG — read on first use: a misspelt variable name surfaces as a 500 on the first request
+# WRONG - read on first use: a misspelt variable name surfaces as a 500 on the first request
 def insurer_url() -> str:
     return os.environ["INSURER_URL"]
 
-# CORRECT — every field parsed and validated at once, when main() builds the settings
+# CORRECT - every field parsed and validated at once, when main() builds the settings
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Settings:
@@ -447,16 +447,16 @@ value to pass; one no makes the configuration root wearing a smaller name.
 
 **Why:** a factory handing one option bundle to whichever builder it selected takes `**options:
 Unpack[SomeOptions]`, a `TypedDict` naming every field, so a misspelt option is rejected at the call
-site; what it cannot check is that the selected builder got every field it requires — that arrives
+site; what it cannot check is that the selected builder got every field it requires - that arrives
 as a `TypeError` on the first call, so builders that share one signature are preferred.
 
 **Example:**
 ```python
-# WRONG — untyped options: a misspelt seal_ttl_secs passes the checker and the builder swallows it
+# WRONG - untyped options: a misspelt seal_ttl_secs passes the checker and the builder swallows it
 def build_crate_tracker(kind: TrackerKind, **options: object) -> CrateTracker:
     return _TRACKER_BUILDER_BY_KIND[kind](**options)
 
-# CORRECT — every option is named once, and the checker rejects a misspelt one at the call site
+# CORRECT - every option is named once, and the checker rejects a misspelt one at the call site
 class TrackerOptions(TypedDict, total=False):
     courier_name: str
     seal_ttl_seconds: float
