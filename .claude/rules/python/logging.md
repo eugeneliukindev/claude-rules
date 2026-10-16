@@ -3,7 +3,7 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Logging
+# Python - Logging
 
 ### No secret or personal data in a log; identifiers go in `extra=`, not into the message
 
@@ -13,10 +13,10 @@ for what someone must look at, never an expected user mistake.
 
 **Example:**
 ```python
-# WRONG — the whole payment, card number included, formatted into the text
+# WRONG - the whole payment, card number included, formatted into the text
 logger.info(f"payment captured: {payment}")
 
 
-# CORRECT — the identifiers as fields, and nothing a reader should not see
+# CORRECT - the identifiers as fields, and nothing a reader should not see
 logger.info("payment captured", extra={"payment_id": payment.payment_id, "amount": payment.amount})
 ```
