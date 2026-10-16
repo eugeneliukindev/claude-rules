@@ -194,6 +194,8 @@ class SqlReadingSink(ReadingSink):
 
     @override
     def record(self, reading: VerifiedReading) -> RecordedReading:
+        # a plain MeterReading has no verified_by: AttributeError for a caller who kept the contract
+        self._readings.mark_verified(reading.meter_id, inspector_id=reading.verified_by)
         reading_id = self._readings.insert(self._utility_code, reading.meter_id, reading.kwh)
         return RecordedReading(reading_id=reading_id)
 
