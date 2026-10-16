@@ -37,12 +37,13 @@ def main() -> None:
 
 ## Encapsulation
 
-### A name used only inside its module or class takes an underscore
+### A name no other module of the code uses takes an underscore, whatever the tests import
 
 **Why:** functions, methods, attributes, constants, type aliases and classes alike - without the
-prefix a name reads as surface, and the first outside import makes it surface for good. Constants
-and aliases are the ones missed: read quietly from a second module, they get two owners. A name a
-test imports is used outside, and stays unprefixed.
+prefix a name reads as surface, and the first outside import makes it surface for good; constants
+and aliases are the ones missed. The production code decides: a test goes through the public names,
+and one that reaches a `_helper` with logic of its own imports it knowingly. When a second module
+needs a name, its prefix goes in the same change - never an import of another module's `_name`.
 **Except:** a script nobody imports, and a name a framework reaches through a decorator - a route,
 a fixture.
 
