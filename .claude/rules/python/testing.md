@@ -191,41 +191,40 @@ def test_reserve_rejects_taken_seat() -> None:
     assert excinfo.value.seat == Seat(row=12, letter="A")
 ```
 
-### Each test arranges its own data through test-owned factories; nothing seeded is shared between tests
+### Each test arranges its own data through test-owned factories over the library's own API; nothing seeded is shared
 
-**Why:** a class- or module-scoped seed couples every test to every row and to the order they run
-in, and arranging through ORM models or SQL helpers couples a test of one behaviour to internals it
-does not check. A factory per entity with valid defaults, in `tests/factories.py`, is the one place
-a schema change touches; each test builds only what it asserts on and states only what it turns on.
-**Except:** reference data no test writes may be seeded once per session; a frozen value every test
-only reads is a module constant.
+**Why:** a class-wide seed couples every test to every row and to their order, and a project
+helper the test does not check - a `session_add()` wrapper, a repository - breaks it when the helper
+changes for its own reasons. A factory per entity in `tests/factories.py` writes through the
+library's API (`session.add`, `connection.execute`), which changes far less, and is the one place a
+schema change touches; each test builds only what it asserts on.
+**Except:** reference data no test writes may be seeded once per session.
 
 **Example:**
 ```python
-# WRONG - one class-wide seed through row helpers: every test depends on every row
+# WRONG - one class-wide seed through the project's row helpers: every test depends on every row
 @pytest.fixture(scope="class", autouse=True)
-async def seeded_subscriptions(database: Database) -> None:
-    async with database.session() as session:
-        await insert_row(SubscriptionRow, session, subscriber="ann@example.com", plan="monthly")
-        await insert_row(SubscriptionRow, session, subscriber="bob@example.com", plan="yearly")
-        await insert_row(InvoiceRow, session, subscriber="bob@example.com", total_cents=12000)
+def seeded_subscriptions(database: Database) -> None:
+    insert_row(database, "subscriptions", subscriber="ann@example.com", plan="monthly")
+    insert_row(database, "subscriptions", subscriber="bob@example.com", plan="yearly")
 
 
-# CORRECT - tests/factories.py builds through the repository; the test makes only what it needs
-async def make_subscription(
-    *, subscriptions: SubscriptionRepository, plan: Plan = Plan.MONTHLY
-) -> Subscription:
-    subscription = Subscription(subscriber="ann@example.com", plan=plan, renews_on=date(2026, 3, 1))
-    await subscriptions.add(subscription)
-    return subscription
+# CORRECT - the factory speaks the driver's own API; the test makes only what it asserts on
+def make_subscription(
+    *, connection: sqlite3.Connection, plan: str = "monthly", renews_on: str = "2026-03-01"
+) -> int:
+    cursor = connection.execute(
+        "INSERT INTO subscriptions (subscriber, plan, renews_on) VALUES (?, ?, ?)",
+        ("ann@example.com", plan, renews_on),
+    )
+    assert cursor.lastrowid is not None
+    return cursor.lastrowid
 
 
-async def test_renewing_yearly_plan_moves_date_by_a_year(
-    subscriptions: SubscriptionRepository,
-) -> None:
-    subscription = await make_subscription(subscriptions=subscriptions, plan=Plan.YEARLY)
+def test_renewing_yearly_plan_moves_date_by_a_year(connection: sqlite3.Connection) -> None:
+    subscription_id = make_subscription(connection=connection, plan="yearly")
 
-    renewed = await renew(subscription.subscription_id, subscriptions=subscriptions)
+    renewed = renew(subscription_id, connection=connection)
 
     assert renewed.renews_on == date(2027, 3, 1)
 ```
