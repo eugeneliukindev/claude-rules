@@ -213,6 +213,35 @@ class SqlReadingSink(ReadingSink):
         return BilledReading(reading_id=reading_id, billing_period=reading.billing_period)
 ```
 
+The same holds for failures: a subclass raises only what the contract names, or a kind of it.
+
+```python
+class ReadingSink(ABC):
+    @abstractmethod
+    def record(self, reading: MeterReading) -> RecordedReading:
+        """Record the reading; raises ReadingRejectedError for one the sink refuses."""
+
+
+# WRONG - a new failure: a caller that catches ReadingRejectedError lets this one through
+class MeterOfflineError(Exception): ...
+
+
+@final
+class RemoteReadingSink(ReadingSink):
+    def __init__(self, *, gateway: MeterGateway) -> None:
+        self._gateway = gateway
+
+    @override
+    def record(self, reading: MeterReading) -> RecordedReading:
+        if not self._gateway.is_online(reading.meter_id):
+            raise MeterOfflineError(reading.meter_id)
+        return RecordedReading(reading_id=self._gateway.submit(reading))
+
+
+# CORRECT - the same sink; its failure is a kind of the one the contract names
+class MeterOfflineError(ReadingRejectedError): ...
+```
+
 ### A contract holds only what its consumer calls
 
 **Why:** this is ISP: a consumer handed more depends on it - its fake must implement it, and a
