@@ -15,14 +15,14 @@ Supplement to the other Python rules, for writing and reviewing tests; `pytest` 
 
 ### A unit test replaces collaborators with fakes; an integration test uses real infrastructure
 
-**Why:** most tests are unit — one function or class, fast enough that nobody thinks about running
+**Why:** most tests are unit - one function or class, fast enough that nobody thinks about running
 them, and every new function and class gets them; integration tests exercise the constraint, the
 transaction and the SQL dialect, which a mocked database only pretends to. A test belongs to one
 level, and the levels are kept apart by directory or marker.
 
 **Example:**
 ```python
-# WRONG — the "integration" test of a repository mocks the connection it integrates with
+# WRONG - the "integration" test of a repository mocks the connection it integrates with
 def test_member_repository_finds_saved_member(mocker: MockerFixture) -> None:
     connection = mocker.create_autospec(sqlite3.Connection, instance=True)
     repository = SqliteMemberRepository(connection=connection)
@@ -32,7 +32,7 @@ def test_member_repository_finds_saved_member(mocker: MockerFixture) -> None:
     connection.execute.assert_called_once()
 
 
-# CORRECT — a real database from a fixture, migrated; the row is read back
+# CORRECT - a real database from a fixture, migrated; the row is read back
 def test_member_repository_finds_saved_member(connection: sqlite3.Connection) -> None:
     repository = SqliteMemberRepository(connection=connection)
 
@@ -47,25 +47,25 @@ def test_member_repository_finds_saved_member(connection: sqlite3.Connection) ->
 
 **Example:**
 ```bash
-# WRONG — checked once in the terminal, gone with it
+# WRONG - checked once in the terminal, gone with it
 python -c "from shipping.rates import parcel_rate; print(parcel_rate(sample_parcel()))"
 
-# CORRECT — the same check, a test every later change runs too
+# CORRECT - the same check, a test every later change runs too
 uv run pytest tests/unit/shipping/test_rates.py
 ```
 
 ## Structure
 
-### A test is Arrange–Act–Assert with one act, and its name states the behaviour as given, when, then
+### A test is Arrange-Act-Assert with one act, and its name states the behaviour as given, when, then
 
 **Why:** a failing test should read as the broken specification. `test_<when>_<then>`, or
-`test_given_…_when_…_then_…` where the setup decides it, names the behaviour; `test_renew` names a
-function. The body is three phases separated by blank lines — arrange, one act, assert — so the call
+`test_given_..._when_..._then_...` where the setup decides it, names the behaviour; `test_renew` names a
+function. The body is three phases separated by blank lines - arrange, one act, assert - so the call
 under test is found at a glance; a second act is a second test.
 
 **Example:**
 ```python
-# WRONG — named for the function, two acts, no phases: a failure says only that renew broke
+# WRONG - named for the function, two acts, no phases: a failure says only that renew broke
 def test_renew() -> None:
     loan = make_loan(due_on=date(2026, 6, 1))
     loan.renew(days=14)
@@ -74,7 +74,7 @@ def test_renew() -> None:
     assert loan.renewal_count == 2
 
 
-# CORRECT — the name is the specification, and one act sits between its phases
+# CORRECT - the name is the specification, and one act sits between its phases
 def test_renewing_loan_moves_due_date_by_requested_days() -> None:
     loan = make_loan(due_on=date(2026, 6, 1))
 
@@ -96,7 +96,7 @@ clock is injected.
 
 **Example:**
 ```python
-# WRONG — a bare mock stands in for the notifier: send_confirmation does not exist, and passes
+# WRONG - a bare mock stands in for the notifier: send_confirmation does not exist, and passes
 def test_booking_confirms_ticket_to_holder(mocker: MockerFixture) -> None:
     notifier = mocker.MagicMock()
     booking = TicketBooking(notifier=notifier)
@@ -106,7 +106,7 @@ def test_booking_confirms_ticket_to_holder(mocker: MockerFixture) -> None:
     notifier.send_confirmation.assert_called()
 
 
-# CORRECT — tests/fakes.py: the fake implements the contract and records what it was given
+# CORRECT - tests/fakes.py: the fake implements the contract and records what it was given
 @final
 class InMemoryNotifier(Notifier):
     def __init__(self) -> None:
@@ -130,13 +130,13 @@ def test_booking_confirms_ticket_to_holder() -> None:
 
 ### Cases are one `parametrize`, each `pytest.param` with an `id`
 
-**Why:** copied tests drift apart, and the id is what a failing run prints — `parcel1-expected1`
+**Why:** copied tests drift apart, and the id is what a failing run prints - `parcel1-expected1`
 names nothing.
 **Except:** a table of scalars alone may leave the ids to pytest, which prints the values.
 
 **Example:**
 ```python
-# WRONG — pytest names the cases parcel0-expected_rate0 and so on
+# WRONG - pytest names the cases parcel0-expected_rate0 and so on
 @pytest.mark.parametrize(
     ("parcel", "expected_rate"),
     [
@@ -148,7 +148,7 @@ def test_parcel_rate(parcel: Parcel, expected_rate: Decimal) -> None:
     assert parcel_rate(parcel) == expected_rate
 
 
-# CORRECT — each case says the scenario a failure is about
+# CORRECT - each case says the scenario a failure is about
 @pytest.mark.parametrize(
     ("parcel", "expected_rate"),
     [
@@ -164,14 +164,14 @@ def test_parcel_rate(parcel: Parcel, expected_rate: Decimal) -> None:
 
 ### An expected error or warning is pinned with `match=`, and warnings are errors in the suite
 
-**Why:** a bare `pytest.raises(SeatTakenError)` passes on the wrong one — raised by the arrange
+**Why:** a bare `pytest.raises(SeatTakenError)` passes on the wrong one - raised by the arrange
 step, or for another seat; the carried data is asserted too. With `filterwarnings = ["error"]` a
 deprecation fails the day it appears, and a test of a deprecated path asserts it with
 `pytest.warns(..., match=...)`.
 
 **Example:**
 ```python
-# WRONG — any SeatTakenError passes, including one for a different seat
+# WRONG - any SeatTakenError passes, including one for a different seat
 def test_reserve_rejects_taken_seat() -> None:
     venue = Venue(seats=[Seat(row=12, letter="A")])
     venue.reserve(Seat(row=12, letter="A"), holder="ann@example.com")
@@ -180,7 +180,7 @@ def test_reserve_rejects_taken_seat() -> None:
         venue.reserve(Seat(row=12, letter="A"), holder="bob@example.com")
 
 
-# CORRECT — the message fragment and the carried seat pin the error down
+# CORRECT - the message fragment and the carried seat pin the error down
 def test_reserve_rejects_taken_seat() -> None:
     venue = Venue(seats=[Seat(row=12, letter="A")])
     venue.reserve(Seat(row=12, letter="A"), holder="ann@example.com")
@@ -197,17 +197,17 @@ def test_reserve_rejects_taken_seat() -> None:
 needs it different; a `make_subscription(*, plan=..., renews_on=...)` factory in the nearest
 `conftest.py` hands each test a default it overrides in one place, so the reader sees what the
 outcome depends on.
-**Except:** a frozen value every test only reads — an id, an instant — is a module constant.
+**Except:** a frozen value every test only reads - an id, an instant - is a module constant.
 
 **Example:**
 ```python
-# WRONG — one shared subscription: the test that needs it cancelled edits it for everyone
+# WRONG - one shared subscription: the test that needs it cancelled edits it for everyone
 @pytest.fixture
 def subscription() -> Subscription:
     return Subscription(subscriber="ann@example.com", plan=Plan.MONTHLY, renews_on=date(2026, 3, 1))
 
 
-# CORRECT — each test builds the subscription it needs and states only what matters to it
+# CORRECT - each test builds the subscription it needs and states only what matters to it
 def make_subscription(
     *,
     plan: Plan = Plan.MONTHLY,
@@ -224,13 +224,13 @@ def make_subscription(
 ### Time, randomness and order are fixed by the test, and a wait polls with a timeout
 
 **Why:** a test that reads the real clock or sleeps is slow, and flaky on a loaded runner. Time
-comes from the injected clock — `time-machine` only for code you do not own that reads the clock
+comes from the injected clock - `time-machine` only for code you do not own that reads the clock
 itself; randomness is seeded; a wait polls with a timeout instead of `sleep()`. Unit tests never
 touch the network, real time or global state.
 
 **Example:**
 ```python
-# WRONG — the real clock and a real wait: a second of every run, and flaky under load
+# WRONG - the real clock and a real wait: a second of every run, and flaky under load
 def test_session_expires_after_idle_timeout() -> None:
     sessions = SessionStore(idle_timeout=timedelta(seconds=1), clock=SystemClock())
     session_id = sessions.open("ann@example.com")
@@ -240,7 +240,7 @@ def test_session_expires_after_idle_timeout() -> None:
     assert sessions.find(session_id) is None
 
 
-# CORRECT — tests/fakes.py: a clock the test moves; the boundary is exact and nothing waits
+# CORRECT - tests/fakes.py: a clock the test moves; the boundary is exact and nothing waits
 @final
 class ManualClock(Clock):
     def __init__(self, now: datetime) -> None:
