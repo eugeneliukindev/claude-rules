@@ -191,32 +191,43 @@ def test_reserve_rejects_taken_seat() -> None:
     assert excinfo.value.seat == Seat(row=12, letter="A")
 ```
 
-### Fixtures are factories with valid defaults; a test states only the values it turns on
+### Each test arranges its own data through test-owned factories; nothing seeded is shared between tests
 
-**Why:** a shared object a dozen tests silently depend on changes for all of them the day one test
-needs it different; a `make_subscription(*, plan=..., renews_on=...)` factory in the nearest
-`conftest.py` hands each test a default it overrides in one place, so the reader sees what the
-outcome depends on.
-**Except:** a frozen value every test only reads - an id, an instant - is a module constant.
+**Why:** a class- or module-scoped seed couples every test to every row and to the order they run
+in, and arranging through ORM models or SQL helpers couples a test of one behaviour to internals it
+does not check. A factory per entity with valid defaults, in `tests/factories.py`, is the one place
+a schema change touches; each test builds only what it asserts on and states only what it turns on.
+**Except:** reference data no test writes may be seeded once per session; a frozen value every test
+only reads is a module constant.
 
 **Example:**
 ```python
-# WRONG - one shared subscription: the test that needs it cancelled edits it for everyone
-@pytest.fixture
-def subscription() -> Subscription:
-    return Subscription(subscriber="ann@example.com", plan=Plan.MONTHLY, renews_on=date(2026, 3, 1))
+# WRONG - one class-wide seed through row helpers: every test depends on every row
+@pytest.fixture(scope="class", autouse=True)
+async def seeded_subscriptions(database: Database) -> None:
+    async with database.session() as session:
+        await insert_row(SubscriptionRow, session, subscriber="ann@example.com", plan="monthly")
+        await insert_row(SubscriptionRow, session, subscriber="bob@example.com", plan="yearly")
+        await insert_row(InvoiceRow, session, subscriber="bob@example.com", total_cents=12000)
 
 
-# CORRECT - each test builds the subscription it needs and states only what matters to it
-def make_subscription(
-    *,
-    plan: Plan = Plan.MONTHLY,
-    renews_on: date = date(2026, 3, 1),
-    is_cancelled: bool = False,
+# CORRECT - tests/factories.py builds through the repository; the test makes only what it needs
+async def make_subscription(
+    *, subscriptions: SubscriptionRepository, plan: Plan = Plan.MONTHLY
 ) -> Subscription:
-    return Subscription(
-        subscriber="ann@example.com", plan=plan, renews_on=renews_on, is_cancelled=is_cancelled
-    )
+    subscription = Subscription(subscriber="ann@example.com", plan=plan, renews_on=date(2026, 3, 1))
+    await subscriptions.add(subscription)
+    return subscription
+
+
+async def test_renewing_yearly_plan_moves_date_by_a_year(
+    subscriptions: SubscriptionRepository,
+) -> None:
+    subscription = await make_subscription(subscriptions=subscriptions, plan=Plan.YEARLY)
+
+    renewed = await renew(subscription.subscription_id, subscriptions=subscriptions)
+
+    assert renewed.renews_on == date(2027, 3, 1)
 ```
 
 ## Determinism
