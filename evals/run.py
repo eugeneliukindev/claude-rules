@@ -66,6 +66,9 @@ class _Session:
     skills: frozenset[str]
     reads: tuple[str, ...]
     error: str | None = None
+    cost_usd: float = 0.0
+    output_tokens: int = 0
+    duration_ms: int = 0
 
 
 def main() -> None:
@@ -202,6 +205,15 @@ def _run_case(
             check=False,
         )
         session = _session(completed.stdout.splitlines())
+        seeded_lines = sum(
+            content.count("\n")
+            for name, content in _string_mapping(case.get("files")).items()
+            if name.endswith(".py")
+        )
+        written_lines = sum(
+            path.read_text(encoding="utf-8", errors="replace").count("\n")
+            for path in working_directory.rglob("*.py")
+        )
         checks = list(_checks(case, session=session, working_directory=working_directory, arm=arm))
     passed = completed.returncode == 0 and all(check.passed for check in checks)
     print(f"{'PASS' if passed else 'FAIL'} {arm:7} {case['id']} (run {run})", flush=True)
@@ -221,6 +233,10 @@ def _run_case(
         "skills": sorted(session.skills),
         "reads": list(session.reads),
         "checks": [{"check": c.description, "passed": c.passed} for c in checks],
+        "cost_usd": session.cost_usd,
+        "output_tokens": session.output_tokens,
+        "duration_ms": session.duration_ms,
+        "added_lines": written_lines - seeded_lines,
     }
 
 
@@ -228,13 +244,20 @@ def _session(lines: Sequence[str]) -> _Session:
     skills: set[str] = set()
     reads: list[str] = []
     error: str | None = None
+    cost_usd = 0.0
+    output_tokens = 0
+    duration_ms = 0
     for line in lines:
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if event.get("type") == "result" and event.get("is_error"):
-            error = str(event.get("result"))
+        if event.get("type") == "result":
+            if event.get("is_error"):
+                error = str(event.get("result"))
+            cost_usd = float(event.get("total_cost_usd") or 0)
+            output_tokens = int((event.get("usage") or {}).get("output_tokens") or 0)
+            duration_ms = int(event.get("duration_ms") or 0)
         if event.get("type") != "assistant":
             continue
         for block in event.get("message", {}).get("content", []):
@@ -245,7 +268,14 @@ def _session(lines: Sequence[str]) -> _Session:
                 skills.add(str(tool_input.get("skill", "")).split(":")[-1])
             elif block.get("name") == "Read":
                 reads.append(str(tool_input.get("file_path", "")))
-    return _Session(skills=frozenset(skills), reads=tuple(reads), error=error)
+    return _Session(
+        skills=frozenset(skills),
+        reads=tuple(reads),
+        error=error,
+        cost_usd=cost_usd,
+        output_tokens=output_tokens,
+        duration_ms=duration_ms,
+    )
 
 
 def _checks(
@@ -289,6 +319,17 @@ def _print_summary(results: Sequence[Mapping[str, object]]) -> None:
         print(
             f"{arm}: {passed_cases}/{len(arm_results)} cases, {passed_checks}/{len(checks)} checks"
         )
+        runs = len(arm_results)
+        print(
+            f"{arm}: per run {sum(_number(r['cost_usd']) for r in arm_results) / runs:.4f} USD,"
+            f" {sum(_number(r['output_tokens']) for r in arm_results) / runs:.0f} output tokens,"
+            f" {sum(_number(r['duration_ms']) for r in arm_results) / runs / 1000:.1f} s,"
+            f" {sum(_number(r['added_lines']) for r in arm_results) / runs:.0f} added lines"
+        )
+
+
+def _number(value: object) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def _strings(value: object) -> list[str]:
