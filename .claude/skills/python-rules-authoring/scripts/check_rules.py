@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the Python rules and skills under ROOT against the conventions in python-rules-authoring.
 
-ROOT is the directory holding `rules/python/` and `skills/` — `~/.claude`, or `.claude` in a
+ROOT is the directory holding `rules/python/` and `skills/` - `~/.claude`, or `.claude` in a
 clone of the rules repository. Six checks, each reported as `path:line: message`:
 
 - the budget, counted without front matter: the number of rules and the estimated tokens of the
@@ -10,7 +10,7 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
 - every `python` code block parses; an indented block is dedented first, and a block that is only
   `case` clauses is parsed inside a `match`;
 - every `python-*` skill and every `*.md` file a document names in backticks or links exists;
-- every `python-*` skill is named in `core.md` — a row in its map, or `/name` in its text;
+- every `python-*` skill is named in `core.md` - a row in its map, or `/name` in its text;
 - every `SKILL.md` has a `name` equal to its directory, a `description` and `paths`;
 - a skill names another skill only in a file's introduction, before its first heading below the
   title;
@@ -18,7 +18,8 @@ clone of the rules repository. Six checks, each reported as `path:line: message`
   mechanics come from its current documentation;
 - a function, class or constant defined in one skill's examples is defined in no other skill's,
   and in none of the rules';
-- a skill is one `SKILL.md`, and any other `.md` file in it is reported.
+- a skill is one `SKILL.md`, and any other `.md` file in it is reported;
+- no rule or skill holds an arrow, a dash, an ellipsis or a curly quote outside ASCII.
 
 Exit codes: 0 clean, 1 findings, 2 ROOT does not hold the rules.
 """
@@ -48,8 +49,12 @@ _SKILL_MAX_LINES: Final = 500
 # 6,000 leaves the tail of a one-file skill short.
 _SKILL_MAX_TOKENS: Final = 6_000
 _SKILL_PREFIX: Final = "python-"
-# A rule's prose — heading, Why, Except — past 700 characters is two rules or a lecture; aim at 600.
+# A rule's prose (heading, Why, Except) past 700 characters is two rules or a lecture; aim at 600.
 _RULE_MAX_CHARACTERS: Final = 700
+# The model copies the files' punctuation into code, so they hold only what a keyboard types.
+_NON_ASCII_PUNCTUATION: Final = frozenset(
+    "\u2190\u2192\u2194\u21d2\u2013\u2014\u2026\u201c\u201d\u2018\u2019"
+)
 # Skills about the skills themselves, which name the others by design.
 _META_SKILLS: Final = frozenset({"python-rules-authoring", "python-review"})
 _SECTION_HEADING: Final = re.compile(r"^#{2,3} ")
@@ -300,6 +305,11 @@ def run(*, root: Path) -> int:
         *(
             finding
             for document in (*rules, *skill_files)
+            for finding in _punctuation_findings(document)
+        ),
+        *(
+            finding
+            for document in (*rules, *skill_files)
             for finding in _rule_size_findings(document)
         ),
         *(
@@ -547,6 +557,17 @@ def _rule_size_findings(document: _Document) -> Iterator[_Finding]:
             size = 0
         if start and line_number not in code_lines and line.strip() != "**Example:**":
             size += len(line.strip()) + 1
+
+
+def _punctuation_findings(document: _Document) -> Iterator[_Finding]:
+    for line_number, line in enumerate(document.lines, start=1):
+        found = sorted(_NON_ASCII_PUNCTUATION.intersection(line))
+        if found:
+            yield _Finding(
+                path=document.path,
+                line=line_number,
+                message=f"non-ASCII punctuation {''.join(found)!r}; write ASCII: -> => - ...",
+            )
 
 
 def _shared_definition_findings(documents: Sequence[_Document]) -> Iterator[_Finding]:
