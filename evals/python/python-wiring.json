@@ -1,33 +1,6 @@
 {
   "cases": [
     {
-      "id": "wiring-server-settings-apart",
-      "prompt": "Add tracker/server.py with a main() console entry point that serves the app with uvicorn. The host, the port and the database URL come from environment variables.",
-      "files": {
-        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"fastapi>=0.140\",\n    \"uvicorn>=0.38\",\n    \"pydantic-settings>=2.15\",\n]\n",
-        "tracker/__init__.py": "",
-        "tracker/app.py": "from fastapi import FastAPI\n\n\ndef create_app(*, database_url: str) -> FastAPI:\n    app = FastAPI()\n    app.state.database_url = database_url\n    return app\n"
-      },
-      "skills": [
-        "python-wiring"
-      ],
-      "code": [
-        {
-          "files": "**/*.py",
-          "match": "class \\w*Server\\w*Settings",
-          "why": "the server's settings are their own class"
-        },
-        {
-          "files": "**/*.py",
-          "no_match": "--factory|factory\\s*=\\s*True"
-        },
-        {
-          "files": "**/*.py",
-          "no_match": "def create_app\\([^)]*[Ss]ettings"
-        }
-      ]
-    },
-    {
       "id": "wiring-no-settings-parameter",
       "prompt": "Write a RateFetcher class in rates/fetcher.py that downloads the rate table from the configured URL with the configured timeout through the HttpClient protocol.",
       "files": {
