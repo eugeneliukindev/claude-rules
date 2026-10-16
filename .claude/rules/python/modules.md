@@ -3,7 +3,7 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Modules
+# Python - Modules
 
 ## Module Layout
 
@@ -21,7 +21,7 @@ order-dependent, and a test cannot import the module without the environment it 
 
 **Example:**
 ```python
-# WRONG — importing the module reads the environment
+# WRONG - importing the module reads the environment
 _settings = Settings()
 
 
@@ -29,7 +29,7 @@ def main() -> None:
     run(timeout_seconds=_settings.timeout_seconds)
 
 
-# CORRECT — main() is a function, and it builds the settings
+# CORRECT - main() is a function, and it builds the settings
 def main() -> None:
     settings = Settings()
     run(timeout_seconds=settings.timeout_seconds)
@@ -39,16 +39,16 @@ def main() -> None:
 
 ### A name used only inside its module or class takes an underscore
 
-**Why:** functions, methods, attributes, constants, type aliases and classes alike — without the
+**Why:** functions, methods, attributes, constants, type aliases and classes alike - without the
 prefix a name reads as surface, and the first outside import makes it surface for good. Constants
 and aliases are the ones missed: read quietly from a second module, they get two owners. A name a
 test imports is used outside, and stays unprefixed.
-**Except:** a script nobody imports, and a name a framework reaches through a decorator — a route,
+**Except:** a script nobody imports, and a name a framework reaches through a decorator - a route,
 a fixture.
 
 **Example:**
 ```python
-# WRONG — the width, the formatter and the store all read as this module's surface
+# WRONG - the width, the formatter and the store all read as this module's surface
 NUMBER_WIDTH: Final = 6
 
 
@@ -65,7 +65,7 @@ class TicketNumbering:
         return format_number(self.sequences.increment("support_ticket"))
 
 
-# CORRECT — only the class and its one method are used outside, and only they lack the prefix
+# CORRECT - only the class and its one method are used outside, and only they lack the prefix
 _NUMBER_WIDTH: Final = 6
 
 
