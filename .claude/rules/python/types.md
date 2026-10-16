@@ -21,6 +21,38 @@ primitive with rules and a dict you don't own each have a rule below.
 | `tuple[Any, ...]` | a frozen dataclass, never `NamedTuple` |
 | several `bool` fields | one `Enum` state |
 
+### A type the reader must decode is named: a positional tuple becomes a frozen dataclass, a generic nested twice or spelled in two signatures a `type` alias
+
+**Why:** `tuple[type[Model], str, str]` says nothing about which `str` is which, and the same
+three-level generic spelled at five call sites drifts; a field name or an alias name is the one
+place the meaning lives.
+**Except:** a tuple whose order is the concept - `(x, y)` - stays a tuple.
+
+**Example:**
+```python
+# WRONG - which str is the field and which the unit? the reader decodes three levels
+_EXPORT_COLUMNS: Final[dict[str, tuple[tuple[str, str, int], ...]]] = {
+    "greenhouse": (("air_temperature", "celsius", 1), ("soil_moisture", "percent", 0)),
+}
+
+
+# CORRECT - the record names its fields, the key says what it is, and nothing can change it
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ExportColumn:
+    field_name: str
+    unit: str
+    decimal_places: int
+
+
+_EXPORT_COLUMNS: Final[Mapping[SiteKind, tuple[ExportColumn, ...]]] = MappingProxyType({
+    SiteKind.GREENHOUSE: (
+        ExportColumn(field_name="air_temperature", unit="celsius", decimal_places=1),
+        ExportColumn(field_name="soil_moisture", unit="percent", decimal_places=0),
+    ),
+})
+```
+
 ### Parameters take the narrowest `collections.abc` type; returns are concrete
 
 **Why:** `Mapping[str, int]` in accepts every mapping; `dict[str, int]` out tells the caller what
