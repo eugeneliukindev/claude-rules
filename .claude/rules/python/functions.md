@@ -60,11 +60,11 @@ def is_expired(
     return now > token.issued_at + lifetime
 ```
 
-### Each value a later call needs is named on its own line, and the steps fall into blocks
+### Each value a later call needs is named on its own line, and the steps - fetch, act, return - are blocks separated by a blank line
 
 **Why:** a value built inside another call's arguments hides a step, and when one sibling is named
-and the other inlined, the asymmetry suggests a difference that is not there; a blank line separates
-what is shared, what is built from it and what is assembled.
+and the other inlined, the asymmetry suggests a difference that is not there. One blank line goes
+between the steps - what is fetched, what is done with it, what is returned - and none inside one.
 **Except:** a trivial conversion or a literal - `str(order_id)`, `Decimal("0.2")` - stays inline.
 
 **Example:**
@@ -89,6 +89,15 @@ def build_sensor_pipeline(
 
     return SensorPipeline(readings, alarms)
 ```
+
+## Results
+
+### A query has no side effect; a command returns `None` or the outcome of its own effect
+
+**Why:** a query can be called twice or skipped; a command's return is what its effect produced -
+`list.pop()` the item it removed, `dict.setdefault()` the value now under the key, `open_session()`
+the id it assigned. Never a value a reader would take for a lookup, and never behind a `get_`
+(`naming.md`).
 
 ## Extraction
 
