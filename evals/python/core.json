@@ -68,6 +68,184 @@
           "why": "no environment read at import"
         }
       ]
+    },
+    {
+      "id": "core-dataclass-flags",
+      "prompt": "Add a HiveInspection value type to apiary/inspection.py: the hive id, the inspection date, the number of brood frames and whether the queen was seen.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "apiary/__init__.py": "",
+        "apiary/inspection.py": "\"\"\"Hive inspections.\"\"\"\n"
+      },
+      "code": [
+        {
+          "files": "apiary/inspection.py",
+          "match": "@dataclass\\([^)]*frozen=True",
+          "why": "a value is immutable"
+        },
+        {
+          "files": "apiary/inspection.py",
+          "match": "@dataclass\\([^)]*slots=True"
+        },
+        {
+          "files": "apiary/inspection.py",
+          "match": "@dataclass\\([^)]*kw_only=True"
+        }
+      ]
+    },
+    {
+      "id": "core-one-actor-per-module",
+      "prompt": "Our accountant needs a monthly VAT summary over the catering orders of a month, at the same VAT rate the quotes use. Add it.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "catering/__init__.py": "",
+        "catering/orders.py": "from dataclasses import dataclass\nfrom datetime import date\nfrom decimal import Decimal\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Order:\n    served_on: date\n    guests: int\n    price_per_guest: Decimal\n",
+        "catering/pricing.py": "\"\"\"Quotes for the sales team.\"\"\"\n\nfrom decimal import Decimal\nfrom typing import Final\n\nfrom catering.orders import Order\n\nVAT_RATE: Final = Decimal(\"0.20\")\n_LARGE_EVENT_GUESTS: Final = 50\n_LARGE_EVENT_DISCOUNT: Final = Decimal(\"0.10\")\n\n\ndef quote_price(order: Order) -> Decimal:\n    net = order.guests * order.price_per_guest\n    if order.guests > _LARGE_EVENT_GUESTS:\n        net -= net * _LARGE_EVENT_DISCOUNT\n    return net * (1 + VAT_RATE)\n"
+      },
+      "code": [
+        {
+          "files": "catering/pricing.py",
+          "no_match": "(?i)def \\w*(vat|summar|report|month)\\w*\\(",
+          "why": "the accountant's summary stays out of the sales module"
+        },
+        {
+          "files": "catering/*.py",
+          "match": "(?i)def \\w*(vat|summar|report|month)\\w*\\(",
+          "why": "the summary exists in a module of its own"
+        }
+      ]
+    },
+    {
+      "id": "core-setting-keyword-default",
+      "prompt": "Add next_sailing() to ferries/timetable.py: it asks the FerryService for a route's sailings and returns the first one after a given time. The service sometimes hangs, so don't wait more than 3 seconds.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "ferries/__init__.py": "",
+        "ferries/timetable.py": "from datetime import datetime\nfrom typing import Protocol\n\n\nclass FerryService(Protocol):\n    def sailings(self, route: str, *, timeout_seconds: float) -> list[datetime]: ...\n"
+      },
+      "code": [
+        {
+          "files": "ferries/timetable.py",
+          "match": "def next_sailing\\([^)]*\\btimeout\\w*\\s*:\\s*float\\s*=\\s*_?[A-Z][A-Z0-9_]*",
+          "why": "the timeout is a keyword parameter defaulted to its constant"
+        },
+        {
+          "files": "ferries/timetable.py",
+          "no_match": "\\btimeout\\w*\\s*=\\s*(_?[A-Z][A-Z0-9_]*\\b|\\d)",
+          "why": "the body passes the parameter, not the constant or a literal"
+        }
+      ]
+    },
+    {
+      "id": "core-collaborator-through-constructor",
+      "prompt": "Add a FeedingService in aquarium/feeding.py with a feed(tank_id, grams) method that records each feeding in the aquarium.db database.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "aquarium/__init__.py": "",
+        "aquarium/storage.py": "import sqlite3\nfrom datetime import datetime\n\n\nclass SqliteFeedingRepository:\n    def __init__(self, path: str) -> None:\n        self._connection = sqlite3.connect(path)\n\n    def add(self, tank_id: str, grams: int, fed_at: datetime) -> None:\n        with self._connection:\n            self._connection.execute(\n                \"INSERT INTO feedings VALUES (?, ?, ?)\", (tank_id, grams, fed_at.isoformat())\n            )\n"
+      },
+      "code": [
+        {
+          "files": "aquarium/feeding.py",
+          "no_match": "(?<!class )\\b\\w*Repository\\(",
+          "why": "the service never builds its repository"
+        },
+        {
+          "files": "aquarium/feeding.py",
+          "match": "def __init__\\(\\s*self\\s*,\\s*\\*\\s*,",
+          "why": "the collaborator arrives keyword-only"
+        }
+      ]
+    },
+    {
+      "id": "core-error-translated-with-cause",
+      "prompt": "Add load_recipe(path) to brewery/recipes.py that reads a recipe from a TOML file. The command line shows a RecipeError's message to the brewer.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "brewery/__init__.py": "",
+        "brewery/recipes.py": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Recipe:\n    name: str\n    original_gravity: float\n    hops_grams: int\n\n\nclass RecipeError(Exception):\n    \"\"\"A recipe file cannot be loaded.\"\"\"\n"
+      },
+      "code": [
+        {
+          "files": "brewery/recipes.py",
+          "match": "\\) from (?!None\\b)\\w+",
+          "why": "the library error is the cause"
+        },
+        {
+          "files": "brewery/recipes.py",
+          "no_match": "except\\s*(:|\\(?\\s*(Base)?Exception\\b)",
+          "why": "caught narrowly"
+        }
+      ]
+    },
+    {
+      "id": "core-bounded-fan-out",
+      "prompt": "Add download_frames(frame_ids, archive) to observatory/download.py that fetches all the frames of a night concurrently. A night has a few thousand frames.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "observatory/__init__.py": "",
+        "observatory/archive.py": "from typing import Protocol\n\n\nclass FrameArchive(Protocol):\n    async def fetch_frame(self, frame_id: str) -> bytes: ...\n"
+      },
+      "code": [
+        {
+          "files": "observatory/*.py",
+          "match": "Semaphore\\(",
+          "why": "the fan-out is bounded"
+        },
+        {
+          "files": "observatory/*.py",
+          "match": "\\btimeout\\(|wait_for\\(|fail_after\\(",
+          "why": "the run has a deadline"
+        }
+      ]
+    },
+    {
+      "id": "core-subclass-does-not-narrow",
+      "prompt": "Add a WineLabeler to cellar/sparkling_labels.py for the sparkling shelf: the label shows the name and the bottle pressure.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
+        "cellar/__init__.py": "",
+        "cellar/wines.py": "from abc import ABC, abstractmethod\nfrom dataclasses import dataclass\nfrom decimal import Decimal\nfrom typing import final\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Wine:\n    name: str\n    vintage: int\n\n\n@final\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass SparklingWine(Wine):\n    pressure_bar: Decimal\n\n\nclass WineLabeler(ABC):\n    @abstractmethod\n    def label(self, wine: Wine) -> str: ...\n"
+      },
+      "code": [
+        {
+          "files": "cellar/sparkling_labels.py",
+          "no_match": "def label\\(\\s*self\\s*,\\s*\\w+\\s*:\\s*SparklingWine\\b",
+          "why": "the override does not narrow the parameter"
+        },
+        {
+          "files": "cellar/sparkling_labels.py",
+          "match": "def label\\(\\s*self\\s*,\\s*\\w+\\s*:\\s*Wine\\b",
+          "why": "the override accepts what the parent accepts"
+        }
+      ]
+    },
+    {
+      "id": "core-test-structure",
+      "prompt": "Write tests for grade() in orchard/grading.py.",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n\n[dependency-groups]\ndev = [\n    \"pytest>=8\",\n]\n",
+        "orchard/__init__.py": "",
+        "orchard/grading.py": "from enum import StrEnum\nfrom typing import Final\n\n_EXTRA_MIN_DIAMETER_MM: Final = 70\n\n\nclass Grade(StrEnum):\n    EXTRA = \"extra\"\n    FIRST = \"first\"\n    SECOND = \"second\"\n\n\ndef grade(diameter_mm: int, *, blemished: bool) -> Grade:\n    if blemished:\n        return Grade.SECOND\n    if diameter_mm >= _EXTRA_MIN_DIAMETER_MM:\n        return Grade.EXTRA\n    return Grade.FIRST\n",
+        "tests/__init__.py": ""
+      },
+      "code": [
+        {
+          "files": "tests/**/*.py",
+          "match": "def test_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+",
+          "why": "a name states when and then"
+        },
+        {
+          "files": "tests/**/*.py",
+          "no_match": "def test_[a-z0-9]+(_[a-z0-9]+)?\\(",
+          "why": "no test is named in two words or fewer"
+        },
+        {
+          "files": "tests/**/*.py",
+          "match": "\\n    \\w+ = [^\\n]*\\bgrade\\([^\\n]*\\n(?:[^\\n]*\\S[^\\n]*\\n)*?[ \\t]*\\n    assert\\b",
+          "why": "a blank line between the act and its assert, the phase split a model skips without the rule (arrange is absent in a parametrized test, so it is not required)"
+        }
+      ]
     }
   ]
 }
