@@ -2,11 +2,11 @@
 """List top-level public names that no other module under ROOT uses, so each can take an `_`.
 
 A name counts as used when another module mentions it as a name, an attribute, an imported name
-or an identifier inside a string literal — forward references and patch targets included,
+or an identifier inside a string literal - forward references and patch targets included,
 docstrings and comments not. Names a module lists in `__all__`, dunders, `main`, `run` and
 `logger`, and the tests pytest collects by name are not candidates.
 
-A function or class behind a decorator that may register it — a route, a CLI command, a fixture —
+A function or class behind a decorator that may register it - a route, a CLI command, a fixture -
 has a caller no search can see. Those are listed after the findings, marked, and do not fail the
 run on their own.
 
