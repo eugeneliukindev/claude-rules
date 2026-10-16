@@ -7,7 +7,7 @@ paths:
 
 ## Choosing a Representation
 
-- **Give every value its narrowest honest type.** A wider type is a runtime check owed later, where nobody writes it; `Any` stops checking at the first subscript, where `Json` keeps every level a union to narrow.
+- **Give every value its narrowest honest type, except an override's parameter, which keeps its parent's type.** A wider type is a runtime check owed later, where nobody writes it; `Any` stops checking at the first subscript, where `Json` keeps every level a union to narrow.
 
 | Instead of | Use |
 |---|---|
