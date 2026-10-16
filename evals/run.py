@@ -213,6 +213,7 @@ def _run_case(
         written_lines = sum(
             path.read_text(encoding="utf-8", errors="replace").count("\n")
             for path in working_directory.rglob("*.py")
+            if not {".venv", "venv", "site-packages", "__pycache__"} & set(path.parts)
         )
         checks = list(_checks(case, session=session, working_directory=working_directory, arm=arm))
     passed = completed.returncode == 0 and all(check.passed for check in checks)
