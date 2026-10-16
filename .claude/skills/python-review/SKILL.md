@@ -41,9 +41,9 @@ Ask each question of every changed unit, answered from the code, not from the de
 
 ## 4. Report
 
-- **Write one finding per defect, most severe first.** A wrong result or a lost error comes before a name.
-- **Give each finding its location, rule, defect and fix: `path:line - rule file or skill: what is wrong, in one sentence. The change that fixes it.`** A finding with no rule behind it is an opinion: label it so, or leave it out.
-- **Report a clean review as a result.** Say which steps ran and that they were clean, and never pad the list.
+- **Start with `What this change does:` in two or three sentences.**
+- **Group findings as Must fix, Should fix and Nice to have, skip an empty group, and number them across all groups.** The user can then say "fix 2 and 5". Must fix is a wrong result, a lost error or a security hole; Should fix is a broken rule with a real cost; Nice to have is the rest.
+- **Write each finding as `N. **Defect** (path:line) - rule file or skill: what is wrong. The change that fixes it.`** A finding with no rule and no concrete case behind it is an opinion: leave it out. No style taste, no "consider".
 - **List a violation in untouched code apart, under its own heading, and do not fix it.** It belongs to another change.
-- **Report a step that could not run, with the reason.** A missing tool or tests needing a database is never skipped silently.
+- **End with `Verdict: Ship.` or `Verdict: fix 1 and 3 first.`, then `Not checked:` in one line for a step that could not run, with the reason.** A clean review is `Looks good. Ship.` and one line on what ran.
 - **When asked to fix as well, fix the findings in the diff, rerun step 2, and report what changed.**
