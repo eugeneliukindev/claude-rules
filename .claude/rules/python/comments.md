@@ -3,7 +3,7 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Comments and Docstrings
+# Python - Comments and Docstrings
 
 What goes inside a docstring, and whether a comment is written at all.
 
@@ -11,13 +11,13 @@ What goes inside a docstring, and whether a comment is written at all.
 
 **Why:** anything else restates the code or is history git keeps, and goes stale with the first
 change; a name a comment explains is a name to fix. The four forms: a **caption** ending in a
-colon, indexing the lines below; a **reason** — why *this* value, never what the line does; a
+colon, indexing the lines below; a **reason** - why *this* value, never what the line does; a
 **`TODO`** naming the condition that removes it; a **`NOTE`** for a coupling the code cannot express. A paragraph is earned only by enumerated cases, a rejected
 alternative or an honest limitation.
 
 **Example:**
 ```python
-# WRONG — a narration of what each line does
+# WRONG - a narration of what each line does
 # set the timeout
 _IDLE_TIMEOUT_SECONDS: Final = 30
 # loop over the devices and push to each one
@@ -25,7 +25,7 @@ for device in devices:
     push(device, alert)
 
 
-# CORRECT — a caption, a reason, a TODO with its condition, a NOTE across languages
+# CORRECT - a caption, a reason, a TODO with its condition, a NOTE across languages
 # Limits the push gateway imposes:
 _IDLE_TIMEOUT_SECONDS: Final = 30  # the gateway drops idle connections at 35
 _MAX_DEVICES_PER_BATCH: Final = 500  # larger batches are rejected with a 413
@@ -35,7 +35,7 @@ _MAX_DEVICES_PER_BATCH: Final = 500  # larger batches are rejected with a 413
 
 ### A comment describes only its own block; a docstring only the contract it is attached to
 
-**Why:** a caller, a collaborator or an ordering named in prose — `# called by issue_invoice()`,
-`"""Run by the nightly job."""`, "see the base class" — rots the moment the other side changes. The
-relocation test: paste the block into another module — a comment that becomes wrong was leaking.
+**Why:** a caller, a collaborator or an ordering named in prose - `# called by issue_invoice()`,
+`"""Run by the nightly job."""`, "see the base class" - rots the moment the other side changes. The
+relocation test: paste the block into another module - a comment that becomes wrong was leaking.
 **Except:** the `NOTE:` above, for a coupling between artefacts that cannot import each other.
