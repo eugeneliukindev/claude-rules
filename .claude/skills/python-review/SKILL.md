@@ -48,8 +48,9 @@ is not obvious.
 3. **Reasons to exist** - every new helper has a reason from `functions.md` and fails
    none of the shallow-helper tests; every new class has a trigger from `classes.md`.
 4. **Surface** - constants at the top of the module; every top-level name used by nothing outside
-   its module is prefixed - run `python scripts/find_unprefixed_names.py .` from this skill over the
-   project root, so the tests count as callers, and report what it lists.
+   its module is prefixed - run `python scripts/find_unprefixed_names.py src` from this skill over the
+   source package, without the tests - a test does not make a name public - and report what it
+   lists.
 5. **Abstraction level** - no generically named unit branches on a concrete type, channel, vendor,
    tenant or environment; no concrete rule lives in two places (`naming.md`).
 6. **Types** - no `Any`, no magic literal, no `dict[str, Any]` crossing a layer; `@override` on
