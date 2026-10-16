@@ -34,16 +34,6 @@ The principles, SOLID, and YAGNI, KISS and DRY are in `principles.md`.
 **Why:** reformatting or renaming beyond the task buries the change in its diff. A violation noticed
 and left goes in the summary or the PR description, never copied into the new code.
 
-## Characters
-
-### Code, comments, docstrings and commit messages are written in ASCII
-
-**Why:** an arrow, a dash or a curly quote that is not on the keyboard cannot be typed back, searched
-for or diffed reliably, and an editor or a terminal with another encoding shows it as noise. Write
-`->`, `=>`, `-`, `...` and straight quotes; a non-ASCII character a value really needs is spelled as
-an escape, `"\u2014"`.
-**Except:** text shown to a user in a language that needs its letters, and test data about Unicode.
-
 ## Definition of Done
 
 The tests run first, and pass. Then the eight checks, skipped first under pressure -
