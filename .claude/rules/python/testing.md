@@ -191,40 +191,31 @@ def test_reserve_rejects_taken_seat() -> None:
     assert excinfo.value.seat == Seat(row=12, letter="A")
 ```
 
-### Each test arranges its own data through test-owned factories over the library's own API; nothing seeded is shared
+### Each test arranges its own data through the code's public functions, else through the library's API in a factory; nothing seeded is shared
 
-**Why:** a class-wide seed couples every test to every row and to their order, and a project
-helper the test does not check - a `session_add()` wrapper, a repository - breaks it when the helper
-changes for its own reasons. A factory per entity in `tests/factories.py` writes through the
-library's API (`session.add`, `connection.execute`), which changes far less, and is the one place a
-schema change touches; each test builds only what it asserts on.
+**Why:** a public function changes only with behaviour and validates on the way in. Where none
+reaches a state, the data is bulk or the test checks the stored row, a factory in
+`tests/factories.py` writes through the library's API (`session.add`). A helper the test does not
+check - a `session_add()` wrapper - breaks it for its own reasons; a class-wide seed couples every
+test to every row. Each test builds only what it asserts on.
 **Except:** reference data no test writes may be seeded once per session.
 
 **Example:**
 ```python
-# WRONG - one class-wide seed through the project's row helpers: every test depends on every row
+# WRONG - a class-wide seed through the project's row helper: every test depends on every row
 @pytest.fixture(scope="class", autouse=True)
 def seeded_subscriptions(database: Database) -> None:
     insert_row(database, "subscriptions", subscriber="ann@example.com", plan="monthly")
     insert_row(database, "subscriptions", subscriber="bob@example.com", plan="yearly")
 
 
-# CORRECT - the factory speaks the driver's own API; the test makes only what it asserts on
-def make_subscription(
-    *, connection: sqlite3.Connection, plan: str = "monthly", renews_on: str = "2026-03-01"
-) -> int:
-    cursor = connection.execute(
-        "INSERT INTO subscriptions (subscriber, plan, renews_on) VALUES (?, ?, ?)",
-        ("ann@example.com", plan, renews_on),
+# CORRECT - the test arranges through the same public functions a client calls
+def test_renewing_yearly_plan_moves_date_by_a_year(subscriptions: SubscriptionStore) -> None:
+    subscription_id = subscribe(
+        "ann@example.com", plan=Plan.YEARLY, starts_on=date(2026, 3, 1), subscriptions=subscriptions
     )
-    assert cursor.lastrowid is not None
-    return cursor.lastrowid
 
-
-def test_renewing_yearly_plan_moves_date_by_a_year(connection: sqlite3.Connection) -> None:
-    subscription_id = make_subscription(connection=connection, plan="yearly")
-
-    renewed = renew(subscription_id, connection=connection)
+    renewed = renew(subscription_id, subscriptions=subscriptions)
 
     assert renewed.renews_on == date(2027, 3, 1)
 ```
