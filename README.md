@@ -26,6 +26,19 @@ for skill in .claude/skills/*/; do
 done
 ```
 
+Хук `.claude/hooks/ascii_punctuation.py` возвращает Claude каждый записанный `.py`, где есть стрелка,
+длинное тире, многоточие или фигурная кавычка вне ASCII. Он копируется в `~/.claude/hooks/` и
+регистрируется в `~/.claude/settings.json`:
+
+```bash
+mkdir -p ~/.claude/hooks && cp .claude/hooks/ascii_punctuation.py ~/.claude/hooks/
+```
+
+```json
+{"hooks": {"PostToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command",
+  "command": "python3 \"$HOME/.claude/hooks/ascii_punctuation.py\""}]}]}}
+```
+
 Скилы, удалённые из репозитория, синхронизация не трогает — их каталоги в `~/.claude/skills/`
 удаляются руками:
 
