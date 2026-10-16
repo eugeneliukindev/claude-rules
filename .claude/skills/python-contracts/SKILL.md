@@ -22,26 +22,26 @@ handed, and where implementations and fakes live.
 
 ### `Protocol` is for code you cannot make inherit, or a project that chose it once
 
-**Why:** a third-party type, a shape someone else's code produces, a callback signature — none can
+**Why:** a third-party type, a shape someone else's code produces, a callback signature - none can
 inherit your class. A Protocol reports a missing method where the object is passed, not where the
-class is written. A project may choose structural typing throughout — once for the whole project,
+class is written. A project may choose structural typing throughout - once for the whole project,
 never per contract.
-**Except:** a published extension point — a plugin for your library can inherit the ABC you ship; a
+**Except:** a published extension point - a plugin for your library can inherit the ABC you ship; a
 web framework that published its plugin points as Protocols replaced them with ABCs in its next
 major.
 
 **Example:**
 ```python
-# WRONG — a Protocol plugin point: a check that forgets inspect() is accepted, fails when called
+# WRONG - a Protocol plugin point: a check that forgets inspect() is accepted, fails when called
 class QualityCheck(Protocol):
     def inspect(self, segment: Segment) -> list[QualityIssue]: ...
 
-# CORRECT — the plugin inherits the ABC, and a forgotten method fails at the plugin's own class
+# CORRECT - the plugin inherits the ABC, and a forgotten method fails at the plugin's own class
 class QualityCheck(ABC):
     @abstractmethod
     def inspect(self, segment: Segment) -> list[QualityIssue]: ...
 
-# CORRECT — a shape produced by code you do not control stays a Protocol
+# CORRECT - a shape produced by code you do not control stays a Protocol
 class SupportsRead(Protocol):
     def read(self, size: int = ..., /) -> bytes: ...
 ```
@@ -49,19 +49,19 @@ class SupportsRead(Protocol):
 ### `@abstractmethod` alone gives the static guarantee; `ABC` adds the runtime one, and a metaclass
 
 **Why:** the decorators alone make instantiating an abstract class a type error; `ABCMeta` adds
-the refusal at construction time, and costs a metaclass — a class that already has a library's
+the refusal at construction time, and costs a metaclass - a class that already has a library's
 metaclass (an ORM model, a framework base) cannot also be an `ABC`.
-**Except:** decide once per project and say which — `ABC` where no foreign metaclass is in play, a
+**Except:** decide once per project and say which - `ABC` where no foreign metaclass is in play, a
 plain base with `@abstractmethod` where one is; never both shapes in one tree.
 
 **Example:**
 ```python
-# WRONG — an ABC under an editor base that brings its own metaclass: metaclass conflict at import
+# WRONG - an ABC under an editor base that brings its own metaclass: metaclass conflict at import
 class FileFilter(EditorExtension, ABC):
     @abstractmethod
     def extract(self, source: bytes) -> list[Segment]: ...
 
-# CORRECT — the metaclass slot is taken, so the plain base keeps the checker's guarantee only
+# CORRECT - the metaclass slot is taken, so the plain base keeps the checker's guarantee only
 class FileFilter(EditorExtension):
     @abstractmethod
     def extract(self, source: bytes) -> list[Segment]: ...
@@ -86,12 +86,12 @@ implementation written as an async generator fails the override check.
 
 **Example:**
 ```python
-# WRONG — async def promises a coroutine: the async-generator implementation is an [override] error
+# WRONG - async def promises a coroutine: the async-generator implementation is an [override] error
 class EditFeed(ABC):
     @abstractmethod
     async def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
 
-# CORRECT — plain def returning AsyncIterator; implementations write `async def … yield`
+# CORRECT - plain def returning AsyncIterator; implementations write `async def ... yield`
 class EditFeed(ABC):
     @abstractmethod
     def edits(self, project_id: TranslationProjectId) -> AsyncIterator[SegmentEdit]: ...
@@ -110,18 +110,18 @@ class InMemoryEditFeed(EditFeed):
 
 ### An abstract property is `@property` above `@abstractmethod`
 
-**Why:** the other order fails when the class is defined —
+**Why:** the other order fails when the class is defined -
 `attribute '__isabstractmethod__' of 'property' objects is not writable`.
 
 ### A generic contract binds its parameter in each implementation
 
 **Why:** `class KeyedStore[T](ABC)` is one contract for every entity; an implementation that stays
-generic by accident — `class SqlKeyedStore[T](KeyedStore[T])` — promises to store anything and can
+generic by accident - `class SqlKeyedStore[T](KeyedStore[T])` - promises to store anything and can
 store nothing in particular.
 
 **Example:**
 ```python
-# WRONG — the implementation stays generic: the table and the row mapping cannot be written
+# WRONG - the implementation stays generic: the table and the row mapping cannot be written
 @final
 class SqlKeyedStore[T](KeyedStore[T]):
     def __init__(self, *, connection: SqlConnection) -> None:
@@ -131,7 +131,7 @@ class SqlKeyedStore[T](KeyedStore[T]):
     def get(self, key: str) -> T:
         raise NotImplementedError
 
-# CORRECT — the parameter is bound, and the body knows its table
+# CORRECT - the parameter is bound, and the body knows its table
 @final
 class SqlGlossaryStore(KeyedStore[GlossaryEntry]):
     def __init__(self, *, connection: SqlConnection) -> None:
@@ -143,13 +143,13 @@ class SqlGlossaryStore(KeyedStore[GlossaryEntry]):
         return GlossaryEntry(term=row["term"], approved_translation=row["approved_translation"])
 ```
 
-### A template method — the base's skeleton calling abstract steps — is `@final`
+### A template method - the base's skeleton calling abstract steps - is `@final`
 
 **Why:** a subclass then fills in the steps and cannot replace the skeleton.
 
 **Example:**
 ```python
-# WRONG — a subclass can replace render() and skip the header every export must carry
+# WRONG - a subclass can replace render() and skip the header every export must carry
 class GlossaryExport(ABC):
     def render(self) -> str:
         return f"{self.header()}\n{self.rows()}"
@@ -160,7 +160,7 @@ class GlossaryExport(ABC):
     @abstractmethod
     def rows(self) -> str: ...
 
-# CORRECT — the skeleton is final; subclasses supply the steps only
+# CORRECT - the skeleton is final; subclasses supply the steps only
 class GlossaryExport(ABC):
     @final
     def render(self) -> str:
@@ -177,23 +177,23 @@ class GlossaryExport(ABC):
 
 ### Code uses what the collaborator's contract declares, and never reaches past it
 
-**Why:** the Law of Demeter, applied to collaborators — a function that calls
+**Why:** the Law of Demeter, applied to collaborators - a function that calls
 `machine_translation.session.translate_text(...)` depends on the transport its engine hides, cannot
 run against the fake, and breaks when the transport changes. The parameter typed as the contract
 enforces it: the reach is a type error, so the leak always starts with an annotation naming the
 implementation.
-**Except:** data — `segment.unit.project.source_language` reads a frozen structure and couples to
+**Except:** data - `segment.unit.project.source_language` reads a frozen structure and couples to
 nothing that behaves.
 
 **Example:**
 ```python
-# WRONG — typed as the implementation, so the function reaches the session behind the engine
+# WRONG - typed as the implementation, so the function reaches the session behind the engine
 def pretranslate(segment: Segment, *, machine_translation: HttpTranslationEngine) -> str:
     return machine_translation.session.translate_text(
         segment.source_text, target=segment.target_language
     )
 
-# CORRECT — typed as the contract: the call it declares is the only one there is
+# CORRECT - typed as the contract: the call it declares is the only one there is
 def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) -> str:
     return machine_translation.translate(segment.source_text, into=segment.target_language)
 ```
@@ -203,16 +203,16 @@ def pretranslate(segment: Segment, *, machine_translation: TranslationEngine) ->
 
 ### A contract is named after the capability, an implementation for what makes it concrete, and neither for its mechanism
 
-**Why:** an agent noun or an "-able" adjective — `TranslationEngine`, `Comparable` — says what the
-thing does; `…Protocol`, `…Interface` and `…ABC` say how it was declared,
-which no caller cares about, and `Default…` or `…Impl` says nothing. Implementations carry the
-qualifier that distinguishes them — driver, transport or storage: `DeepLTranslationEngine`,
+**Why:** an agent noun or an "-able" adjective - `TranslationEngine`, `Comparable` - says what the
+thing does; `...Protocol`, `...Interface` and `...ABC` say how it was declared,
+which no caller cares about, and `Default...` or `...Impl` says nothing. Implementations carry the
+qualifier that distinguishes them - driver, transport or storage: `DeepLTranslationEngine`,
 `LdapTranslatorDirectory`; if nothing distinguishes one, there was no contract worth writing.
 Stdlib ABCs keep their names.
 
 **Example:**
 ```python
-# WRONG — the mechanism as the name, and Base on a class that hands nothing down
+# WRONG - the mechanism as the name, and Base on a class that hands nothing down
 class TranslatorDirectoryProtocol(Protocol):
     def find(self, email: str) -> Translator | None: ...
 
@@ -220,7 +220,7 @@ class BaseTranslatorDirectory(ABC):
     @abstractmethod
     def find(self, email: str) -> Translator | None: ...
 
-# CORRECT — the contract names the capability; the implementation names what makes it concrete
+# CORRECT - the contract names the capability; the implementation names what makes it concrete
 class TranslatorDirectory(ABC):
     @abstractmethod
     def find(self, email: str) -> Translator | None: ...
@@ -240,9 +240,9 @@ class LdapTranslatorDirectory(TranslatorDirectory):
 
 ### `Base` means "inherit me", never "implement me"
 
-**Why:** the prefix is earned by a class that carries shared *implementation* down — fields,
-defaults, ready methods — as `BaseHTTPRequestHandler` and `BaseException` do; a contract hands
-nothing down. The test is mechanical: delete the base and see what the subclasses lose — fields or
+**Why:** the prefix is earned by a class that carries shared *implementation* down - fields,
+defaults, ready methods - as `BaseHTTPRequestHandler` and `BaseException` do; a contract hands
+nothing down. The test is mechanical: delete the base and see what the subclasses lose - fields or
 working methods make it a `Base`, only a promise the checker was already making makes it a
 contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
@@ -251,17 +251,17 @@ contract. A shared base only its own module inherits is private: `_BaseCookie`.
 
 ### A contract and its implementations are one directory holding nothing else; no contract, no directory
 
-**Why:** the contract in `base.py`, one module per implementation, an `__init__.py` exporting both
-— so a new implementation is a new file and no existing file changes. A lone implementation is one
+**Why:** the contract in `base.py`, one module per implementation, an `__init__.py` exporting both -
+so a new implementation is a new file and no existing file changes. A lone implementation is one
 concretely named module with no `base.py`; the group appears with the second implementation or a
-test's fake — the threshold that earns the contract.
+test's fake - the threshold that earns the contract.
 **Except:** an implementation whose driver is an optional extra is reached through its builder, so
 importing the contract never imports the driver (`modules.md`).
 
 ### `base.py` is a position, not a `Base` class
 
 **Why:** the module sits at the base of the group; the class inside it is still named for the
-capability — `TranslationEngine`, never `BaseTranslationEngine`. One rule is about a file, the other
+capability - `TranslationEngine`, never `BaseTranslationEngine`. One rule is about a file, the other
 about a class.
 
 ### The contract's module imports nothing any implementation needs
@@ -271,14 +271,14 @@ that driver, and the split stops paying.
 
 **Example:**
 ```python
-# WRONG — machine_translation/base.py imports the SDK one implementation uses
+# WRONG - machine_translation/base.py imports the SDK one implementation uses
 from deepl import DeepLClient
 
 class TranslationEngine(ABC):
     @abstractmethod
     def translate(self, text: str, *, into: LanguageCode) -> str: ...
 
-# CORRECT — machine_translation/deepl_engine.py is the only file that knows the SDK exists
+# CORRECT - machine_translation/deepl_engine.py is the only file that knows the SDK exists
 from deepl import DeepLClient
 
 from machine_translation.base import TranslationEngine
@@ -313,14 +313,14 @@ and the unit tests then prove the fake.
 
 **Example:**
 ```python
-# WRONG — the fake is tested by nothing, and the real glossary by its own separate tests
+# WRONG - the fake is tested by nothing, and the real glossary by its own separate tests
 def test_in_memory_glossary_lists_added_term() -> None:
     glossary = InMemoryGlossary()
     entry = make_glossary_entry(language=LanguageCode("de"))
     glossary.add(entry)
     assert glossary.terms_in(LanguageCode("de")) == [entry]
 
-# CORRECT — one suite, every implementation
+# CORRECT - one suite, every implementation
 @pytest.fixture(
     params=[
         pytest.param("memory", id="memory"),
