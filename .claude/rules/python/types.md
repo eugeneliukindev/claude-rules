@@ -3,7 +3,7 @@ paths:
   - "**/*.py"
 ---
 
-# Python — Types and Data
+# Python - Types and Data
 
 ## Choosing a Representation
 
@@ -24,8 +24,8 @@ primitive with rules and a dict you don't own each have a rule below.
 ### Parameters take the narrowest `collections.abc` type; returns are concrete
 
 **Why:** `Mapping[str, int]` in accepts every mapping; `dict[str, int]` out tells the caller what
-it can do. Iterate once — `Iterable`; index — `Sequence`; membership — `Set`; mutate —
-`MutableMapping`; a stream — `typing.IO[bytes]`. A return hides its container
+it can do. Iterate once - `Iterable`; index - `Sequence`; membership - `Set`; mutate -
+`MutableMapping`; a stream - `typing.IO[bytes]`. A return hides its container
 only on purpose: `-> Iterator[Frame]` from a generator says "read once", where `Iterable` invites a
 second loop that sees nothing. A read-only field is a `Sequence` or a `Mapping` too; a contract of
 your own is written only when no ABC names the capability.
@@ -42,14 +42,14 @@ request; a result is returned, never written into a parameter. What is fixed is 
 ### `@dataclass(frozen=True, slots=True, kw_only=True)` by default
 
 **Why:** `frozen` is about mutability, `slots` about the attribute set, `kw_only` about the call
-site — the one usually forgotten: positional, two ids of one type are swapped, it type-checks, and
+site - the one usually forgotten: positional, two ids of one type are swapped, it type-checks, and
 the money moves backwards.
-**Except:** positional construction where the order is the concept — `Point(x, y)`; mutability for
-a genuine aggregate root, said in its name — `Cart`, `Session` — with copies through `replace()`.
+**Except:** positional construction where the order is the concept - `Point(x, y)`; mutability for
+a genuine aggregate root, said in its name - `Cart`, `Session` - with copies through `replace()`.
 
 **Example:**
 ```python
-# WRONG — positional and mutable: the call swaps the ids, and nothing objects
+# WRONG - positional and mutable: the call swaps the ids, and nothing objects
 @dataclass
 class Transfer:
     sender_id: AccountId
@@ -60,7 +60,7 @@ class Transfer:
 transfer = Transfer(recipient_id, sender_id, amount)
 
 
-# CORRECT — every call site names its fields, and the value cannot change after
+# CORRECT - every call site names its fields, and the value cannot change after
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Transfer:
     sender_id: AccountId
@@ -74,14 +74,14 @@ transfer = Transfer(sender_id=sender_id, recipient_id=recipient_id, amount=amoun
 ### A primitive with rules is a frozen value object, valid by construction
 
 **Why:** a rule checked at the call sites is checked at some of them. A value with no rules stays a
-plain `str`, `int` or `Decimal`; identity only is a `NewType` — a `type` alias accepts any `str`;
+plain `str`, `int` or `Decimal`; identity only is a `NewType` - a `type` alias accepts any `str`;
 rules make a frozen dataclass, validated in `__post_init__` with the package's own error, after
 which nothing re-validates it. A `NewType` that grows a rule becomes one everywhere. Value objects
 compare by value, are hashable and carry no I/O.
 
 **Example:**
 ```python
-# WRONG — the range rule lives in the function, and every other caller of the floats skips it
+# WRONG - the range rule lives in the function, and every other caller of the floats skips it
 def angular_separation_degrees(
     first_ra_degrees: float,
     first_dec_degrees: float,
@@ -94,7 +94,7 @@ def angular_separation_degrees(
         first_ra_degrees, first_dec_degrees, second_ra_degrees, second_dec_degrees
     )
 
-# CORRECT — no SkyPosition instance can hold an impossible point
+# CORRECT - no SkyPosition instance can hold an impossible point
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SkyPosition:
@@ -119,13 +119,13 @@ def angular_separation_degrees(first: SkyPosition, second: SkyPosition) -> float
 **Why:** with plain floats an angle in degrees passes where radians are expected. A Mars orbiter
 was lost to exactly this: one program reported thruster impulse in pound-force seconds, the one
 consuming it read newton-seconds, and both sides were plain floats. Arithmetic on a `NewType`
-returns the base type, so the check holds at signatures, not inside expressions — which is why the
+returns the base type, so the check holds at signatures, not inside expressions - which is why the
 name keeps its unit too (`naming.md`).
 
 ### A field says what it holds: secrets out of `repr`, ids and timestamps out of equality
 
-**Why:** the generated `repr` prints a secret into the first log line that formats the object —
-`field(repr=False)` — and an `issued_at` in `__eq__` makes two copies of one credential unequal —
+**Why:** the generated `repr` prints a secret into the first log line that formats the object -
+`field(repr=False)` - and an `issued_at` in `__eq__` makes two copies of one credential unequal -
 `field(compare=False)`. A class that defines `__eq__` by hand defines `__hash__` beside it, or its
 first use as a set member raises `TypeError`.
 
@@ -133,7 +133,7 @@ first use as a set member raises `TypeError`.
 
 ### Dict-shaped data that stays a dict is a `TypedDict`, turned into a domain object where it enters
 
-**Why:** a JSON payload you don't own, a `**kwargs` bundle, a file read back — the `TypedDict`
+**Why:** a JSON payload you don't own, a `**kwargs` bundle, a file read back - the `TypedDict`
 names the keys so `entry["designation"]` stops being `Any`, at no runtime cost; a file mostly
 counted is not worth converting row by row. With no validation or methods it is never a domain
 type. Keys are marked `NotRequired[...]` or `Required[...]`, not `total=False`; `ReadOnly[...]` for
@@ -141,11 +141,11 @@ keys consumers must not change; `Unpack[Options]` types a forwarded `**kwargs`.
 
 **Example:**
 ```python
-# WRONG — the keys exist only in the author's head, and the dict travels inward
+# WRONG - the keys exist only in the author's head, and the dict travels inward
 def parse_catalogue_entry(raw: dict[str, Any]) -> dict[str, Any]:
     return {"designation": raw["name"], "magnitude": raw.get("v_magnitude")}
 
-# CORRECT — the TypedDict describes the foreign JSON; a domain object travels inward
+# CORRECT - the TypedDict describes the foreign JSON; a domain object travels inward
 class CatalogueEntryPayload(TypedDict):
     name: str
     v_magnitude: NotRequired[float | None]
@@ -163,7 +163,7 @@ def parse_catalogue_entry(raw: CatalogueEntryPayload) -> CatalogueStar:
 
 ### A constraint the type cannot express is an `Annotated` alias, named once
 
-**Why:** `Annotated` attaches rules the static type has no room for — bounds, a pattern — read at
+**Why:** `Annotated` attaches rules the static type has no room for - bounds, a pattern - read at
 runtime by whatever validates the boundary: `type ExposureSeconds = Annotated[float, Interval(gt=0,
 le=3600)]`. The same bounds in five models are five places to get one wrong, and a bound restated
 in a service body means the boundary leaked.
@@ -174,13 +174,13 @@ in a service body means the boundary leaked.
 
 **Why:** the checker rejects `"votable"` at the call site, where a `str` raises at runtime, and a
 literal repeated twice drifts into two spellings. Promote to `Enum` at three users, or earlier for
-behaviour or a wire value that may diverge — `StrEnum` serializes as its value.
+behaviour or a wire value that may diverge - `StrEnum` serializes as its value.
 `DEFAULT_CURVE_FORMAT: Final = "fits"` passes where the `Literal` is expected. A comparison with a raw literal turns silently false once the
 value is renamed.
 
 **Example:**
 ```python
-# WRONG — any string is accepted, and the mistake surfaces as a ValueError at runtime
+# WRONG - any string is accepted, and the mistake surfaces as a ValueError at runtime
 def export_light_curve(curve: LightCurve, file_format: str) -> bytes:
     if file_format == "fits":
         return curve.to_fits()
@@ -188,7 +188,7 @@ def export_light_curve(curve: LightCurve, file_format: str) -> bytes:
         return curve.to_csv()
     raise ValueError(f"unsupported file format {file_format!r}")
 
-# CORRECT — export_light_curve(curve, "votable") is a type error
+# CORRECT - export_light_curve(curve, "votable") is a type error
 def export_light_curve(curve: LightCurve, file_format: Literal["fits", "csv"]) -> bytes:
     if file_format == "fits":
         return curve.to_fits()
@@ -199,14 +199,14 @@ def export_light_curve(curve: LightCurve, file_format: Literal["fits", "csv"]) -
 
 **Why:** a status beside optional fields lets an observed visit have no observation time. Variants
 make that combination unconstructable, and a class pattern in `match` narrows each one, closed with
-`assert_never` (`control-flow.md`). A union of `TypedDict`s narrows on a `Literal` field —
+`assert_never` (`control-flow.md`). A union of `TypedDict`s narrows on a `Literal` field -
 `kind: Literal["observed"]`, as a validator does. A batch
-whose normal output mixes successes and failures is such a union too — `ParsedLine | RejectedLine`
-— never a generic `Result` wrapper; any other failure is an exception.
+whose normal output mixes successes and failures is such a union too - `ParsedLine | RejectedLine` -
+never a generic `Result` wrapper; any other failure is an exception.
 
 **Example:**
 ```python
-# WRONG — any combination of status and optional fields can be built
+# WRONG - any combination of status and optional fields can be built
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TargetVisit:
@@ -214,7 +214,7 @@ class TargetVisit:
     observed_at: datetime | None = None
     frame_count: int | None = None
 
-# CORRECT — each state carries exactly its own fields
+# CORRECT - each state carries exactly its own fields
 @final
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Scheduled:
@@ -238,7 +238,7 @@ type TargetVisit = Scheduled | Observed | LostToWeather
 
 **Why:** in a PATCH-style update `None` cannot tell "not provided" from "explicitly cleared". A
 public `class NotGiven(Enum): NOT_GIVEN = auto()` with `NOT_GIVEN: Final = NotGiven.NOT_GIVEN`
-gives absence its own value — `common_name: str | None | NotGiven = NOT_GIVEN` — and `is NOT_GIVEN`
+gives absence its own value - `common_name: str | None | NotGiven = NOT_GIVEN` - and `is NOT_GIVEN`
 narrows an enum member in every branch, a plain-class instance only in the `if`.
 
 ## Narrowing
@@ -247,15 +247,15 @@ narrows an enum member in every branch, a plain-class instance only in the `if`.
 
 **Why:** `cast` changes the type and checks nothing, so a wrong claim fails far from where it was
 made; it stays only with a one-line reason the checker cannot see. A narrowing needed twice is a
-`TypeIs` predicate — 3.13, or `typing_extensions` below — named like any boolean.
+`TypeIs` predicate - 3.13, or `typing_extensions` below - named like any boolean.
 
 **Example:**
 ```python
-# WRONG — the claim is believed, and a list of ints fails three calls later
+# WRONG - the claim is believed, and a list of ints fails three calls later
 def filter_bands(header: Mapping[str, object]) -> list[str]:
     return cast(list[str], header["filters"])
 
-# CORRECT — the predicate checks what the annotation then promises
+# CORRECT - the predicate checks what the annotation then promises
 def is_string_list(value: object) -> TypeIs[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
@@ -285,7 +285,7 @@ type.
 
 **Example:**
 ```python
-# WRONG — an orphan waiting to happen, a reassignable limit, a raise the checker cannot follow
+# WRONG - an orphan waiting to happen, a reassignable limit, a raise the checker cannot follow
 MAX_LINES = 500
 
 
@@ -324,7 +324,7 @@ def reject(invoice: Invoice) -> Never:
 **Why:** on a 3.12 floor, `def load_frames[T: Frame](frame_type: type[T]) -> list[T]` scopes the
 parameter to its one function, where a module-level `TypeVar` is shared by accident; an unbounded
 parameter whose body reads an attribute promises more than it keeps. `requires-python` decides the
-spelling — `typing_extensions.override` below 3.12, `TypeIs` below 3.13, a default
+spelling - `typing_extensions.override` below 3.12, `TypeIs` below 3.13, a default
 (`class Catalogue[T = Star]`) from 3.13; below 3.12 `TypeVar` and `Generic` are no lapse. The bound
 carries the meaning: `T`, `K`/`V`, `P`/`R`; three or more are spelled out. A `TypeVar` is `_T`,
 `_FrameT_co`.
@@ -337,7 +337,7 @@ types one that supplies the first argument itself.
 
 **Example:**
 ```python
-# WRONG — every decorated function now accepts anything and returns Any
+# WRONG - every decorated function now accepts anything and returns Any
 def reduction_step(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -346,7 +346,7 @@ def reduction_step(func: Callable[..., Any]) -> Callable[..., Any]:
 
     return wrapper
 
-# CORRECT — the wrapper has exactly the parameters and the return of what it wraps
+# CORRECT - the wrapper has exactly the parameters and the return of what it wraps
 def reduction_step[**P, R](func: Callable[P, R]) -> Callable[P, R]:
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -358,7 +358,7 @@ def reduction_step[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 
 ### A callable with two or more parameters, or any keyword, is a calling protocol
 
-**Why:** `Callable[[str, float, datetime], None]` names nothing — the reader cannot tell which
+**Why:** `Callable[[str, float, datetime], None]` names nothing - the reader cannot tell which
 argument is which, and a keyword argument cannot be expressed at all: `class TransientHandler(Protocol)`
 with `def __call__(self, designation: str, magnitude: float, *, detected_at: datetime) -> None`.
 One parameter and an obvious return stay a `Callable`.
