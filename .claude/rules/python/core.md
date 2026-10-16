@@ -35,6 +35,9 @@ Follow the first that applies:
 
 ## Definition of Done
 
+End the reply with one or two lines: what was skipped or not checked, and any risk the user must know.
+
+
 Run the tests first, and make them pass. Then walk the eight checks skipped first under pressure; `/python-review` runs the whole list over a diff:
 
 - [ ] Every new identifier follows `naming.md` and survives the relocation test
