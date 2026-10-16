@@ -32,8 +32,7 @@ in float seconds as the stdlib uses it - needs none.
 
 **Why:** `get_` is a cheap lookup, `find_` a search that may find nothing, `fetch_` and
 `load_` do I/O, `compute_` is CPU work, `save_`, `send_`, `publish_` write - never I/O behind a
-`get_` or a property. A query has no side effect; a command returns `None` or what its effect
-assigned. A generic verb - `process`, `handle` - means the unit does not know what it is for.
+`get_` or a property. A generic verb - `process`, `handle` - means the unit does not know what it is for.
 **Except:** a method of a store contract keeps its family's verbs - a repository's `get` raises when
 the row is missing and its `find` returns `None`; a cache's `get` returns `None` on a miss.
 
