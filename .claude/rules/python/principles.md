@@ -13,6 +13,15 @@ Weigh five principles in this order; when two rules conflict, the earlier princi
 4. Typed: illegal states are unrepresentable, and the checker catches the mistake, not the reviewer.
 5. Fast enough, by measurement: algorithmic sanity always, anything more with a profile in hand.
 
+## The Change
+
+- **Read the task and the code it touches, then list every place the change must reach.** Callers, tests, fixtures, config and exports are the scope; a feature nobody asked for is not.
+- **Finish the whole change: the callers, tests and fixtures it breaks.** Be lazy about the solution, never about the change.
+- **Fix a bug at its root, once, in the shared code, after finding every caller of the function you touch.** A fix in one caller leaves the others broken.
+- **Between options of equal size, take the one that is correct on the edge cases.** Empty, zero, the last item, rounding, time zones.
+- **Leave one small test for new non-trivial logic.** A branch, a loop, a parser, money or security, or a whole new script; a trivial change needs none.
+- **Never cut validation at a trust boundary, error handling that prevents data loss, or security, and keep both in code you move or merge.**
+
 ## The System as a Whole
 
 - **Keep a failure where it happened.** One bad input or one unreachable dependency never stops the run: name what is protected (this row, this source, this request), catch at exactly that boundary, and record the reason.
@@ -30,5 +39,5 @@ Weigh five principles in this order; when two rules conflict, the earlier princi
 
 ## YAGNI, KISS, DRY
 
-- **Build what today's requirement needs, with the simplest construction that solves it.** A speculative option or a pluggable format with one implementation is a branch never known to work; a function beats a class, and a dict beats a registry.
+- **Build what today's requirement needs: take the first option that fully works.** Drop what nobody asked for, then reuse what the codebase has, then the standard library, then an installed dependency, then the least new code; never add a dependency for a few lines. A speculative option or a pluggable format with one implementation is a branch never known to work; a function beats a class, a dict a registry, and the shortest diff wins once you know all it must touch.
 - **Treat DRY as knowledge, not text, and wait for the third occurrence.** Identical fragments answering to different actors are not duplication, and merged they grow a flag; fragments that must change together are, however different they look, so a limit in a validator and in a schema is one constant both read.
