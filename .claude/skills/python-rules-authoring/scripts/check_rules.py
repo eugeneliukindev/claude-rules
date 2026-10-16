@@ -49,8 +49,8 @@ _SKILL_MAX_LINES: Final = 500
 # 6,000 leaves the tail of a one-file skill short.
 _SKILL_MAX_TOKENS: Final = 6_000
 _SKILL_PREFIX: Final = "python-"
-# A rule's prose (heading, Why, Except) past 700 characters is two rules or a lecture; aim at 600.
-_RULE_MAX_CHARACTERS: Final = 700
+# A rule's bullet past 500 characters is two rules or a lecture; aim at 400.
+_RULE_MAX_CHARACTERS: Final = 500
 # The model copies the files' punctuation into code, so they hold only what a keyboard types.
 _NON_ASCII_PUNCTUATION: Final = frozenset(
     "\u2190\u2192\u2194\u21d2\u2013\u2014\u2026\u201c\u201d\u2018\u2019"
@@ -193,7 +193,7 @@ _CONTENTS_HEADING: Final = "## Contents"
 
 # A fence is three or more backticks; it closes on a bare fence at least as long (CommonMark).
 _FENCE: Final = re.compile(r"^\s*(`{3,})(\w*)\s*$")
-# A rule is a `###` heading, or a top-level bold bullet in a file not yet in that format.
+# A rule is a top-level bullet with a bold lead; a `###` heading is the older format.
 _RULE_LINE: Final = re.compile(r"^(### |- \*\*)")
 _SKILL_REFERENCE: Final = re.compile(r"`(python-[a-z][a-z-]*)`")
 _FILE_REFERENCE: Final = re.compile(r"`([\w-]+\.md)`|\]\(([\w./-]+\.md)\)")
@@ -541,22 +541,24 @@ def _layering_findings(core_path: Path, skill_files: Sequence[_Document]) -> Ite
 
 
 def _rule_size_findings(document: _Document) -> Iterator[_Finding]:
-    # Prose only: the example is code the model copies, and other checks hold it.
+    # A rule is its bullet: the bold-lead line and any indented continuation lines below it.
     code_lines = _code_line_numbers(document.lines)
     start = 0
     size = 0
-    for line_number, line in enumerate((*document.lines, "## end"), start=1):
-        if _SECTION_HEADING.match(line):
-            if start and size > _RULE_MAX_CHARACTERS:
-                yield _Finding(
-                    path=document.path,
-                    line=start,
-                    message=f"rule is {size} characters of prose, ceiling {_RULE_MAX_CHARACTERS}",
-                )
-            start = line_number if line.startswith("### ") else 0
-            size = 0
-        if start and line_number not in code_lines and line.strip() != "**Example:**":
+    for line_number, line in enumerate((*document.lines, ""), start=1):
+        is_continuation = start and line.startswith(" ") and line.strip()
+        if is_continuation and line_number not in code_lines:
             size += len(line.strip()) + 1
+            continue
+        if start and size > _RULE_MAX_CHARACTERS:
+            yield _Finding(
+                path=document.path,
+                line=start,
+                message=f"rule is {size} characters, ceiling {_RULE_MAX_CHARACTERS}",
+            )
+        is_rule = line_number not in code_lines and line.startswith("- **")
+        start = line_number if is_rule else 0
+        size = len(line.strip()) if is_rule else 0
 
 
 def _punctuation_findings(document: _Document) -> Iterator[_Finding]:
