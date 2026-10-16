@@ -21,35 +21,28 @@ primitive with rules and a dict you don't own each have a rule below.
 | `tuple[Any, ...]` | a frozen dataclass, never `NamedTuple` |
 | several `bool` fields | one `Enum` state |
 
-### A type the reader must decode is named: a positional tuple becomes a frozen dataclass, a generic nested twice or spelled in two signatures a `type` alias
+### A type the reader must decode gets a name, in the simplest shape that names its parts
 
-**Why:** `tuple[type[Model], str, str]` says nothing about which `str` is which, and the same
-three-level generic spelled at five call sites drifts; a field name or an alias name is the one
-place the meaning lives.
+**Why:** `dict[str, tuple[tuple[str, str], ...]]` makes the reader guess what each `str` is, and the
+same nested type spelled at five call sites drifts. Take the first shape that fits: a pair keyed by
+its first part is a `Mapping`, an unordered set a `frozenset`, and a nested generic a `type` alias
+named for what it holds; a frozen dataclass only for a record of three or more parts that mean
+different things.
 **Except:** a tuple whose order is the concept - `(x, y)` - stays a tuple.
 
 **Example:**
 ```python
 # WRONG - which str is the field and which the unit? the reader decodes three levels
-_EXPORT_COLUMNS: Final[dict[str, tuple[tuple[str, str, int], ...]]] = {
-    "greenhouse": (("air_temperature", "celsius", 1), ("soil_moisture", "percent", 0)),
+_EXPORT_UNITS: Final[dict[str, tuple[tuple[str, str], ...]]] = {
+    "greenhouse": (("air_temperature", "celsius"), ("soil_moisture", "percent")),
 }
 
 
-# CORRECT - the record names its fields, the key says what it is, and nothing can change it
-@final
-@dataclass(frozen=True, slots=True, kw_only=True)
-class ExportColumn:
-    field_name: str
-    unit: str
-    decimal_places: int
+# CORRECT - a pair keyed by its first part is a mapping, and the alias says what it holds
+type UnitByField = Mapping[str, str]
 
-
-_EXPORT_COLUMNS: Final[Mapping[SiteKind, tuple[ExportColumn, ...]]] = MappingProxyType({
-    SiteKind.GREENHOUSE: (
-        ExportColumn(field_name="air_temperature", unit="celsius", decimal_places=1),
-        ExportColumn(field_name="soil_moisture", unit="percent", decimal_places=0),
-    ),
+_UNITS_BY_SITE: Final[Mapping[SiteKind, UnitByField]] = MappingProxyType({
+    SiteKind.GREENHOUSE: MappingProxyType({"air_temperature": "celsius", "soil_moisture": "percent"}),
 })
 ```
 
