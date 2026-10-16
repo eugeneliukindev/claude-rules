@@ -201,7 +201,7 @@
     },
     {
       "id": "core-subclass-does-not-narrow",
-      "prompt": "Add a WineLabeler to cellar/sparkling_labels.py for the sparkling shelf: the label shows the name and the bottle pressure.",
+      "prompt": "Add a WineLabeler to cellar/sparkling_labels.py for the sparkling shelf: the label shows the name and the vintage in capitals, framed in stars.",
       "files": {
         "pyproject.toml": "[project]\nname = \"app\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n]\n",
         "cellar/__init__.py": "",
@@ -217,6 +217,11 @@
           "files": "cellar/sparkling_labels.py",
           "match": "def label\\(\\s*self\\s*,\\s*\\w+\\s*:\\s*Wine\\b",
           "why": "the override accepts what the parent accepts"
+        },
+        {
+          "files": "cellar/sparkling_labels.py",
+          "no_match": "isinstance\\(",
+          "why": "no subclass check in place of the parent's type"
         }
       ]
     },
