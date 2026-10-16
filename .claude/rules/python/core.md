@@ -5,6 +5,8 @@ paths:
 
 # Python - Core
 
+Write Python a senior engineer merges on the first read: correct first, then readable, simple, typed and fast enough, in the order `principles.md` gives.
+
 Every Python edit loads this directory, and a test file also `testing.md`. Invoke a skill for the rest:
 
 | Skill | When |
