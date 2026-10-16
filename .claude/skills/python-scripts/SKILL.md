@@ -13,10 +13,10 @@ paths:
 
 # Scripts
 
-The rules in this directory were written for code that lives — a service, a library, a worker — and
+The rules in this directory were written for code that lives - a service, a library, a worker - and
 models over-apply them: a forty-line script that renames files once does not improve by growing a
 contract, a fake and a composition root. A script is a file run by hand or by one person's one-off
-job, imported by nothing, read by its author — a data fix, a report, a backfill, a notebook. A
+job, imported by nothing, read by its author - a data fix, a report, a backfill, a notebook. A
 token it acts on is still verified, and a backfill against a live table is still batched and
 bounded; this skill is the script around them.
 
@@ -24,7 +24,7 @@ bounded; this skill is the script around them.
 
 **Why:** from the next edit on, every rule applies. The signals are: something imports it or copies
 a function out of it; it runs on a schedule, or in production with nobody watching; someone other
-than its author is expected to run it; `main()` no longer fits on a screen — a few hundred lines in
+than its author is expected to run it; `main()` no longer fits on a screen - a few hundred lines in
 all. The promotion is a move, not a rewrite: the functions go into a package, and the contracts,
 fakes and tests arrive with the second implementation or the first test, as they would anywhere.
 
@@ -33,13 +33,13 @@ fakes and tests arrive with the second implementation or the first test, as they
 **Why:** an ABC with one implementation in a file nobody imports is ceremony, and so are fakes
 (`testing.md`), layers, `__init__.py`, `__all__` and the `_` prefix (`modules.md`). A function
 reads its constants where it stands: the defaulted setting of `functions.md` is for code a test
-calls. A script is verified by running it — on a copy of the data, or dry-run first; a function
+calls. A script is verified by running it - on a copy of the data, or dry-run first; a function
 subtle enough to need a test is the first sign of a promotion. The module docstring
 says in one line what it does and how it is run.
 
 **Example:**
 ```python
-# WRONG — a contract, an implementation and a root, for one CSV read once
+# WRONG - a contract, an implementation and a root, for one CSV read once
 class ConditionSource(ABC):
     @abstractmethod
     def conditions(self) -> Iterator[str]: ...
@@ -58,7 +58,7 @@ def main() -> None:
     source: ConditionSource = CsvConditionSource(path=Path(sys.argv[1]))
     print(Counter(source.conditions()))
 
-# CORRECT — one function, called from main()
+# CORRECT - one function, called from main()
 def count_books_by_condition(path: Path) -> Counter[str]:
     with path.open(encoding="utf-8", newline="") as shelf_list:
         return Counter(row["condition"] for row in csv.DictReader(shelf_list))
@@ -69,12 +69,12 @@ def main() -> None:
 
 ### The statements still live in `main()` and functions, never at module level
 
-**Why:** `modules.md` holds here too: `main()` builds what it needs — the connection, the client —
+**Why:** `modules.md` holds here too: `main()` builds what it needs - the connection, the client -
 and uses it inside a `with`, so the file can be imported by a test or promoted without running.
 
 ### The standard library comes first, and any other package is declared in the script's own header
 
-**Why:** a dependency earns its place by replacing real code — a spreadsheet writer, a database
+**Why:** a dependency earns its place by replacing real code - a spreadsheet writer, a database
 driver, never `orjson` for `json`. Declared in the PEP 723 block, it runs anywhere with one
 command, never against whatever is installed: `uv run script.py` builds an isolated environment
 from the block, `uv add --script script.py 'openpyxl>=3.1'` edits it, `uv lock --script script.py`
@@ -83,12 +83,12 @@ pins a script that must give the same result in a month.
 
 **Example:**
 ```python
-# WRONG — assumes openpyxl is installed wherever the script happens to run
+# WRONG - assumes openpyxl is installed wherever the script happens to run
 """Turn the shelf list into a spreadsheet for the valuer. Run: python shelf_list_to_xlsx.py CSV."""
 
 import openpyxl
 
-# CORRECT — the header declares the floor and the dependency; uv run builds the environment
+# CORRECT - the header declares the floor and the dependency; uv run builds the environment
 # /// script
 # requires-python = ">=3.12"
 # dependencies = ["openpyxl>=3.1"]
@@ -101,15 +101,15 @@ import openpyxl
 ### Under `basicConfig`, what the reader must see goes in the message, not in `extra=`
 
 **Why:** plain-text logging is enough for a script, and `basicConfig`'s format prints no `extra=`
-field — the ISBN of a skipped book passed there, as `logging.md` asks of a service, never reaches
+field - the ISBN of a skipped book passed there, as `logging.md` asks of a service, never reaches
 the terminal. The counts the reader must see go to stderr at the end.
 
 **Example:**
 ```python
-# WRONG — prints "isbn not in the catalogue, skipped" and nothing about which book
+# WRONG - prints "isbn not in the catalogue, skipped" and nothing about which book
 logger.warning("isbn not in the catalogue, skipped", extra={"isbn": isbn})
 
-# CORRECT — the ISBN is in the message basicConfig prints
+# CORRECT - the ISBN is in the message basicConfig prints
 logger.warning("isbn not in the catalogue, skipped: %s", isbn)
 ```
 
@@ -117,9 +117,9 @@ logger.warning("isbn not in the catalogue, skipped: %s", isbn)
 
 **Why:** a script is the code most often run once against production data:
 - a timeout on every network call;
-- secrets from the environment — scripts get pasted and committed;
+- secrets from the environment - scripts get pasted and committed;
 - `encoding="utf-8"` on every text file, `Decimal` for money, aware UTC datetimes;
-- the narrow `except` (`errors.md`) — a run that "finished" skipping half the rows is worse than
+- the narrow `except` (`errors.md`) - a run that "finished" skipping half the rows is worse than
   a crash;
 - each failed item counted (`principles.md`), and a non-zero exit when any failed;
 - subprocess argument lists and parameterized SQL;
@@ -128,13 +128,13 @@ logger.warning("isbn not in the catalogue, skipped: %s", isbn)
 
 **Example:**
 ```python
-# WRONG — urlopen has no default timeout: a server that stops answering holds the script forever
+# WRONG - urlopen has no default timeout: a server that stops answering holds the script forever
 def fetch_wanted_titles(wants_url: str) -> bytes:
     with urllib.request.urlopen(wants_url) as response:
         wanted_titles: bytes = response.read()
     return wanted_titles
 
-# CORRECT — even a one-off waits for a stated time, then fails and says so
+# CORRECT - even a one-off waits for a stated time, then fails and says so
 def fetch_wanted_titles(wants_url: str) -> bytes:
     with urllib.request.urlopen(wants_url, timeout=WANTS_TIMEOUT_SECONDS) as response:
         wanted_titles: bytes = response.read()
@@ -150,7 +150,7 @@ do, and the counts it would reach, before anything is written.
 
 **Example:**
 ```python
-# WRONG — the first run writes, so the bug in it is found in the data
+# WRONG - the first run writes, so the bug in it is found in the data
 def main() -> None:
     parser = argparse.ArgumentParser(description="Strip the hyphens from cover scan names.")
     parser.add_argument("directory", type=Path)
@@ -158,7 +158,7 @@ def main() -> None:
     renames, _skipped_count = planned_cover_renames(arguments.directory)
     apply_cover_renames(renames, journal=sys.stdout)
 
-# CORRECT — the plan is printed; only --apply writes
+# CORRECT - the plan is printed; only --apply writes
 def main() -> None:
     parser = argparse.ArgumentParser(description="Strip the hyphens from cover scan names.")
     parser.add_argument("directory", type=Path)
@@ -179,7 +179,7 @@ when the run dies halfway.
 
 **Example:**
 ```python
-# WRONG — the failures are counted, and nothing records which scans were renamed
+# WRONG - the failures are counted, and nothing records which scans were renamed
 def apply_cover_renames(renames: Sequence[tuple[Path, Path]]) -> int:
     failed_count = 0
     for source, target in renames:
@@ -190,7 +190,7 @@ def apply_cover_renames(renames: Sequence[tuple[Path, Path]]) -> int:
             failed_count += 1
     return failed_count
 
-# CORRECT — each rename that succeeded is a line in the journal, written as it happens
+# CORRECT - each rename that succeeded is a line in the journal, written as it happens
 def apply_cover_renames(renames: Sequence[tuple[Path, Path]], *, journal: TextIO) -> int:
     failed_count = 0
     for source, target in renames:
@@ -288,8 +288,8 @@ if __name__ == "__main__":
 
 ### A notebook is restarted and run top to bottom before its result is shared
 
-**Why:** cells run out of order leave state no reader can reproduce — a variable from a deleted
-cell, a dataframe filtered twice — and a notebook whose result depends on it has no result.
+**Why:** cells run out of order leave state no reader can reproduce - a variable from a deleted
+cell, a dataframe filtered twice - and a notebook whose result depends on it has no result.
 Executing it headless from a clean kernel is the check.
 
 ### Outputs that hold a token or a customer's row are cleared before the notebook is committed
