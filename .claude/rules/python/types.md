@@ -44,6 +44,27 @@ type UnitByField = Mapping[str, str]
 _UNITS_BY_SITE: Final[Mapping[SiteKind, UnitByField]] = MappingProxyType({
     SiteKind.GREENHOUSE: MappingProxyType({"air_temperature": "celsius", "soil_moisture": "percent"}),
 })
+
+
+# WRONG - a set spelled as a tuple, and a record whose three parts nobody can tell apart
+_METRIC_UNITS: Final[tuple[str, ...]] = ("celsius", "percent", "lux")
+_SENSOR_SPECS: Final[tuple[tuple[str, str, int], ...]] = (("air_temperature", "celsius", 1),)
+
+
+# CORRECT - only membership is asked of it: a frozenset
+_METRIC_UNITS: Final = frozenset({"celsius", "percent", "lux"})
+
+
+# CORRECT - three parts that mean different things: a frozen dataclass
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SensorSpec:
+    field_name: str
+    unit: str
+    decimal_places: int
+
+
+_SENSOR_SPECS: Final = (SensorSpec(field_name="air_temperature", unit="celsius", decimal_places=1),)
 ```
 
 ### Parameters take the narrowest `collections.abc` type; returns are concrete
