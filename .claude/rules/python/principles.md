@@ -155,6 +155,31 @@ promise, no new exception.
 
 **Example:**
 ```python
+# The types: a verified reading is a narrower reading, a billed reading a narrower result
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MeterReading:
+    meter_id: MeterId
+    kwh: Decimal
+    billing_period: BillingPeriod
+
+
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class VerifiedReading(MeterReading):
+    verified_by: InspectorId
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RecordedReading:
+    reading_id: ReadingId
+
+
+@final
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BilledReading(RecordedReading):
+    billing_period: BillingPeriod
+
+
 class ReadingSink(ABC):
     @abstractmethod
     def record(self, reading: MeterReading) -> RecordedReading: ...
