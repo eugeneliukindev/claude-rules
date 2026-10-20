@@ -1,0 +1,6 @@
+{
+  "prompt": "Members borrow books now. Add `LoanService` in library/loans.py with `lend(book_id, member_id, due)`, which records a loan, and `loans_of(member_id)`, which lists a member's loans; a loan has `book_id`, `member_id` and `due`. Keep loans in memory. Add `build_loans()` to library/app.py, returning a ready service.",
+  "allowed": ["library/*", "tests/*"],
+  "catches": ["codebase/settled-convention"],
+  "expect_bad": ["design"]
+}

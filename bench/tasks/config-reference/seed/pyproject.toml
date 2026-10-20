@@ -1,0 +1,16 @@
+[project]
+name = "geo"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "SIM", "BLE", "S", "DTZ", "PT", "RUF", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004"]
+# the earth's radius and the degree to radian factor are facts, not settings
+"geo/_calc.py" = ["PLR2004"]

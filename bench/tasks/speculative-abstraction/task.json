@@ -1,0 +1,6 @@
+{
+  "prompt": "Add `charge(order, *, card_token, client)` in shop/payments.py: it charges the order through `StripeClient.create_charge` in shop/stripe_client.py and returns the charge id. We may add PayPal at some point.",
+  "allowed": ["shop/*", "tests/*"],
+  "catches": ["design/speculative-abstraction"],
+  "expect_bad": ["design"]
+}

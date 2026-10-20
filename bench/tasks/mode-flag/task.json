@@ -1,0 +1,6 @@
+{
+  "prompt": "The export page needs sales reports as CSV too, next to the JSON that reports/export.py gives today.",
+  "allowed": ["reports/*", "tests/*"],
+  "catches": ["design/mode-flag"],
+  "expect_bad": ["design"]
+}

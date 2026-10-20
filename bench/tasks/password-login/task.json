@@ -1,0 +1,6 @@
+{
+  "prompt": "Accounts need passwords. Add `register(email, password)` and `log_in(email, password) -> bool` to `AccountService` in accounts/service.py. Hash with `hashlib.scrypt` and a random salt; never store the password itself. `build_service` in accounts/app.py must keep returning a ready service.",
+  "allowed": ["accounts/*", "tests/*"],
+  "catches": ["design/mechanism-in-policy"],
+  "expect_bad": ["design"]
+}

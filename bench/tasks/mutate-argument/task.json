@@ -1,0 +1,6 @@
+{
+  "prompt": "Add `with_coupon(cart, percent)` in shop/coupons.py: it gives the cart with every price lowered by `percent` per cent. The checkout page shows the customer the total before and after the coupon.",
+  "allowed": ["shop/*", "tests/*"],
+  "catches": ["design/command-query"],
+  "expect_bad": ["design"]
+}

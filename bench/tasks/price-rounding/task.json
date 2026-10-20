@@ -1,0 +1,6 @@
+{
+  "prompt": "A customer complained: an item priced 2.675 shows as 2.67 on the invoice, while the till rounds half a cent up. Fix it.",
+  "allowed": ["shop/*", "tests/*"],
+  "catches": ["E02", "E03"],
+  "expect_bad": ["gates"]
+}

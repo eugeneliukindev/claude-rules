@@ -1,0 +1,6 @@
+{
+  "prompt": "Add `current_humidity(city)` next to `current_temperature` in weather/client.py. The service returns it as `main.humidity`.",
+  "allowed": ["weather/*", "tests/*", "README.md"],
+  "catches": ["boundaries/translate-errors", "E07"],
+  "expect_bad": ["design"]
+}

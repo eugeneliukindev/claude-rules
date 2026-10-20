@@ -1,0 +1,13 @@
+{
+  "prompt": "Add `ResumeService.summarize(path)` in resumes/service.py: it returns a `Summary` with `grade`, the resume's grade, and `words`, its length in words. Read the file with `read_text_file` from resumes/files.py and work out the grade with `grade_of` from resumes/grading.py. `build_service()` in resumes/app.py must return a ready service.",
+  "allowed": [
+    "resumes/*",
+    "tests/*"
+  ],
+  "catches": [
+    "design/decision-not-mechanism"
+  ],
+  "expect_bad": [
+    "design"
+  ]
+}

@@ -1,0 +1,15 @@
+[project]
+name = "geokit"
+version = "2.3.0"
+description = "Distance helpers for geographic coordinates, published on PyPI."
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "SIM", "BLE", "S", "DTZ", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]

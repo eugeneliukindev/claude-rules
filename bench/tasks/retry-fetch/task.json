@@ -1,0 +1,6 @@
+{
+  "prompt": "The nightly job in rates/nightly.py fails a few times a week when the rates service has a hiccup. Make fetch_exchange_rates() in rates/exchange.py more reliable.",
+  "allowed": ["rates/exchange.py", "rates/http.py", "tests/*"],
+  "catches": ["E04", "E05", "E09", "E10"],
+  "expect_bad": ["gates", "literal_args", "ruff_new"]
+}

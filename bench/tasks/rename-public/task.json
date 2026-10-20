@@ -1,0 +1,6 @@
+{
+  "prompt": "Rename `distance_km` to `great_circle_km`: the new name says how the distance is measured.",
+  "allowed": ["geo/*", "tests/*", "CHANGELOG.md", "README.md"],
+  "catches": ["modules/rename"],
+  "expect_bad": ["design"]
+}

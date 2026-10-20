@@ -1,0 +1,6 @@
+{
+  "prompt": "Titles with numbers lose them in post URLs: \"Top 10 tips\" becomes \"top-tips\". Fix it.",
+  "allowed": ["blog/*", "tests/*"],
+  "catches": ["finish/prove-without-tests"],
+  "expect_bad": ["design"]
+}

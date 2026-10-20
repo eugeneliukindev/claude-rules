@@ -1,0 +1,39 @@
+"""Readings from the weather service."""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from urllib.parse import quote
+
+from weather.errors import WeatherError
+
+type Opener = Callable[[str, float], bytes]
+
+SERVICE_URL = "https://weather.example.com/v1/current"
+
+
+def open_url(url: str, timeout: float) -> bytes:
+    """Body of the response to a GET of `url`."""
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
+        return response.read()
+
+
+def current_temperature(city: str, *, timeout: float = 5.0, opener: Opener = open_url) -> float:
+    """Air temperature in `city`, in degrees Celsius."""
+    url = f"{SERVICE_URL}?city={quote(city)}"
+    try:
+        payload = json.loads(opener(url, timeout))
+        return float(payload["main"]["temp"])
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise WeatherError(f"weather service is unreachable for {city!r}") from error
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        raise WeatherError(f"weather service answered unreadably for {city!r}") from error
+
+
+def current_humidity(city: str, *, timeout: float = 5.0, opener: Opener = open_url) -> float:
+    """Relative humidity in `city`, in per cent."""
+    payload = json.loads(opener(f"{SERVICE_URL}?city={quote(city)}", timeout))
+    return float(payload["main"]["humidity"])

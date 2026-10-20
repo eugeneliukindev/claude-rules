@@ -1,0 +1,7 @@
+{
+  "prompt": "Posts need human-readable URLs. Give every post a slug made from its title, and let the store look a post up by its slug.",
+  "allowed": ["blog/posts.py", "tests/*"],
+  "catches": ["E07", "E06", "E03"],
+  "expect_bad": ["gates", "reuse"],
+  "reuse": {"file": "blog/posts.py", "calls": "slugify", "forbid": ["re.sub", "unicodedata"]}
+}

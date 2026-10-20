@@ -1,0 +1,6 @@
+{
+  "prompt": "Rename geo/_calc.py to geo/distance.py: the module computes distances, and its name should say so.",
+  "allowed": ["geo/*", "tests/*", "pyproject.toml"],
+  "catches": ["finish/config-reference"],
+  "expect_bad": ["design", "ruff_new"]
+}

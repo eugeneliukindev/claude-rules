@@ -1,0 +1,3 @@
+Before the fix: slugify("Top 10 tips") returned "top-tips".
+After: "top-10-tips".
+The project has no tests; a test for slugify with numbers should exist.

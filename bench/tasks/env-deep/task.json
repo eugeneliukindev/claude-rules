@@ -1,0 +1,6 @@
+{
+  "prompt": "The reports service now runs in several environments. Make its base URL configurable with the `REPORTS_URL` environment variable, keeping today's URL as the default.",
+  "allowed": ["reports/*", "tests/*", "README.md"],
+  "catches": ["boundaries/environment"],
+  "expect_bad": ["design"]
+}

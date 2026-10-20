@@ -1,0 +1,15 @@
+[project]
+name = "alerts"
+version = "0.9.0"
+description = "Alerts for our users."
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "SIM", "BLE", "S", "DTZ", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]

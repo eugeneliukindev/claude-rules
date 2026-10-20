@@ -1,0 +1,6 @@
+{
+  "prompt": "Users can now choose to get alerts by SMS instead of email; store the choice in a new `User.channel` field, \"email\" or \"sms\". Texts go through `SmsGateway.send` in alerts/gateways.py, and `build_service` in alerts/app.py already receives the gateway. Wire it up.",
+  "allowed": ["alerts/*", "tests/*"],
+  "catches": ["design/generic-name", "data/branch-on-name"],
+  "expect_bad": ["design"]
+}

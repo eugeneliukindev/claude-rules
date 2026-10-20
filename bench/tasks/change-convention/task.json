@@ -1,0 +1,6 @@
+{
+  "prompt": "Lookups return None when nothing is found, and every caller has to remember to check. Change this convention: a lookup that finds nothing raises `NotFoundError`, a subclass of `ShopError` in shop/errors.py.",
+  "allowed": ["shop/*", "tests/*"],
+  "catches": ["codebase/change-convention"],
+  "expect_bad": ["gates"]
+}

@@ -1,0 +1,1 @@
+"""A small lending library."""
