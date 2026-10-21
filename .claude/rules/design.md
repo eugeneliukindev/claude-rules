@@ -62,4 +62,4 @@ Pass fakes through the constructor; patch only what cannot be passed in. Never e
 
 ## 9. Finish
 
-Run the tests, linter and type checker; fix what you broke. Fix a fault where it comes from, and wherever it repeats. Change only what was asked; mention the rest. Comment only why. Claim only what output showed. End with two lines: new public names and modules (or "none"), and what you did not check.
+Run the tests, linter and type checker; fix what you broke. Fix a fault where it comes from, and wherever it repeats. Change only what was asked; mention the rest. Comment only what a senior reader cannot see in the code: a non-obvious reason, a trap, or a fact from outside it; one short line, and a better name instead where it says the same. Claim only what output showed. End with two lines: new public names and modules (or "none"), and what you did not check.
