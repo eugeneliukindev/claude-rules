@@ -317,6 +317,25 @@ delete files (`good.deleted`). The candidate on 17 tasks: gates 17/17 (after fix
 rules 1/2 (the grade rule extracted as a parameter), the candidate 2/2. The other three new tasks
 are passed by the earlier rules too.
 
+## Clean Architecture and naming, 2026-10-21
+
+The ruleset was made language-neutral and reordered from large decisions to small: read first, add
+the least, dependencies, shape, values, names, errors, tests, finish. Section 3 follows Martin:
+business logic and details, the dependency rule, plain records at the boundary, every
+implementation built at the entry point, thin code at a detail. Section 4 holds all of SOLID and
+the component principles. A codebase decision that breaks sections 3 or 4 is not followed; the
+reply names it. A constructor does no I/O; connecting is a named alternative constructor.
+
+Paired run before the naming section and the constructor wording, 17 tasks, one run each: gates
+17/17 for both, design 12/14 against 13/14 for the previous rules, 1.04 against 1.10 dollars. The
+lost task was `no-tests-fix`: the shorter wording dropped "show both results". `password-login`
+failed in both arms.
+
+The naming section was then rewritten in general words: domain words in English, one word per
+concept across code, storage and wire format, packages named for what the program does, verb
+phrases with precise verbs, noun phrases with the role last, length growing with visibility. Not
+measured yet.
+
 ## Sources
 
 ImpossibleBench 2510.20270; SWE-bench audits 2503.15223, 2410.12468; Tambon et al. 2403.08937;
