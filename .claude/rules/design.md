@@ -47,8 +47,8 @@ Check: for each literal you wrote, which caller would set it to something else?
 - Packages and modules are named for what the program does, not for the tools it uses or the role a layer plays.
 - A function is a verb phrase saying what it does to what, with the most precise verb that fits. A preposition alone, or a verb that fits anything, says nothing. A cheap read is a noun.
 - A class is a noun phrase saying what the thing is, its role last; no word that only says it is code. A record's state is a participle before its concept.
-- A boolean asks a question. A collection is the plural of its items; a map is named for its values, with the key only to tell two apart. A unit goes in the type. No abbreviation the domain does not use.
-- The wider a name is visible, the fuller and more precise it is.
+- A boolean asks a question. A collection is the plural of its items; a map is named for its values. A unit goes in the type. No abbreviation the domain does not use.
+- A qualifier in a name only tells apart two things of the same kind that meet in one place; without such a pair, the plain word is the name.
 - Renaming a public name, change every user of it; *lib* keep the old name as a deprecated alias that warns, for one minor version.
 Check: read each call aloud without its body; does it say what happens, in words a native speaker of the domain would use?
 
