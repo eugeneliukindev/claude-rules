@@ -9,7 +9,7 @@ An arm decides what the session's empty CLAUDE_CONFIG_DIR holds:
 
 - `baseline`: nothing;
 - `oneliner`: a CLAUDE.md with one sentence of advice;
-- `rules`: this repository's `.claude/`, the always-loaded `rules/python.md` and its skills;
+- `rules`: this repository's `.claude/`, the always-loaded `rules/design.md` and its skills;
 - `candidate`: the same skills with `bench/candidate.md` as the ruleset, a change measured before it lands.
 
 Measured per session, after the agent stops and before the hidden checks are copied in:
@@ -235,7 +235,7 @@ def _configure(arm: str, config_directory: Path) -> None:
     elif arm == "candidate":
         shutil.copytree(_CLAUDE / "skills", config_directory / "skills")
         (config_directory / "rules").mkdir()
-        shutil.copy(_CANDIDATE, config_directory / "rules" / "python.md")
+        shutil.copy(_CANDIDATE, config_directory / "rules" / "design.md")
 
 
 def _session_summary(stdout: str) -> dict[str, object]:

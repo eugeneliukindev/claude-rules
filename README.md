@@ -1,18 +1,18 @@
 # claude-rules
 
-Design rules for Python that linters and type checkers cannot see: names, abstractions,
+Code design rules that linters and type checkers cannot see: names, abstractions,
 responsibility, encapsulation, module boundaries. For Claude Code.
 
 | Path | What it is |
 |---|---|
-| `.claude/rules/python.md` | The ruleset. No `paths:`, so Claude Code loads it at the start of every session |
+| `.claude/rules/design.md` | The ruleset. No `paths:`, so Claude Code loads it at the start of every session |
 | `.claude/skills/python-review/` | `/python-review`: a review of the current change in its own context |
 | `bench/` | The benchmark every change to the ruleset has to pass |
 | `docs/benchmark.md` | What was measured and what it showed |
 
 ## Install
 
-    ln -s "$PWD/.claude/rules/python.md" ~/.claude/rules/python.md
+    ln -s "$PWD/.claude/rules/design.md" ~/.claude/rules/design.md
     ln -s "$PWD/.claude/skills/python-review" ~/.claude/skills/python-review
 
 ## Why one always-loaded file
