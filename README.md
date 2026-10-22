@@ -1,19 +1,25 @@
 # claude-rules
 
 Code design rules that linters and type checkers cannot see: names, abstractions,
-responsibility, encapsulation, module boundaries. For Claude Code.
+responsibility, encapsulation, module boundaries. For Claude Code and any agent that reads
+`AGENTS.md` and Agent Skills: Codex, Zed, and the rest.
 
 | Path | What it is |
 |---|---|
-| `.claude/rules/design.md` | The ruleset. No `paths:`, so Claude Code loads it at the start of every session |
-| `.claude/skills/python-review/` | `/python-review`: a review of the current change in its own context |
+| `AGENTS.md` | The ruleset. No `paths:`, so every agent loads it at the start of every session |
+| `skills/python-review/` | `/python-review`: a review of the current change in its own context |
+| `install.sh` | Links both into each agent's home config |
 | `bench/` | The benchmark every change to the ruleset has to pass |
 | `docs/benchmark.md` | What was measured and what it showed |
 
 ## Install
 
-    ln -s "$PWD/.claude/rules/design.md" ~/.claude/rules/design.md
-    ln -s "$PWD/.claude/skills/python-review" ~/.claude/skills/python-review
+    ./install.sh
+
+It links `AGENTS.md` to `~/.claude/rules/design.md`, `~/.codex/AGENTS.md` and
+`~/.config/zed/AGENTS.md`, and each skill into `~/.claude/skills/` (Claude Code reads only this)
+and `~/.agents/skills/` (the other agents). A target holding a different file is skipped, never
+overwritten: merge it into `AGENTS.md` by hand and rerun.
 
 ## Why one always-loaded file
 

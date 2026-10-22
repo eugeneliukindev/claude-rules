@@ -9,7 +9,7 @@ An arm decides what the session's empty CLAUDE_CONFIG_DIR holds:
 
 - `baseline`: nothing;
 - `oneliner`: a CLAUDE.md with one sentence of advice;
-- `rules`: this repository's `.claude/`, the always-loaded `rules/design.md` and its skills;
+- `rules`: this repository's `AGENTS.md` as the always-loaded `rules/design.md`, and its skills;
 - `candidate`: the same skills with `bench/candidate.md` as the ruleset, a change measured before it lands.
 
 Measured per session, after the agent stops and before the hidden checks are copied in:
@@ -56,7 +56,8 @@ _TASKS: Final = _REPOSITORY / "bench" / "tasks"
 _RESULTS: Final = _REPOSITORY / "bench" / "results"
 _PYTHON: Final = _REPOSITORY / "bench" / ".venv" / "bin" / "python"
 _RUFF: Final = _REPOSITORY / "bench" / ".venv" / "bin" / "ruff"
-_CLAUDE: Final = _REPOSITORY / ".claude"
+_RULESET: Final = _REPOSITORY / "AGENTS.md"
+_SKILLS: Final = _REPOSITORY / "skills"
 _HIDDEN_DIRECTORY: Final = "_hidden_checks"
 _ONELINER: Final = (
     "Write Python a senior engineer merges on the first read: the smallest complete change, "
@@ -229,13 +230,11 @@ def _run_session(
 def _configure(arm: str, config_directory: Path) -> None:
     if arm == "oneliner":
         (config_directory / "CLAUDE.md").write_text(_ONELINER, encoding="utf-8")
-    elif arm == "rules":
-        shutil.copytree(_CLAUDE / "rules", config_directory / "rules")
-        shutil.copytree(_CLAUDE / "skills", config_directory / "skills")
-    elif arm == "candidate":
-        shutil.copytree(_CLAUDE / "skills", config_directory / "skills")
+    elif arm in {"rules", "candidate"}:
+        shutil.copytree(_SKILLS, config_directory / "skills")
         (config_directory / "rules").mkdir()
-        shutil.copy(_CANDIDATE, config_directory / "rules" / "design.md")
+        ruleset = _RULESET if arm == "rules" else _CANDIDATE
+        shutil.copy(ruleset, config_directory / "rules" / "design.md")
 
 
 def _session_summary(stdout: str) -> dict[str, object]:
