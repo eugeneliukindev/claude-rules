@@ -2,24 +2,19 @@
 
 Code design rules that linters and type checkers cannot see: names, abstractions,
 responsibility, encapsulation, module boundaries. For Claude Code and any agent that reads
-`AGENTS.md` and Agent Skills: Codex, Zed, and the rest.
+`AGENTS.md`: Codex, Zed, and the rest.
 
 | Path | What it is |
 |---|---|
 | `AGENTS.md` | The ruleset. No `paths:`, so every agent loads it at the start of every session |
-| `skills/python-review/` | `/python-review`: a review of the current change in its own context |
-| `install.sh` | Links both into each agent's home config |
 | `bench/` | The benchmark every change to the ruleset has to pass |
 | `docs/benchmark.md` | What was measured and what it showed |
 
 ## Install
 
-    ./install.sh
-
-It links `AGENTS.md` to `~/.claude/rules/design.md`, `~/.codex/AGENTS.md` and
-`~/.config/zed/AGENTS.md`, and each skill into `~/.claude/skills/` (Claude Code reads only this)
-and `~/.agents/skills/` (the other agents). A target holding a different file is skipped, never
-overwritten: merge it into `AGENTS.md` by hand and rerun.
+    ln -s "$PWD/AGENTS.md" ~/.claude/rules/design.md
+    ln -s "$PWD/AGENTS.md" ~/.codex/AGENTS.md
+    ln -s "$PWD/AGENTS.md" ~/.config/zed/AGENTS.md
 
 ## Why one always-loaded file
 
